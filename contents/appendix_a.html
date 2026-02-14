@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>부록 A. Reactor 주요 연산자 레퍼런스 | Spring Boot + WebFlux + JPA (MongoDB)</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="site-header">
+    <h1><a href="../index.html">Spring Boot + WebFlux + JPA (MongoDB)</a></h1>
+  </header>
+    <nav class="nav-bar">
+    <a href="ch21.html">&larr; Chapter 21. 실전 프로젝트: 실시간 게시판 서비스</a>
+    <a href="../index.html">목차</a>
+    <a href="appendix_b.html">부록 B. MongoDB 쿼리 연산자 정리 &rarr;</a>
+  </nav>
+  <div class="wrapper">
+    <main class="content">
+      <h1 id="a-reactor">부록 A. Reactor 주요 연산자 레퍼런스</h1>
+<p>이 부록은 Project Reactor에서 실무적으로 자주 사용하는 연산자를 카테고리별로 정리한 레퍼런스이다. 각 연산자에 대해 간결한 설명, 코드 예제, 마블 다이어그램의 텍스트 표현을 제공한다. 본문 3장~5장에서 다룬 내용을 빠르게 참조할 수 있도록 구성했다.</p>
+<blockquote>
+<p><strong>표기 규칙</strong>: 마블 다이어그램에서 <code>──&gt;</code> 는 시간 흐름, <code>|</code> 는 onComplete, <code>X</code> 는 onError를 나타낸다.</p>
+</blockquote>
+<hr>
+<h2 id="a1-creation-operators">A.1 생성 연산자 (Creation Operators)</h2>
+<p>스트림의 출발점을 만드는 연산자들이다. 데이터 소스를 리액티브 파이프라인으로 진입시킨다.</p>
+<table>
+<thead>
+<tr>
+<th>연산자</th>
+<th>반환 타입</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>just</code></td>
+<td>Mono / Flux</td>
+<td>주어진 값으로 즉시 스트림을 생성한다</td>
+</tr>
+<tr>
+<td><code>empty</code></td>
+<td>Mono / Flux</td>
+<td>요소 없이 완료 신호만 발행한다</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>Mono / Flux</td>
+<td>즉시 에러 신호를 발행한다</td>
+</tr>
+<tr>
+<td><code>fromIterable</code></td>
+<td>Flux</td>
+<td>Iterable 컬렉션을 Flux로 변환한다</td>
+</tr>
+<tr>
+<td><code>fromStream</code></td>
+<td>Flux</td>
+<td>Java Stream을 Flux로 변환한다 (일회성)</td>
+</tr>
+<tr>
+<td><code>range</code></td>
+<td>Flux</td>
+<td>시작값부터 지정 개수만큼 정수를 발행한다</td>
+</tr>
+<tr>
+<td><code>interval</code></td>
+<td>Flux</td>
+<td>지정된 주기마다 0부터 증가하는 Long 값을 발행한다</td>
+</tr>
+<tr>
+<td><code>defer</code></td>
+<td>Mono / Flux</td>
+<td>구독 시점에 Publisher를 지연 생성한다</td>
+</tr>
+<tr>
+<td><code>create</code></td>
+<td>Mono / Flux</td>
+<td>FluxSink/MonoSink를 통해 프로그래밍 방식으로 요소를 발행한다</td>
+</tr>
+</tbody>
+</table>
+<h3 id="just-empty-error">just / empty / error</h3>
+<p><code>just</code>는 지정한 값을 즉시 발행한다. <code>empty</code>는 요소 없이 완료하고, <code>error</code>는 즉시 에러를 발행한다.</p>
+<pre class="highlight"><code class="language-java">Mono&lt;String&gt; mono = Mono.just("Hello");
+Flux&lt;Integer&gt; flux = Flux.just(1, 2, 3);
+Mono&lt;String&gt; empty = Mono.empty();
+Mono&lt;String&gt; error = Mono.error(new IllegalArgumentException("잘못된 인자"));</code></pre>
+<pre class="highlight"><code>just:   ──(Hello)──|──&gt;
+empty:  ──|──&gt;
+error:  ──X──&gt;</code></pre>
+<h3 id="fromiterable-fromstream-range">fromIterable / fromStream / range</h3>
+<p>기존 컬렉션, Stream, 정수 범위를 리액티브 스트림으로 변환한다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; fromList = Flux.fromIterable(List.of("A", "B", "C"));
+Flux&lt;String&gt; fromStream = Flux.fromStream(List.of("A", "B").stream()); // 일회성
+Flux&lt;Integer&gt; range = Flux.range(1, 5); // 1, 2, 3, 4, 5</code></pre>
+<pre class="highlight"><code>range:  ──(1)──(2)──(3)──(4)──(5)──|──&gt;</code></pre>
+<h3 id="interval">interval</h3>
+<p>지정 주기마다 0부터 증가하는 Long 값을 무한히 발행한다. <code>Schedulers.parallel()</code>에서 실행된다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;Long&gt; tick = Flux.interval(Duration.ofSeconds(1));       // 0, 1, 2, ...
+Flux&lt;Long&gt; delayed = Flux.interval(Duration.ofSeconds(5), Duration.ofSeconds(1));</code></pre>
+<pre class="highlight"><code>시간:  0s     1s     2s     3s
+소스: ──(0)──(1)──(2)──(3)──...──&gt;</code></pre>
+<h3 id="defer">defer</h3>
+<p>구독 시점마다 새로운 Publisher를 생성한다. 구독 시점의 상태에 의존하는 로직에 필수적이다.</p>
+<pre class="highlight"><code class="language-java">Mono&lt;Long&gt; deferred = Mono.defer(() -&gt; Mono.just(System.currentTimeMillis()));
+// 구독할 때마다 다른 타임스탬프가 발행된다</code></pre>
+<h3 id="create">create</h3>
+<p><code>FluxSink</code>를 통해 프로그래밍 방식으로 요소를 발행한다. 콜백 기반 API를 리액티브로 브릿지할 때 사용한다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; bridge = Flux.create(sink -&gt; {
+    myListener.register(
+        data -&gt; sink.next(data),
+        err  -&gt; sink.error(err),
+        ()   -&gt; sink.complete()
+    );
+}, FluxSink.OverflowStrategy.BUFFER);</code></pre>
+<hr>
+<h2 id="a2-transformation-operators">A.2 변환 연산자 (Transformation Operators)</h2>
+<p>스트림의 각 요소를 다른 형태로 변환하거나 스트림 구조를 재구성한다.</p>
+<table>
+<thead>
+<tr>
+<th>연산자</th>
+<th>설명</th>
+<th>비동기</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>map</code></td>
+<td>각 요소를 동기적으로 1:1 변환</td>
+<td>동기</td>
+</tr>
+<tr>
+<td><code>flatMap</code></td>
+<td>Publisher로 변환 후 병합 (순서 비보장)</td>
+<td>비동기</td>
+</tr>
+<tr>
+<td><code>flatMapSequential</code></td>
+<td>Publisher로 변환 후 원래 순서대로 병합</td>
+<td>비동기</td>
+</tr>
+<tr>
+<td><code>concatMap</code></td>
+<td>순차적으로 Publisher 변환 후 연결</td>
+<td>비동기</td>
+</tr>
+<tr>
+<td><code>switchMap</code></td>
+<td>새 요소 시 이전 Publisher를 취소하고 전환</td>
+<td>비동기</td>
+</tr>
+<tr>
+<td><code>collectList</code></td>
+<td>모든 요소를 List로 수집</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>collectMap</code></td>
+<td>모든 요소를 Map으로 수집</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>reduce</code></td>
+<td>모든 요소를 하나의 값으로 축약</td>
+<td>-</td>
+</tr>
+<tr>
+<td><code>scan</code></td>
+<td>누적 중간 결과를 매 요소마다 발행</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<h3 id="map">map</h3>
+<p>각 요소에 동기 함수를 적용하여 1:1로 변환한다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; upper = Flux.just("a", "b", "c").map(String::toUpperCase);
+// 결과: "A", "B", "C"</code></pre>
+<pre class="highlight"><code>소스:   ──(a)──(b)──(c)──|──&gt;        결과:   ──(A)──(B)──(C)──|──&gt;</code></pre>
+<h3 id="flatmap">flatMap</h3>
+<p>각 요소를 비동기 Publisher로 변환하고 결과를 병합한다. <strong>결과 순서가 보장되지 않는다</strong>.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; result = Flux.just(1, 2, 3)
+    .flatMap(id -&gt; webClient.get().uri("/users/{id}", id)
+        .retrieve().bodyToMono(String.class));</code></pre>
+<pre class="highlight"><code>소스:    ──(1)────(2)────(3)──|──&gt;
+내부1:   ──────(R1)──&gt;          내부2:   ────(R2)──&gt;
+결과:    ──(R2)──(R1)──(R3)──|──&gt;   (순서 비결정적)</code></pre>
+<h3 id="flatmapsequential-concatmap">flatMapSequential / concatMap</h3>
+<p><code>flatMapSequential</code>은 내부 Publisher를 <strong>동시에</strong> 구독하되 <strong>원래 순서대로</strong> 결과를 발행한다. <code>concatMap</code>은 이전 Publisher가 <strong>완료된 후</strong> 다음을 구독한다(직렬 실행).</p>
+<pre class="highlight"><code class="language-java">Flux.just(1, 2, 3).flatMapSequential(id -&gt; fetchUser(id)); // 병렬 실행, 순서 보장
+Flux.just(1, 2, 3).concatMap(id -&gt; fetchUser(id));          // 직렬 실행, 순서 보장</code></pre>
+<pre class="highlight"><code>concatMap:
+내부1:   ──(R1)──|
+내부2:           ──(R2)──|
+내부3:                   ──(R3)──|
+결과:    ──(R1)──(R2)──(R3)──|──&gt;</code></pre>
+<h3 id="switchmap">switchMap</h3>
+<p>새 요소가 발행되면 진행 중인 내부 Publisher를 <strong>즉시 취소</strong>한다. 자동 완성 검색에 적합하다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; results = userInput.switchMap(query -&gt; searchService.search(query));</code></pre>
+<pre class="highlight"><code>소스:    ──(A)────(AB)────(ABC)──|──&gt;
+내부1:   ──...X (취소)   내부2: ──...X (취소)   내부3: ──(결과)──|
+결과:    ────────────────(결과)──|──&gt;</code></pre>
+<h3 id="collectlist-collectmap-reduce-scan">collectList / collectMap / reduce / scan</h3>
+<pre class="highlight"><code class="language-java">Mono&lt;List&lt;String&gt;&gt; list = Flux.just("A", "B", "C").collectList();       // ["A","B","C"]
+Mono&lt;Map&lt;Long, User&gt;&gt; map = userFlux.collectMap(User::getId);            // {1:User1, ...}
+Mono&lt;Integer&gt; sum = Flux.range(1, 5).reduce(0, Integer::sum);           // 15
+Flux&lt;Integer&gt; running = Flux.range(1, 5).scan(0, Integer::sum);         // 0,1,3,6,10,15</code></pre>
+<pre class="highlight"><code>scan:   소스 ──(1)──(2)──(3)──(4)──(5)──|──&gt;
+        결과 ──(0)──(1)──(3)──(6)──(10)──(15)──|──&gt;</code></pre>
+<hr>
+<h2 id="a3-filtering-operators">A.3 필터링 연산자 (Filtering Operators)</h2>
+<p>스트림에서 조건에 맞는 요소만 선별하거나 특정 위치의 요소를 추출한다.</p>
+<table>
+<thead>
+<tr>
+<th>연산자</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>filter</code></td>
+<td>Predicate에 맞는 요소만 통과시킨다</td>
+</tr>
+<tr>
+<td><code>filterWhen</code></td>
+<td>비동기 조건(Publisher<Boolean>)으로 필터링한다</td>
+</tr>
+<tr>
+<td><code>distinct</code></td>
+<td>중복 요소를 제거한다</td>
+</tr>
+<tr>
+<td><code>take(n)</code></td>
+<td>처음 n개의 요소만 취한 후 상류를 취소한다</td>
+</tr>
+<tr>
+<td><code>skip(n)</code></td>
+<td>처음 n개의 요소를 건너뛴다</td>
+</tr>
+<tr>
+<td><code>next</code></td>
+<td>첫 번째 요소만 Mono로 반환한다</td>
+</tr>
+<tr>
+<td><code>last</code></td>
+<td>마지막 요소만 Mono로 반환한다</td>
+</tr>
+<tr>
+<td><code>elementAt(i)</code></td>
+<td>인덱스 i 위치의 요소를 Mono로 반환한다</td>
+</tr>
+</tbody>
+</table>
+<h3 id="filter-filterwhen">filter / filterWhen</h3>
+<p><code>filter</code>는 동기적 Predicate를, <code>filterWhen</code>은 비동기 조건을 평가한다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;Integer&gt; even = Flux.range(1, 10).filter(n -&gt; n % 2 == 0);   // 2,4,6,8,10
+Flux&lt;User&gt; active = userFlux.filterWhen(u -&gt; userRepo.isActive(u.getId()));</code></pre>
+<pre class="highlight"><code>소스:   ──(1)──(2)──(3)──(4)──(5)──|──&gt;
+결과:   ──(2)──(4)──|──&gt;</code></pre>
+<h3 id="distinct">distinct</h3>
+<p>중복 요소를 제거한다. 키 추출 함수를 지정할 수도 있다.</p>
+<pre class="highlight"><code class="language-java">Flux.just("A", "B", "A", "C", "B").distinct();            // "A", "B", "C"
+userFlux.distinct(User::getName);                           // 이름 기준 중복 제거</code></pre>
+<h3 id="take-skip">take / skip</h3>
+<p><code>take(n)</code>은 처음 n개만, <code>skip(n)</code>은 처음 n개를 건너뛴다. Duration 기반 변형도 있다.</p>
+<pre class="highlight"><code class="language-java">Flux.range(1, 10).take(3);    // 1, 2, 3
+Flux.range(1, 10).skip(3);    // 4, 5, 6, 7, 8, 9, 10
+Flux.interval(Duration.ofSeconds(1)).take(Duration.ofSeconds(5));</code></pre>
+<pre class="highlight"><code>take(3): ──(1)──(2)──(3)──|──&gt;   (이후 상류 취소)</code></pre>
+<h3 id="next-last-elementat">next / last / elementAt</h3>
+<pre class="highlight"><code class="language-java">Flux.just("A", "B", "C").next();         // Mono&lt;"A"&gt;
+Flux.just("A", "B", "C").last();         // Mono&lt;"C"&gt;
+Flux.just("A", "B", "C").elementAt(1);   // Mono&lt;"B"&gt;</code></pre>
+<hr>
+<h2 id="a4-combining-operators">A.4 결합 연산자 (Combining Operators)</h2>
+<p>여러 스트림을 하나로 합친다. 합치는 방식에 따라 결과가 크게 달라진다.</p>
+<table>
+<thead>
+<tr>
+<th>연산자</th>
+<th>설명</th>
+<th>순서 보장</th>
+<th>동시 구독</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>zip</code> / <code>zipWith</code></td>
+<td>각 소스의 요소를 쌍으로 결합</td>
+<td>예</td>
+<td>예</td>
+</tr>
+<tr>
+<td><code>merge</code> / <code>mergeWith</code></td>
+<td>도착 순서대로 인터리빙</td>
+<td>아니오</td>
+<td>예</td>
+</tr>
+<tr>
+<td><code>concat</code> / <code>concatWith</code></td>
+<td>순차적으로 연결</td>
+<td>예</td>
+<td>아니오</td>
+</tr>
+<tr>
+<td><code>combineLatest</code></td>
+<td>각 소스의 최신 값을 결합</td>
+<td>-</td>
+<td>예</td>
+</tr>
+</tbody>
+</table>
+<h3 id="zip-zipwith">zip / zipWith</h3>
+<p>여러 소스의 요소를 <strong>위치(인덱스) 기준</strong>으로 쌍을 만든다. 가장 짧은 소스가 완료되면 전체가 완료된다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; names = Flux.just("Alice", "Bob");
+Flux&lt;Integer&gt; ages = Flux.just(30, 25);
+Flux&lt;String&gt; result = Flux.zip(names, ages, (n, a) -&gt; n + " is " + a);
+// "Alice is 30", "Bob is 25"</code></pre>
+<pre class="highlight"><code>소스1:  ──(Alice)──(Bob)──|──&gt;
+소스2:  ──(30)──(25)──|──&gt;
+결과:   ──(Alice 30)──(Bob 25)──|──&gt;</code></pre>
+<h3 id="merge-mergewith">merge / mergeWith</h3>
+<p>여러 소스를 <strong>동시에</strong> 구독하고, 도착 순서대로 발행한다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; merged = Flux.merge(
+    Flux.just("A", "B").delayElements(Duration.ofMillis(100)),
+    Flux.just("1", "2").delayElements(Duration.ofMillis(150)));
+// 가능한 결과: "A", "1", "B", "2"</code></pre>
+<pre class="highlight"><code>소스1:  ──(A)────(B)──|──&gt;
+소스2:  ────(1)────(2)──|──&gt;
+결과:   ──(A)──(1)──(B)──(2)──|──&gt;</code></pre>
+<h3 id="concat-concatwith">concat / concatWith</h3>
+<p>첫 번째 소스가 완료된 후 두 번째 소스를 구독한다. 순서가 완벽하게 보장된다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; concat = Flux.concat(Flux.just("A", "B"), Flux.just("C", "D"));
+// 결과: "A", "B", "C", "D" (항상 이 순서)</code></pre>
+<pre class="highlight"><code>소스1:  ──(A)──(B)──|
+소스2:              ──(C)──(D)──|──&gt;
+결과:   ──(A)──(B)──(C)──(D)──|──&gt;</code></pre>
+<h3 id="combinelatest">combineLatest</h3>
+<p>각 소스가 요소를 발행할 때마다 <strong>다른 소스의 최신 값</strong>과 결합한다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; combined = Flux.combineLatest(
+    Flux.just("A", "B").delayElements(Duration.ofMillis(100)),
+    Flux.just(1, 2).delayElements(Duration.ofMillis(150)),
+    (l, n) -&gt; l + n);</code></pre>
+<pre class="highlight"><code>소스1:  ──(A)────(B)────(C)──|──&gt;
+소스2:  ────(1)──────(2)──|──&gt;
+결과:   ────(A1)──(B1)──(B2)──(C2)──|──&gt;</code></pre>
+<hr>
+<h2 id="a5-error-handling-operators">A.5 에러 처리 연산자 (Error Handling Operators)</h2>
+<p>리액티브 스트림에서 에러를 복구하거나, 재시도하거나, 대체 값을 제공한다.</p>
+<table>
+<thead>
+<tr>
+<th>연산자</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>onErrorReturn</code></td>
+<td>에러 시 대체 값을 발행하고 완료한다</td>
+</tr>
+<tr>
+<td><code>onErrorResume</code></td>
+<td>에러 시 대체 Publisher로 전환한다</td>
+</tr>
+<tr>
+<td><code>onErrorMap</code></td>
+<td>에러를 다른 예외로 변환한다</td>
+</tr>
+<tr>
+<td><code>retry</code></td>
+<td>에러 시 지정 횟수만큼 재구독한다</td>
+</tr>
+<tr>
+<td><code>retryWhen</code></td>
+<td>커스텀 재시도 전략을 적용한다</td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>지정 시간 초과 시 에러를 발생시킨다</td>
+</tr>
+</tbody>
+</table>
+<h3 id="onerrorreturn-onerrorresume-onerrormap">onErrorReturn / onErrorResume / onErrorMap</h3>
+<pre class="highlight"><code class="language-java">// onErrorReturn: 정적 대체 값
+Mono&lt;String&gt; safe = callApi().onErrorReturn("기본값");
+Mono&lt;String&gt; safe2 = callApi().onErrorReturn(TimeoutException.class, "시간 초과");
+
+// onErrorResume: 대체 Publisher (가장 유연)
+Mono&lt;User&gt; user = primaryDb.findUser(id)
+    .onErrorResume(e -&gt; cacheService.findUser(id));
+
+// onErrorMap: 예외 변환
+Mono&lt;User&gt; mapped = repository.findById(id)
+    .onErrorMap(DataAccessException.class,
+        e -&gt; new UserNotFoundException("사용자 없음: " + id, e));</code></pre>
+<pre class="highlight"><code>onErrorReturn:  소스 ──(데이터)──X    결과 ──(데이터)──(기본값)──|──&gt;
+onErrorResume:  소스 ──(데이터)──X    결과 ──(데이터)──(복구1)──(복구2)──|──&gt;</code></pre>
+<h3 id="retry-retrywhen">retry / retryWhen</h3>
+<p><code>retry(n)</code>은 최대 n회 재구독한다. <code>retryWhen</code>은 지수 백오프, 재시도 조건 등을 세밀하게 제어한다.</p>
+<pre class="highlight"><code class="language-java">Mono&lt;String&gt; result = callApi().retry(3);
+
+Mono&lt;String&gt; robust = callApi()
+    .retryWhen(Retry.backoff(3, Duration.ofSeconds(1))
+        .maxBackoff(Duration.ofSeconds(10))
+        .filter(e -&gt; e instanceof TransientException)
+        .onRetryExhaustedThrow((spec, signal) -&gt;
+            new ServiceUnavailableException("재시도 한도 초과")));</code></pre>
+<pre class="highlight"><code>시도1: ──X    시도2: ──X    시도3: ──(결과)──|──&gt;</code></pre>
+<h3 id="timeout">timeout</h3>
+<p>지정 시간 내에 요소가 발행되지 않으면 <code>TimeoutException</code>을 발생시킨다.</p>
+<pre class="highlight"><code class="language-java">Mono&lt;String&gt; result = callSlowApi().timeout(Duration.ofSeconds(5));
+Mono&lt;String&gt; withFallback = callSlowApi()
+    .timeout(Duration.ofSeconds(5), Mono.just("타임아웃 대체 응답"));</code></pre>
+<hr>
+<h2 id="a6-utility-operators">A.6 유틸리티 연산자 (Utility Operators)</h2>
+<p>스트림 데이터를 변경하지 않으면서 부수 효과를 수행하거나, 동작을 관찰/공유한다.</p>
+<table>
+<thead>
+<tr>
+<th>연산자</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>doOnNext</code></td>
+<td>각 요소 발행 시 부수 효과 실행</td>
+</tr>
+<tr>
+<td><code>doOnError</code></td>
+<td>에러 발생 시 부수 효과 실행</td>
+</tr>
+<tr>
+<td><code>doOnComplete</code></td>
+<td>완료 시 부수 효과 실행</td>
+</tr>
+<tr>
+<td><code>doOnSubscribe</code></td>
+<td>구독 시 부수 효과 실행</td>
+</tr>
+<tr>
+<td><code>doFinally</code></td>
+<td>종료 시(완료/에러/취소) 항상 실행</td>
+</tr>
+<tr>
+<td><code>log</code></td>
+<td>리액티브 시그널을 로깅</td>
+</tr>
+<tr>
+<td><code>delayElements</code></td>
+<td>각 요소 발행을 지정 시간만큼 지연</td>
+</tr>
+<tr>
+<td><code>cache</code></td>
+<td>결과를 캐싱하여 재구독 시 재사용</td>
+</tr>
+<tr>
+<td><code>share</code></td>
+<td>여러 구독자 간 하나의 구독 공유 (Hot)</td>
+</tr>
+<tr>
+<td><code>replay</code></td>
+<td>과거 요소를 새 구독자에게 재생</td>
+</tr>
+</tbody>
+</table>
+<h3 id="doon">doOn* 시리즈</h3>
+<p>스트림의 시그널을 관찰하되 스트림 자체를 변경하지 않는다. 로깅, 메트릭 수집에 사용한다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;User&gt; pipeline = userService.findAll()
+    .doOnSubscribe(sub -&gt; log.info("사용자 조회 시작"))
+    .doOnNext(user -&gt; log.debug("사용자 발행: {}", user.getName()))
+    .doOnError(e -&gt; log.error("사용자 조회 실패", e))
+    .doOnComplete(() -&gt; log.info("사용자 조회 완료"));</code></pre>
+<h3 id="dofinally">doFinally</h3>
+<p>스트림이 어떤 이유로든 종료될 때 실행된다. 리소스 정리에 적합하다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;Data&gt; stream = dataSource.stream()
+    .doFinally(signalType -&gt; {
+        log.info("종료 원인: {}", signalType); // ON_COMPLETE, ON_ERROR, CANCEL
+        resourceCleanup();
+    });</code></pre>
+<h3 id="log">log</h3>
+<p>리액티브 시그널을 SLF4J 로거로 출력한다. 디버깅 시 파이프라인 동작을 추적할 때 유용하다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;Integer&gt; traced = Flux.range(1, 3).log("my.category").map(i -&gt; i * 10);
+// [my.category] onNext(1) -&gt; [after.map] onNext(10) -&gt; ...</code></pre>
+<h3 id="delayelements-cache">delayElements / cache</h3>
+<pre class="highlight"><code class="language-java">Flux.just("A", "B", "C").delayElements(Duration.ofMillis(500));  // 500ms 간격 발행
+Mono&lt;Config&gt; config = configService.load().cache(Duration.ofMinutes(5)); // 5분 캐싱</code></pre>
+<h3 id="share-replay">share / replay</h3>
+<p><code>share</code>는 여러 구독자가 하나의 구독을 공유한다. <code>replay</code>는 과거 요소를 새 구독자에게 재생한다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;Long&gt; shared = Flux.interval(Duration.ofSeconds(1)).share();
+// 이후 구독자는 진행 중인 스트림에 합류 (과거 요소 유실)
+
+Flux&lt;Long&gt; replayed = Flux.interval(Duration.ofSeconds(1))
+    .replay(3).autoConnect();
+// 새 구독자에게 최근 3개 요소를 재생 후 실시간 합류</code></pre>
+<hr>
+<h2 id="a7-backpressure-operators">A.7 배압 연산자 (Backpressure Operators)</h2>
+<p>생산자의 발행 속도가 소비자의 처리 속도를 초과할 때 초과분을 제어한다.</p>
+<table>
+<thead>
+<tr>
+<th>연산자</th>
+<th>초과 요소 처리 방식</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>onBackpressureBuffer</code></td>
+<td>내부 버퍼에 저장 (용량 초과 시 에러 또는 드롭)</td>
+</tr>
+<tr>
+<td><code>onBackpressureDrop</code></td>
+<td>즉시 폐기</td>
+</tr>
+<tr>
+<td><code>onBackpressureLatest</code></td>
+<td>최신 1개만 유지, 나머지 폐기</td>
+</tr>
+<tr>
+<td><code>limitRate</code></td>
+<td>하류의 request 크기를 제한</td>
+</tr>
+</tbody>
+</table>
+<h3 id="onbackpressurebuffer-onbackpressuredrop-onbackpressurelatest">onBackpressureBuffer / onBackpressureDrop / onBackpressureLatest</h3>
+<pre class="highlight"><code class="language-java">// 버퍼: 최대 1000개 저장
+Flux&lt;Integer&gt; buffered = fastProducer.onBackpressureBuffer(1000);
+
+// 드롭: 초과분 즉시 폐기
+Flux&lt;SensorData&gt; dropped = sensorFlux
+    .onBackpressureDrop(d -&gt; metrics.increment("sensor.dropped"));
+
+// 최신: 최신 1개만 유지 (센서/주가 데이터에 적합)
+Flux&lt;StockPrice&gt; latest = priceStream.onBackpressureLatest();</code></pre>
+<pre class="highlight"><code>onBackpressureLatest:
+생산자: ──(1)(2)(3)(4)(5)────(6)──&gt;
+소비자:    request(1)      request(1)
+결과:   ──(1)────────────(5)──(6)──&gt;   (2,3,4 폐기)</code></pre>
+<h3 id="limitrate">limitRate</h3>
+<p>하류가 상류에 요청하는 <code>request(n)</code> 크기를 제한한다. 프리페치와 보충 전략을 적용한다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;Data&gt; controlled = dataFlux.limitRate(100);          // 100개씩 요청
+Flux&lt;Data&gt; precise = dataFlux.limitRate(100, 50);         // prefetch 100, lowTide 50</code></pre>
+<hr>
+<h2 id="a8">A.8 연산자 선택 가이드</h2>
+<p>상황에 따라 어떤 연산자를 사용할지 빠르게 판단하기 위한 의사 결정표이다.</p>
+<table>
+<thead>
+<tr>
+<th>요구 사항</th>
+<th>추천 연산자</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>동기적 1:1 변환</td>
+<td><code>map</code></td>
+</tr>
+<tr>
+<td>비동기 변환, 순서 무관, 최대 처리량</td>
+<td><code>flatMap</code></td>
+</tr>
+<tr>
+<td>비동기 변환, 순서 보장, 병렬 실행</td>
+<td><code>flatMapSequential</code></td>
+</tr>
+<tr>
+<td>비동기 변환, 순서 보장, 직렬 실행</td>
+<td><code>concatMap</code></td>
+</tr>
+<tr>
+<td>최신 입력만 유효 (이전 결과 취소)</td>
+<td><code>switchMap</code></td>
+</tr>
+<tr>
+<td>N개 소스를 위치별로 쌍 만들기</td>
+<td><code>zip</code></td>
+</tr>
+<tr>
+<td>도착 순서대로 인터리빙</td>
+<td><code>merge</code></td>
+</tr>
+<tr>
+<td>소스를 순차적으로 이어 붙이기</td>
+<td><code>concat</code></td>
+</tr>
+<tr>
+<td>각 소스의 최신 값 결합</td>
+<td><code>combineLatest</code></td>
+</tr>
+<tr>
+<td>에러 시 정적 대체 값</td>
+<td><code>onErrorReturn</code></td>
+</tr>
+<tr>
+<td>에러 시 대체 Publisher 실행</td>
+<td><code>onErrorResume</code></td>
+</tr>
+<tr>
+<td>에러를 다른 예외로 변환</td>
+<td><code>onErrorMap</code></td>
+</tr>
+<tr>
+<td>단순 재시도</td>
+<td><code>retry</code></td>
+</tr>
+<tr>
+<td>백오프/조건부 재시도</td>
+<td><code>retryWhen</code></td>
+</tr>
+<tr>
+<td>모든 요소 보존 (배압)</td>
+<td><code>onBackpressureBuffer</code></td>
+</tr>
+<tr>
+<td>유실 허용 (배압)</td>
+<td><code>onBackpressureDrop</code></td>
+</tr>
+<tr>
+<td>최신 값만 필요 (배압)</td>
+<td><code>onBackpressureLatest</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="a9">A.9 자주 사용하는 연산자 조합 패턴</h2>
+<h3 id="1-api">패턴 1: 안전한 외부 API 호출</h3>
+<pre class="highlight"><code class="language-java">Mono&lt;Response&gt; safeCall = webClient.get()
+    .uri("/api/data").retrieve().bodyToMono(Response.class)
+    .timeout(Duration.ofSeconds(5))
+    .retryWhen(Retry.backoff(3, Duration.ofSeconds(1)))
+    .onErrorResume(e -&gt; Mono.just(Response.fallback()))
+    .doOnError(e -&gt; log.error("API 호출 최종 실패", e));</code></pre>
+<h3 id="2">패턴 2: 병렬 호출 후 결합</h3>
+<pre class="highlight"><code class="language-java">Mono&lt;Dashboard&gt; dashboard = Mono.zip(
+    userService.getProfile(userId),
+    orderService.getRecentOrders(userId),
+    notificationService.getUnread(userId)
+).map(t -&gt; new Dashboard(t.getT1(), t.getT2(), t.getT3()));</code></pre>
+<h3 id="3">패턴 3: 조건부 스트림 처리</h3>
+<pre class="highlight"><code class="language-java">Flux&lt;ProcessedItem&gt; pipeline = itemFlux
+    .filterWhen(item -&gt; validationService.isValid(item))
+    .flatMap(item -&gt; enrichService.enrich(item))
+    .onErrorContinue((e, item) -&gt; log.warn("항목 처리 실패: {}", item))
+    .collectList()
+    .flatMapMany(items -&gt; saveAll(items));</code></pre>
+<h3 id="4">패턴 4: 캐싱과 공유</h3>
+<pre class="highlight"><code class="language-java">Mono&lt;Config&gt; sharedConfig = configService.load()
+    .cache(Duration.ofMinutes(10))
+    .doOnSubscribe(s -&gt; log.debug("설정 조회"));
+// 여러 곳에서 구독해도 10분간 한 번만 로딩</code></pre>
+<hr>
+<blockquote>
+<p><strong>참고</strong>: 이 부록은 Reactor 3.x 기준으로 작성되었다. 각 연산자의 전체 시그니처와 오버로드 변형은 <a href="https://projectreactor.io/docs/core/release/api/">Project Reactor 공식 문서</a>를 참조하라.</p>
+</blockquote>
+    </main>
+    <footer class="site-footer">
+      &copy; 2024 Spring Boot + WebFlux + JPA (MongoDB) Book
+    </footer>
+  </div>
+</body>
+</html>

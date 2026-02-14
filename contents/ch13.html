@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 13. WebSocket | Spring Boot + WebFlux + JPA (MongoDB)</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="site-header">
+    <h1><a href="../index.html">Spring Boot + WebFlux + JPA (MongoDB)</a></h1>
+  </header>
+    <nav class="nav-bar">
+    <a href="ch12.html">&larr; Chapter 12. Server-Sent Events (SSE)</a>
+    <a href="../index.html">목차</a>
+    <a href="ch14.html">Chapter 14. WebClient &rarr;</a>
+  </nav>
+  <div class="wrapper">
+    <main class="content">
+      <h1 id="chapter-13-websocket">Chapter 13. WebSocket</h1>
+<p>실시간 양방향 통신이 필요한 채팅, 게임, 실시간 대시보드 등의 애플리케이션에서는 HTTP의 요청-응답 모델만으로는 한계가 있다. WebSocket은 클라이언트와 서버 간에 지속적인 양방향 통신 채널을 제공하며, Spring WebFlux는 리액티브 스트림 기반의 WebSocket 지원을 내장하고 있다. 이번 장에서는 WebSocket 프로토콜의 동작 원리를 이해하고, WebFlux에서 WebSocket 핸들러를 구현하며, 실시간 채팅 애플리케이션을 구축하고, 세션 관리 전략까지 단계별로 다룬다.</p>
+<hr>
+<h2 id="131-websocket">13.1 WebSocket 프로토콜 이해</h2>
+<h3 id="1311-websocket">13.1.1 WebSocket이란?</h3>
+<p>WebSocket은 RFC 6455로 표준화된 통신 프로토콜로, 단일 TCP 연결 위에서 클라이언트와 서버 간 <strong>전이중(Full-Duplex) 양방향 통신</strong>을 가능하게 한다. 기존 HTTP는 클라이언트가 요청을 보내야만 서버가 응답하는 반이중 구조인 반면, WebSocket은 연결 수립 후 양쪽 모두 자유롭게 메시지를 주고받을 수 있다.</p>
+<table>
+<thead>
+<tr>
+<th>특징</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>양방향 통신</strong></td>
+<td>클라이언트와 서버 모두 독립적으로 메시지를 전송할 수 있다</td>
+</tr>
+<tr>
+<td><strong>지속 연결</strong></td>
+<td>한 번 연결이 수립되면 명시적으로 종료할 때까지 유지된다</td>
+</tr>
+<tr>
+<td><strong>낮은 오버헤드</strong></td>
+<td>HTTP 헤더 없이 최소 2바이트의 프레임 헤더로 메시지를 교환한다</td>
+</tr>
+<tr>
+<td><strong>실시간성</strong></td>
+<td>폴링 없이 서버에서 즉시 클라이언트로 데이터를 전송할 수 있다</td>
+</tr>
+</tbody>
+</table>
+<h3 id="1312-http">13.1.2 HTTP 핸드셰이크</h3>
+<p>WebSocket 연결은 HTTP Upgrade 핸드셰이크로 시작된다.</p>
+<p><strong>클라이언트 요청:</strong></p>
+<pre class="highlight"><code>GET /ws/chat HTTP/1.1
+Host: localhost:8080
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+Sec-WebSocket-Version: 13</code></pre>
+<p><strong>서버 응답:</strong></p>
+<pre class="highlight"><code>HTTP/1.1 101 Switching Protocols
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=</code></pre>
+<p>핸드셰이크 과정은 다음과 같다.</p>
+<ol>
+<li>클라이언트가 <code>Upgrade: websocket</code> 헤더를 포함한 HTTP GET 요청을 전송한다.</li>
+<li>서버는 <code>Sec-WebSocket-Key</code>에 매직 GUID(<code>258EAFA5-E914-47DA-95CA-C5AB0DC85B11</code>)를 연결하여 SHA-1 해시를 생성하고 <code>Sec-WebSocket-Accept</code>에 포함한다.</li>
+<li>서버가 <code>101 Switching Protocols</code>를 반환하면 TCP 연결은 유지된 채 프로토콜이 WebSocket으로 전환된다.</li>
+<li>이후부터 양쪽 모두 WebSocket 프레임으로 메시지를 교환한다.</li>
+</ol>
+<h3 id="1313">13.1.3 프레임 구조</h3>
+<p>핸드셰이크 완료 후 데이터는 프레임(Frame) 단위로 교환된다. 주요 Opcode는 다음과 같다.</p>
+<table>
+<thead>
+<tr>
+<th>Opcode</th>
+<th>의미</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x1</code></td>
+<td>텍스트 프레임 (UTF-8)</td>
+</tr>
+<tr>
+<td><code>0x2</code></td>
+<td>바이너리 프레임</td>
+</tr>
+<tr>
+<td><code>0x8</code></td>
+<td>연결 종료 (Close)</td>
+</tr>
+<tr>
+<td><code>0x9</code></td>
+<td>Ping</td>
+</tr>
+<tr>
+<td><code>0xA</code></td>
+<td>Pong</td>
+</tr>
+</tbody>
+</table>
+<p>각 프레임은 FIN 비트(마지막 프레임 여부), Opcode(프레임 유형), MASK 비트(클라이언트-&gt;서버는 반드시 마스킹), Payload 길이, 실제 데이터로 구성된다. 텍스트 프레임은 채팅 메시지 같은 문자열 데이터에, 바이너리 프레임은 이미지나 파일 전송에 사용한다.</p>
+<h3 id="1314-websocket-vs-sse-vs-long-polling">13.1.4 WebSocket vs SSE vs Long Polling 비교</h3>
+<table>
+<thead>
+<tr>
+<th>특성</th>
+<th>WebSocket</th>
+<th>SSE</th>
+<th>Long Polling</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>통신 방향</strong></td>
+<td>양방향 (Full-Duplex)</td>
+<td>단방향 (서버-&gt;클라이언트)</td>
+<td>단방향</td>
+</tr>
+<tr>
+<td><strong>프로토콜</strong></td>
+<td>ws:// / wss://</td>
+<td>HTTP</td>
+<td>HTTP</td>
+</tr>
+<tr>
+<td><strong>오버헤드</strong></td>
+<td>매우 낮음 (2-14바이트)</td>
+<td>낮음</td>
+<td>높음 (매번 HTTP 헤더)</td>
+</tr>
+<tr>
+<td><strong>자동 재연결</strong></td>
+<td>직접 구현 필요</td>
+<td>EventSource 자동 지원</td>
+<td>직접 구현 필요</td>
+</tr>
+<tr>
+<td><strong>바이너리 전송</strong></td>
+<td>지원</td>
+<td>미지원</td>
+<td>미지원</td>
+</tr>
+</tbody>
+</table>
+<p>Chapter 12에서 다룬 SSE는 단방향 스트리밍에 적합하지만, 채팅처럼 양방향 통신이 필요한 시나리오에서는 WebSocket이 필수적이다. 실시간 알림처럼 서버 푸시만 필요하면 SSE가 더 간단하다.</p>
+<hr>
+<h2 id="132-webflux-websocket">13.2 WebFlux에서 WebSocket 핸들러 구현</h2>
+<h3 id="1321">13.2.1 의존성 설정</h3>
+<p>Spring WebFlux에는 WebSocket 지원이 기본 포함되어 있으므로 별도의 의존성이 필요 없다.</p>
+<pre class="highlight"><code class="language-groovy">dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+}</code></pre>
+<h3 id="1322-websockethandler">13.2.2 WebSocketHandler 인터페이스</h3>
+<p>Spring WebFlux의 WebSocket 지원은 <code>WebSocketHandler</code> 인터페이스를 중심으로 설계되어 있다.</p>
+<pre class="highlight"><code class="language-java">public interface WebSocketHandler {
+    Mono&lt;Void&gt; handle(WebSocketSession session);
+}</code></pre>
+<p><code>handle()</code> 메서드는 WebSocket 연결 수립 시 호출되며, 반환하는 <code>Mono&lt;Void&gt;</code>가 완료되면 연결이 종료된다. <code>WebSocketSession</code>은 <code>receive()</code>로 수신 메시지 스트림(<code>Flux&lt;WebSocketMessage&gt;</code>)을, <code>send()</code>로 송신 스트림을 제공한다.</p>
+<p>가장 기본적인 에코 핸들러를 구현한다.</p>
+<pre class="highlight"><code class="language-java">@Component
+@Slf4j
+public class EchoWebSocketHandler implements WebSocketHandler {
+
+    @Override
+    public Mono&lt;Void&gt; handle(WebSocketSession session) {
+        log.info("WebSocket 연결 수립: sessionId={}", session.getId());
+
+        Flux&lt;WebSocketMessage&gt; output = session.receive()
+            .map(message -&gt; {
+                String payload = message.getPayloadAsText();
+                log.info("수신 메시지: {}", payload);
+                return session.textMessage("Echo: " + payload);
+            });
+
+        return session.send(output)
+            .doFinally(signal -&gt;
+                log.info("WebSocket 연결 종료: sessionId={}", session.getId()));
+    }
+}</code></pre>
+<h3 id="1323-handlermapping">13.2.3 HandlerMapping 설정</h3>
+<p>WebSocket 핸들러를 URL 경로에 매핑하려면 <code>HandlerMapping</code>과 <code>WebSocketHandlerAdapter</code>를 설정한다.</p>
+<pre class="highlight"><code class="language-java">@Configuration
+public class WebSocketConfig {
+
+    @Bean
+    public HandlerMapping webSocketHandlerMapping(EchoWebSocketHandler echoHandler) {
+        Map&lt;String, WebSocketHandler&gt; handlerMap = Map.of("/ws/echo", echoHandler);
+
+        SimpleUrlHandlerMapping mapping = new SimpleUrlHandlerMapping();
+        mapping.setUrlMap(handlerMap);
+        mapping.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return mapping;
+    }
+
+    @Bean
+    public WebSocketHandlerAdapter webSocketHandlerAdapter() {
+        return new WebSocketHandlerAdapter();
+    }
+}</code></pre>
+<p><code>order</code>를 <code>Ordered.HIGHEST_PRECEDENCE</code>로 설정하여 다른 핸들러 매핑보다 먼저 WebSocket 요청을 처리한다.</p>
+<h3 id="1324">13.2.4 메시지 송수신 패턴</h3>
+<p>WebSocket 메시지 송수신은 세 가지 패턴으로 나눌 수 있다.</p>
+<p><strong>패턴 1: 수신 전용</strong> -- 클라이언트 메시지를 받아 처리만 한다.</p>
+<pre class="highlight"><code class="language-java">public Mono&lt;Void&gt; handle(WebSocketSession session) {
+    return session.receive()
+        .doOnNext(msg -&gt; log.info("수신: {}", msg.getPayloadAsText()))
+        .then();
+}</code></pre>
+<p><strong>패턴 2: 송신 전용</strong> -- 서버에서 클라이언트로 일방적으로 푸시한다.</p>
+<pre class="highlight"><code class="language-java">public Mono&lt;Void&gt; handle(WebSocketSession session) {
+    Flux&lt;WebSocketMessage&gt; output = Flux.interval(Duration.ofSeconds(1))
+        .map(tick -&gt; session.textMessage("서버 시간: " + LocalDateTime.now()));
+    return session.send(output);
+}</code></pre>
+<p><strong>패턴 3: 양방향</strong> -- <code>Mono.zip()</code>으로 수신과 송신을 동시에 구독한다.</p>
+<pre class="highlight"><code class="language-java">public Mono&lt;Void&gt; handle(WebSocketSession session) {
+    Mono&lt;Void&gt; input = session.receive()
+        .doOnNext(msg -&gt; processMessage(msg.getPayloadAsText()))
+        .then();
+
+    Mono&lt;Void&gt; output = session.send(
+        externalEventSource().map(event -&gt; session.textMessage(event)));
+
+    return Mono.zip(input, output).then();
+}</code></pre>
+<h3 id="1325-json">13.2.5 JSON 메시지 처리</h3>
+<p>실제 애플리케이션에서는 JSON 형식의 구조화된 메시지를 교환한다.</p>
+<pre class="highlight"><code class="language-java">@Data @Builder @NoArgsConstructor @AllArgsConstructor
+public class ChatMessage {
+    private String type;       // MESSAGE, JOIN, LEAVE
+    private String roomId;
+    private String sender;
+    private String content;
+    private LocalDateTime timestamp;
+}</code></pre>
+<pre class="highlight"><code class="language-java">@Component
+@RequiredArgsConstructor @Slf4j
+public class JsonWebSocketHandler implements WebSocketHandler {
+
+    private final ObjectMapper objectMapper;
+
+    @Override
+    public Mono&lt;Void&gt; handle(WebSocketSession session) {
+        Flux&lt;WebSocketMessage&gt; output = session.receive()
+            .map(WebSocketMessage::getPayloadAsText)
+            .flatMap(payload -&gt; {
+                try {
+                    ChatMessage msg = objectMapper.readValue(payload, ChatMessage.class);
+                    msg.setTimestamp(LocalDateTime.now());
+                    return Mono.just(session.textMessage(
+                        objectMapper.writeValueAsString(msg)));
+                } catch (JsonProcessingException e) {
+                    log.error("JSON 파싱 오류: {}", e.getMessage());
+                    return Mono.empty();
+                }
+            });
+        return session.send(output);
+    }
+}</code></pre>
+<p>JavaScript 클라이언트로 동작을 확인한다.</p>
+<pre class="highlight"><code class="language-javascript">const ws = new WebSocket('ws://localhost:8080/ws/echo');
+ws.onopen = () =&gt; ws.send('Hello WebSocket!');
+ws.onmessage = (event) =&gt; console.log('수신:', event.data);
+ws.onclose = (event) =&gt; console.log('종료:', event.code);</code></pre>
+<hr>
+<h2 id="133">13.3 실시간 채팅 애플리케이션 구축</h2>
+<p>WebSocket과 MongoDB를 결합하여 다중 채팅방을 지원하는 실시간 채팅 애플리케이션을 구축한다.</p>
+<h3 id="1331">13.3.1 도메인 모델과 리포지토리</h3>
+<pre class="highlight"><code class="language-java">@Document(collection = "chat_rooms")
+@Data @Builder @NoArgsConstructor @AllArgsConstructor
+public class ChatRoom {
+    @Id private String id;
+    private String name;
+    private String description;
+    private String createdBy;
+    private Set&lt;String&gt; participants;
+    private LocalDateTime createdAt;
+}</code></pre>
+<pre class="highlight"><code class="language-java">@Document(collection = "chat_messages")
+@Data @Builder @NoArgsConstructor @AllArgsConstructor
+public class ChatMessageDocument {
+    @Id private String id;
+    @Indexed private String roomId;
+    private String sender;
+    private String content;
+    private MessageType type;
+    private LocalDateTime timestamp;
+
+    public enum MessageType { MESSAGE, JOIN, LEAVE, SYSTEM }
+}</code></pre>
+<pre class="highlight"><code class="language-java">public interface ChatRoomRepository extends ReactiveMongoRepository&lt;ChatRoom, String&gt; {
+    Flux&lt;ChatRoom&gt; findByParticipantsContaining(String username);
+}
+
+public interface ChatMessageRepository
+        extends ReactiveMongoRepository&lt;ChatMessageDocument, String&gt; {
+    Flux&lt;ChatMessageDocument&gt; findByRoomIdOrderByTimestampDesc(
+        String roomId, Pageable pageable);
+    Flux&lt;ChatMessageDocument&gt; findByRoomIdAndTimestampAfterOrderByTimestampAsc(
+        String roomId, LocalDateTime after);
+}</code></pre>
+<h3 id="1332">13.3.2 채팅방 관리 서비스</h3>
+<pre class="highlight"><code class="language-java">@Service
+@RequiredArgsConstructor
+public class ChatRoomService {
+
+    private final ChatRoomRepository chatRoomRepository;
+
+    public Mono&lt;ChatRoom&gt; createRoom(String name, String description,
+                                      String createdBy) {
+        ChatRoom room = ChatRoom.builder()
+            .name(name).description(description).createdBy(createdBy)
+            .participants(new HashSet&lt;&gt;(Set.of(createdBy)))
+            .createdAt(LocalDateTime.now()).build();
+        return chatRoomRepository.save(room);
+    }
+
+    public Flux&lt;ChatRoom&gt; getAllRooms() {
+        return chatRoomRepository.findAll();
+    }
+
+    public Mono&lt;ChatRoom&gt; joinRoom(String roomId, String username) {
+        return chatRoomRepository.findById(roomId)
+            .flatMap(room -&gt; {
+                room.getParticipants().add(username);
+                return chatRoomRepository.save(room);
+            });
+    }
+
+    public Mono&lt;ChatRoom&gt; leaveRoom(String roomId, String username) {
+        return chatRoomRepository.findById(roomId)
+            .flatMap(room -&gt; {
+                room.getParticipants().remove(username);
+                return chatRoomRepository.save(room);
+            });
+    }
+}</code></pre>
+<h3 id="1333">13.3.3 메시지 브로드캐스팅</h3>
+<p>채팅 메시지를 같은 채팅방의 모든 세션에 브로드캐스팅하는 핵심 서비스를 구현한다. Reactor의 <code>Sinks</code>를 사용하여 메시지를 발행하고, 각 세션이 이를 구독하는 구조로 설계한다.</p>
+<pre class="highlight"><code class="language-java">@Service
+@Slf4j
+public class ChatMessageBroker {
+
+    private final Map&lt;String, Sinks.Many&lt;ChatMessageDocument&gt;&gt; roomSinks =
+        new ConcurrentHashMap&lt;&gt;();
+
+    public Sinks.Many&lt;ChatMessageDocument&gt; getRoomSink(String roomId) {
+        return roomSinks.computeIfAbsent(roomId,
+            id -&gt; Sinks.many().multicast().onBackpressureBuffer(256));
+    }
+
+    public void publish(String roomId, ChatMessageDocument message) {
+        Sinks.EmitResult result = getRoomSink(roomId).tryEmitNext(message);
+        if (result.isFailure()) {
+            log.warn("메시지 발행 실패: roomId={}, result={}", roomId, result);
+        }
+    }
+
+    public Flux&lt;ChatMessageDocument&gt; subscribe(String roomId) {
+        return getRoomSink(roomId).asFlux();
+    }
+
+    public void removeRoom(String roomId) {
+        Sinks.Many&lt;ChatMessageDocument&gt; removed = roomSinks.remove(roomId);
+        if (removed != null) removed.tryEmitComplete();
+    }
+}</code></pre>
+<p><code>Sinks.many().multicast().onBackpressureBuffer(256)</code>는 여러 구독자에게 동시에 메시지를 전달하는 Hot Publisher를 생성한다. 구독자가 처리하지 못한 메시지는 최대 256개까지 버퍼에 저장된다.</p>
+<h3 id="1334">13.3.4 채팅 메시지 서비스</h3>
+<pre class="highlight"><code class="language-java">@Service
+@RequiredArgsConstructor @Slf4j
+public class ChatMessageService {
+
+    private final ChatMessageRepository chatMessageRepository;
+    private final ChatMessageBroker messageBroker;
+
+    public Mono&lt;ChatMessageDocument&gt; saveAndBroadcast(ChatMessageDocument message) {
+        message.setTimestamp(LocalDateTime.now());
+        return chatMessageRepository.save(message)
+            .doOnSuccess(saved -&gt; messageBroker.publish(saved.getRoomId(), saved));
+    }
+
+    public Flux&lt;ChatMessageDocument&gt; getRecentMessages(String roomId, int limit) {
+        return chatMessageRepository.findByRoomIdOrderByTimestampDesc(
+            roomId, PageRequest.of(0, limit));
+    }
+
+    public Flux&lt;ChatMessageDocument&gt; getMessagesSince(
+            String roomId, LocalDateTime since) {
+        return chatMessageRepository
+            .findByRoomIdAndTimestampAfterOrderByTimestampAsc(roomId, since);
+    }
+}</code></pre>
+<h3 id="1335-websocket">13.3.5 채팅 WebSocket 핸들러</h3>
+<p>서비스를 조합하여 채팅 전용 WebSocket 핸들러를 완성한다.</p>
+<pre class="highlight"><code class="language-java">@Component
+@RequiredArgsConstructor @Slf4j
+public class ChatWebSocketHandler implements WebSocketHandler {
+
+    private final ChatMessageService chatMessageService;
+    private final ChatMessageBroker messageBroker;
+    private final ObjectMapper objectMapper;
+
+    @Override
+    public Mono&lt;Void&gt; handle(WebSocketSession session) {
+        URI uri = session.getHandshakeInfo().getUri();
+        Map&lt;String, String&gt; params = parseQueryParams(uri);
+        String roomId = params.get("roomId");
+        String username = params.get("username");
+
+        if (roomId == null || username == null) {
+            return session.close(CloseStatus.POLICY_VIOLATION);
+        }
+
+        log.info("채팅 연결: roomId={}, username={}", roomId, username);
+
+        // 입장 알림
+        Mono&lt;Void&gt; joinNotification = createSystemMessage(
+            roomId, username + "님이 입장했습니다.",
+            ChatMessageDocument.MessageType.JOIN);
+
+        // 수신: 클라이언트 메시지를 저장 및 브로드캐스트
+        Mono&lt;Void&gt; input = session.receive()
+            .flatMap(msg -&gt; handleIncoming(msg.getPayloadAsText(), roomId, username))
+            .doFinally(signal -&gt; createSystemMessage(roomId,
+                username + "님이 퇴장했습니다.",
+                ChatMessageDocument.MessageType.LEAVE).subscribe())
+            .then();
+
+        // 송신: 채팅방 브로드캐스트 스트림 구독
+        Flux&lt;WebSocketMessage&gt; output = messageBroker.subscribe(roomId)
+            .mapNotNull(chatMsg -&gt; toWebSocketMessage(session, chatMsg));
+
+        return joinNotification
+            .then(Mono.zip(input, session.send(output)).then());
+    }
+
+    private Mono&lt;ChatMessageDocument&gt; handleIncoming(
+            String payload, String roomId, String sender) {
+        try {
+            ChatMessage incoming = objectMapper.readValue(payload, ChatMessage.class);
+            ChatMessageDocument doc = ChatMessageDocument.builder()
+                .roomId(roomId).sender(sender).content(incoming.getContent())
+                .type(ChatMessageDocument.MessageType.MESSAGE).build();
+            return chatMessageService.saveAndBroadcast(doc);
+        } catch (JsonProcessingException e) {
+            log.error("메시지 파싱 오류: {}", e.getMessage());
+            return Mono.empty();
+        }
+    }
+
+    private Mono&lt;Void&gt; createSystemMessage(String roomId, String content,
+                                            ChatMessageDocument.MessageType type) {
+        ChatMessageDocument msg = ChatMessageDocument.builder()
+            .roomId(roomId).sender("SYSTEM").content(content).type(type).build();
+        return chatMessageService.saveAndBroadcast(msg).then();
+    }
+
+    private WebSocketMessage toWebSocketMessage(
+            WebSocketSession session, ChatMessageDocument msg) {
+        try {
+            return session.textMessage(objectMapper.writeValueAsString(msg));
+        } catch (JsonProcessingException e) {
+            return null;
+        }
+    }
+
+    private Map&lt;String, String&gt; parseQueryParams(URI uri) {
+        Map&lt;String, String&gt; params = new HashMap&lt;&gt;();
+        String query = uri.getQuery();
+        if (query == null) return params;
+        for (String param : query.split("&amp;")) {
+            String[] pair = param.split("=", 2);
+            if (pair.length == 2) params.put(pair[0], pair[1]);
+        }
+        return params;
+    }
+}</code></pre>
+<p>WebSocket 라우팅에 등록한다.</p>
+<pre class="highlight"><code class="language-java">@Configuration
+public class WebSocketConfig {
+    @Bean
+    public HandlerMapping webSocketHandlerMapping(ChatWebSocketHandler chatHandler) {
+        SimpleUrlHandlerMapping mapping = new SimpleUrlHandlerMapping();
+        mapping.setUrlMap(Map.of("/ws/chat", chatHandler));
+        mapping.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return mapping;
+    }
+
+    @Bean
+    public WebSocketHandlerAdapter webSocketHandlerAdapter() {
+        return new WebSocketHandlerAdapter();
+    }
+}</code></pre>
+<h3 id="1336-rest-api">13.3.6 채팅방 REST API</h3>
+<p>WebSocket 연결 전 채팅방을 관리하기 위한 REST API를 제공한다.</p>
+<pre class="highlight"><code class="language-java">@RestController
+@RequestMapping("/api/chat/rooms")
+@RequiredArgsConstructor
+public class ChatRoomController {
+
+    private final ChatRoomService chatRoomService;
+    private final ChatMessageService chatMessageService;
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public Mono&lt;ChatRoom&gt; createRoom(@RequestBody CreateRoomRequest request) {
+        return chatRoomService.createRoom(
+            request.getName(), request.getDescription(), request.getCreatedBy());
+    }
+
+    @GetMapping
+    public Flux&lt;ChatRoom&gt; getAllRooms() {
+        return chatRoomService.getAllRooms();
+    }
+
+    @GetMapping("/{roomId}/messages")
+    public Flux&lt;ChatMessageDocument&gt; getRecentMessages(
+            @PathVariable String roomId,
+            @RequestParam(defaultValue = "50") int limit) {
+        return chatMessageService.getRecentMessages(roomId, limit);
+    }
+
+    @PostMapping("/{roomId}/join")
+    public Mono&lt;ChatRoom&gt; joinRoom(@PathVariable String roomId,
+                                    @RequestParam String username) {
+        return chatRoomService.joinRoom(roomId, username);
+    }
+}</code></pre>
+<h3 id="1337">13.3.7 이전 메시지 로드</h3>
+<p>클라이언트가 채팅방에 접속할 때 이전 메시지를 로드하는 두 가지 전략이 있다.</p>
+<p><strong>전략 1: REST API를 통한 초기 로드</strong> -- WebSocket 연결 전에 REST API로 최근 메시지를 가져온다.</p>
+<pre class="highlight"><code class="language-javascript">async function joinChatRoom(roomId, username) {
+    const res = await fetch(`/api/chat/rooms/${roomId}/messages?limit=50`);
+    const history = await res.json();
+    history.reverse().forEach(msg =&gt; displayMessage(msg));
+
+    const ws = new WebSocket(
+        `ws://localhost:8080/ws/chat?roomId=${roomId}&amp;username=${username}`);
+    ws.onmessage = (e) =&gt; displayMessage(JSON.parse(e.data));
+}</code></pre>
+<p><strong>전략 2: WebSocket 내 히스토리 전송</strong> -- <code>concatWith()</code>로 히스토리 후 실시간 스트림을 연결한다.</p>
+<pre class="highlight"><code class="language-java">Flux&lt;WebSocketMessage&gt; history = chatMessageService.getRecentMessages(roomId, 50)
+    .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));
+Flux&lt;WebSocketMessage&gt; live = messageBroker.subscribe(roomId)
+    .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));
+
+Flux&lt;WebSocketMessage&gt; output = history.concatWith(live);</code></pre>
+<p>전략 1이 관리가 용이하고, 히스토리-실시간 사이 메시지 누락 위험이 적어 프로덕션에서 권장된다.</p>
+<h3 id="1338-mongodb">13.3.8 MongoDB 인덱스 설정</h3>
+<p>채팅 메시지 조회 성능을 위해 복합 인덱스를 설정한다.</p>
+<pre class="highlight"><code class="language-java">@Configuration
+@RequiredArgsConstructor
+public class MongoIndexConfig {
+    private final ReactiveMongoTemplate mongoTemplate;
+
+    @PostConstruct
+    public void initIndexes() {
+        mongoTemplate.indexOps(ChatMessageDocument.class)
+            .ensureIndex(new Index()
+                .on("roomId", Sort.Direction.ASC)
+                .on("timestamp", Sort.Direction.DESC))
+            .subscribe();
+    }
+}</code></pre>
+<hr>
+<h2 id="134-websocket">13.4 WebSocket 세션 관리</h2>
+<h3 id="1341">13.4.1 세션 라이프사이클</h3>
+<p>WebSocket 세션은 <code>CONNECTING -&gt; OPEN -&gt; CLOSING -&gt; CLOSED</code> 순서의 라이프사이클을 따른다. 세션을 체계적으로 관리하기 위해 세션 레지스트리를 구현한다.</p>
+<pre class="highlight"><code class="language-java">@Component @Slf4j
+public class WebSocketSessionRegistry {
+
+    private final Map&lt;String, Map&lt;String, WebSocketSession&gt;&gt; roomSessions =
+        new ConcurrentHashMap&lt;&gt;();
+    private final Map&lt;String, String&gt; sessionUserMap = new ConcurrentHashMap&lt;&gt;();
+
+    public void register(String roomId, String username, WebSocketSession session) {
+        roomSessions.computeIfAbsent(roomId, k -&gt; new ConcurrentHashMap&lt;&gt;())
+            .put(session.getId(), session);
+        sessionUserMap.put(session.getId(), username);
+        log.info("세션 등록: roomId={}, username={}, 현재 인원={}",
+            roomId, username, getSessionCount(roomId));
+    }
+
+    public void unregister(String roomId, WebSocketSession session) {
+        Map&lt;String, WebSocketSession&gt; sessions = roomSessions.get(roomId);
+        if (sessions != null) {
+            sessions.remove(session.getId());
+            if (sessions.isEmpty()) roomSessions.remove(roomId);
+        }
+        sessionUserMap.remove(session.getId());
+    }
+
+    public int getSessionCount(String roomId) {
+        Map&lt;String, WebSocketSession&gt; s = roomSessions.get(roomId);
+        return s != null ? s.size() : 0;
+    }
+
+    public Set&lt;String&gt; getOnlineUsers(String roomId) {
+        Map&lt;String, WebSocketSession&gt; sessions = roomSessions.get(roomId);
+        if (sessions == null) return Collections.emptySet();
+        return sessions.keySet().stream()
+            .map(sessionUserMap::get).filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+    }
+
+    public Map&lt;String, WebSocketSession&gt; getAllSessions() {
+        Map&lt;String, WebSocketSession&gt; all = new ConcurrentHashMap&lt;&gt;();
+        roomSessions.values().forEach(all::putAll);
+        return all;
+    }
+}</code></pre>
+<p>세션 레지스트리를 ChatWebSocketHandler에 통합하면 <code>register()</code>를 연결 시에, <code>unregister()</code>를 <code>doFinally()</code>에서 호출하여 세션 생명주기를 관리한다.</p>
+<h3 id="1342-pingpong">13.4.2 Ping/Pong 하트비트</h3>
+<p>WebSocket 연결이 네트워크 문제나 유휴 상태로 끊어질 수 있다. Ping/Pong 메커니즘으로 연결 상태를 주기적으로 확인한다.</p>
+<p><strong>서버 측 Ping 스케줄러:</strong></p>
+<pre class="highlight"><code class="language-java">@Component
+@RequiredArgsConstructor @Slf4j
+public class WebSocketPingScheduler {
+
+    private final WebSocketSessionRegistry sessionRegistry;
+
+    @Scheduled(fixedRate = 30000)
+    public void sendPing() {
+        sessionRegistry.getAllSessions().forEach((sessionId, session) -&gt; {
+            if (session.isOpen()) {
+                session.send(Mono.just(session.pingMessage(factory -&gt;
+                    factory.wrap("ping".getBytes(StandardCharsets.UTF_8)))))
+                    .subscribe(null, error -&gt;
+                        log.warn("Ping 실패: sessionId={}", sessionId));
+            }
+        });
+    }
+}</code></pre>
+<p><code>@EnableScheduling</code>을 메인 애플리케이션에 추가해야 한다.</p>
+<p><strong>애플리케이션 레벨 하트비트:</strong></p>
+<p>프록시가 WebSocket 프레임을 지원하지 않는 환경에서는 애플리케이션 레벨 하트비트를 사용한다.</p>
+<pre class="highlight"><code class="language-java">// 수신 시 하트비트 필터링
+Mono&lt;Void&gt; input = session.receive()
+    .filter(msg -&gt; !"HEARTBEAT".equals(msg.getPayloadAsText()))
+    .flatMap(msg -&gt; handleIncoming(msg.getPayloadAsText(), roomId, username))
+    .then();
+
+// 송신 시 하트비트와 실시간 메시지 병합
+Flux&lt;WebSocketMessage&gt; heartbeat = Flux.interval(Duration.ofSeconds(25))
+    .map(tick -&gt; session.textMessage("HEARTBEAT"));
+Flux&lt;WebSocketMessage&gt; output = Flux.merge(
+    messageBroker.subscribe(roomId).mapNotNull(m -&gt; toWebSocketMessage(session, m)),
+    heartbeat);</code></pre>
+<h3 id="1343">13.4.3 재연결 처리</h3>
+<p>네트워크 불안정으로 연결이 끊어질 때를 대비하여 클라이언트 측 자동 재연결과 서버 측 메시지 복구를 구현한다.</p>
+<p><strong>클라이언트 재연결 (지수 백오프):</strong></p>
+<pre class="highlight"><code class="language-javascript">class ReconnectingWebSocket {
+    constructor(url, options = {}) {
+        this.url = url;
+        this.maxRetries = options.maxRetries || 10;
+        this.retryDelay = options.retryDelay || 1000;
+        this.maxRetryDelay = options.maxRetryDelay || 30000;
+        this.retryCount = 0;
+        this.lastMessageTimestamp = null;
+        this.connect();
+    }
+
+    connect() {
+        let connectUrl = this.url;
+        if (this.lastMessageTimestamp) {
+            const sep = connectUrl.includes('?') ? '&amp;' : '?';
+            connectUrl += `${sep}since=${this.lastMessageTimestamp}`;
+        }
+        this.ws = new WebSocket(connectUrl);
+
+        this.ws.onopen = () =&gt; { this.retryCount = 0; };
+        this.ws.onmessage = (e) =&gt; {
+            if (e.data === 'HEARTBEAT') return;
+            const msg = JSON.parse(e.data);
+            this.lastMessageTimestamp = msg.timestamp;
+            this.onMessage?.(msg);
+        };
+        this.ws.onclose = (e) =&gt; {
+            if (e.code !== 1000 &amp;&amp; this.retryCount &lt; this.maxRetries) {
+                const delay = Math.min(
+                    this.retryDelay * Math.pow(2, this.retryCount),
+                    this.maxRetryDelay);
+                setTimeout(() =&gt; { this.retryCount++; this.connect(); }, delay);
+            }
+        };
+    }
+
+    send(data) {
+        if (this.ws?.readyState === WebSocket.OPEN)
+            this.ws.send(typeof data === 'string' ? data : JSON.stringify(data));
+    }
+
+    close() { this.maxRetries = 0; this.ws?.close(1000); }
+}</code></pre>
+<p><strong>서버 측 메시지 복구:</strong></p>
+<pre class="highlight"><code class="language-java">@Override
+public Mono&lt;Void&gt; handle(WebSocketSession session) {
+    // ... 파라미터 추출 ...
+    String sinceParam = params.get("since");
+
+    // 재연결 시 놓친 메시지 복구
+    Flux&lt;WebSocketMessage&gt; missedMessages = Flux.empty();
+    if (sinceParam != null) {
+        LocalDateTime since = LocalDateTime.parse(sinceParam);
+        missedMessages = chatMessageService.getMessagesSince(roomId, since)
+            .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));
+    }
+
+    Flux&lt;WebSocketMessage&gt; liveMessages = messageBroker.subscribe(roomId)
+        .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));
+
+    // 놓친 메시지 먼저 전송 후 실시간 스트림 전환
+    Flux&lt;WebSocketMessage&gt; output = missedMessages.concatWith(liveMessages);
+
+    Mono&lt;Void&gt; input = session.receive()
+        .filter(msg -&gt; !"HEARTBEAT".equals(msg.getPayloadAsText()))
+        .flatMap(msg -&gt; handleIncoming(msg.getPayloadAsText(), roomId, username))
+        .doFinally(signal -&gt; sessionRegistry.unregister(roomId, session))
+        .then();
+
+    return Mono.zip(input, session.send(output)).then();
+}</code></pre>
+<h3 id="1344">13.4.4 연결 종료와 보안</h3>
+<p>주요 <code>CloseStatus</code> 코드를 정리한다.</p>
+<table>
+<thead>
+<tr>
+<th>코드</th>
+<th>의미</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1000</td>
+<td>정상 종료</td>
+</tr>
+<tr>
+<td>1001</td>
+<td>서버 종료 또는 페이지 이동</td>
+</tr>
+<tr>
+<td>1008</td>
+<td>정책 위반</td>
+</tr>
+<tr>
+<td>1011</td>
+<td>서버 내부 오류</td>
+</tr>
+<tr>
+<td>4000+</td>
+<td>애플리케이션 정의 코드</td>
+</tr>
+</tbody>
+</table>
+<p>서버에서 특정 사용자를 강제 퇴장시키는 예시이다.</p>
+<pre class="highlight"><code class="language-java">public Mono&lt;Void&gt; disconnectUser(String roomId, String targetUsername) {
+    return Flux.fromIterable(sessionRegistry.getSessions(roomId).entrySet())
+        .filter(e -&gt; targetUsername.equals(sessionRegistry.getUsername(e.getKey())))
+        .flatMap(e -&gt; e.getValue()
+            .close(new CloseStatus(4001, "관리자에 의해 종료")))
+        .then();
+}</code></pre>
+<p>WebSocket 엔드포인트에도 Spring Security를 적용할 수 있다. WebSocket 핸드셰이크는 HTTP 요청이므로, JWT 토큰을 쿼리 파라미터로 전달하고 핸들러에서 검증한다.</p>
+<pre class="highlight"><code class="language-java">@Bean
+public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
+    return http
+        .authorizeExchange(ex -&gt; ex
+            .pathMatchers("/ws/**").authenticated()
+            .pathMatchers("/api/auth/**").permitAll()
+            .anyExchange().authenticated())
+        .csrf(csrf -&gt; csrf.disable())
+        .build();
+}</code></pre>
+<pre class="highlight"><code class="language-java">// 핸들러 내부에서 JWT 검증
+String token = params.get("token");
+if (token == null || !jwtTokenProvider.validateToken(token)) {
+    return session.close(new CloseStatus(4401, "인증 실패"));
+}
+String username = jwtTokenProvider.getUsernameFromToken(token);</code></pre>
+<pre class="highlight"><code class="language-javascript">// 클라이언트에서 토큰 전달
+const token = localStorage.getItem('accessToken');
+const ws = new WebSocket(
+    `ws://localhost:8080/ws/chat?roomId=${roomId}&amp;username=${user}&amp;token=${token}`);</code></pre>
+<blockquote>
+<p><strong>주의</strong>: URL 쿼리 파라미터로 토큰을 전달하면 로그에 노출될 수 있다. 프로덕션에서는 쿠키나 첫 번째 메시지를 통한 인증, 또는 핸드셰이크 전 별도 토큰 발급 엔드포인트를 활용하는 것이 더 안전하다.</p>
+</blockquote>
+<hr>
+<h2 id="_1">요약</h2>
+<p>이번 장에서 다룬 핵심 내용을 정리한다.</p>
+<table>
+<thead>
+<tr>
+<th>주제</th>
+<th>핵심 내용</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>WebSocket 프로토콜</strong></td>
+<td>HTTP 핸드셰이크로 연결 수립, 프레임 기반 양방향 통신, SSE/Long Polling과의 차이</td>
+</tr>
+<tr>
+<td><strong>WebSocket 핸들러</strong></td>
+<td><code>WebSocketHandler</code> 인터페이스, <code>SimpleUrlHandlerMapping</code>으로 경로 매핑, 수신/송신/양방향 패턴</td>
+</tr>
+<tr>
+<td><strong>실시간 채팅</strong></td>
+<td><code>Sinks.Many</code>를 활용한 메시지 브로드캐스팅, MongoDB 저장, 이전 메시지 로드, REST API 연동</td>
+</tr>
+<tr>
+<td><strong>세션 관리</strong></td>
+<td>세션 레지스트리, Ping/Pong 하트비트, 지수 백오프 재연결, 보안 설정</td>
+</tr>
+</tbody>
+</table>
+<p>WebSocket은 실시간 양방향 통신이 필요한 다양한 시나리오에서 핵심적인 역할을 한다. Spring WebFlux의 리액티브 WebSocket 지원과 Reactor의 <code>Sinks</code>를 활용하면, 높은 동시 연결 수를 효율적으로 처리하는 확장성 있는 실시간 애플리케이션을 구축할 수 있다. 다음 장에서는 WebClient를 활용하여 외부 API를 리액티브하게 호출하는 방법을 다룬다.</p>
+    </main>
+    <footer class="site-footer">
+      &copy; 2024 Spring Boot + WebFlux + JPA (MongoDB) Book
+    </footer>
+  </div>
+</body>
+</html>

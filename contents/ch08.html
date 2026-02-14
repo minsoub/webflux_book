@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 8. MongoDB 리액티브 데이터 접근 심화 | Spring Boot + WebFlux + JPA (MongoDB)</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="site-header">
+    <h1><a href="../index.html">Spring Boot + WebFlux + JPA (MongoDB)</a></h1>
+  </header>
+    <nav class="nav-bar">
+    <a href="ch07.html">&larr; Chapter 7. 함수형 엔드포인트</a>
+    <a href="../index.html">목차</a>
+    <a href="ch09.html">Chapter 9. 데이터 검증과 예외 처리 &rarr;</a>
+  </nav>
+  <div class="wrapper">
+    <main class="content">
+      <h1 id="chapter-8-mongodb">Chapter 8. MongoDB 리액티브 데이터 접근 심화</h1>
+<p>Chapter 6에서 <code>ReactiveMongoRepository</code>를 활용한 기본 CRUD를 구현했다. 이번 장에서는 <code>ReactiveMongoTemplate</code>을 중심으로 MongoDB의 고급 기능을 리액티브 방식으로 활용하는 방법을 다룬다. Criteria API를 이용한 동적 쿼리, Aggregation Pipeline을 활용한 통계 API, Change Streams를 이용한 실시간 데이터 감시, 트랜잭션 처리, 그리고 인덱스 관리와 쿼리 성능 최적화까지 실전에서 필요한 심화 주제를 집중적으로 살펴본다.</p>
+<hr>
+<h2 id="81-reactivemongotemplate">8.1 ReactiveMongoTemplate 활용</h2>
+<h3 id="811-reactivemongotemplate-vs-reactivemongorepository">8.1.1 ReactiveMongoTemplate vs ReactiveMongoRepository</h3>
+<p>Chapter 6에서 사용한 <code>ReactiveMongoRepository</code>는 메서드 이름 기반 쿼리 자동 생성, 기본 CRUD 메서드 제공 등 편리한 추상화를 제공한다. 그러나 복잡한 쿼리, 부분 업데이트, Aggregation, Change Streams 등 고급 기능을 사용하려면 <code>ReactiveMongoTemplate</code>이 필요하다.</p>
+<table>
+<thead>
+<tr>
+<th>비교 항목</th>
+<th>ReactiveMongoRepository</th>
+<th>ReactiveMongoTemplate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>추상화 수준</strong></td>
+<td>높음 (인터페이스 선언만으로 사용)</td>
+<td>낮음 (직접 Query/Update 객체 구성)</td>
+</tr>
+<tr>
+<td><strong>기본 CRUD</strong></td>
+<td>자동 제공</td>
+<td>직접 구현</td>
+</tr>
+<tr>
+<td><strong>부분 업데이트</strong></td>
+<td>미지원 (전체 도큐먼트 교체)</td>
+<td><code>Update</code> 객체로 특정 필드만 수정</td>
+</tr>
+<tr>
+<td><strong>Upsert / Aggregation</strong></td>
+<td>미지원</td>
+<td><code>upsert()</code>, <code>aggregate()</code> 제공</td>
+</tr>
+<tr>
+<td><strong>Change Streams</strong></td>
+<td>미지원</td>
+<td><code>changeStream()</code> 메서드 제공</td>
+</tr>
+<tr>
+<td><strong>동적 쿼리</strong></td>
+<td>제한적 (<code>@Query</code> + SpEL)</td>
+<td><code>Criteria</code>로 자유롭게 조합</td>
+</tr>
+</tbody>
+</table>
+<p>실무에서는 두 가지를 함께 사용하는 경우가 많다. 간단한 CRUD는 <code>ReactiveMongoRepository</code>로 처리하고, 복잡한 쿼리나 고급 기능이 필요한 부분에서 <code>ReactiveMongoTemplate</code>을 사용한다.</p>
+<h3 id="812-reactivemongotemplate-crud">8.1.2 ReactiveMongoTemplate 기본 CRUD</h3>
+<p><code>ReactiveMongoTemplate</code>은 Spring Boot의 자동 설정에 의해 빈으로 등록된다. 별도의 설정 없이 주입받아 사용할 수 있다.</p>
+<pre class="highlight"><code class="language-java">@Service
+@RequiredArgsConstructor
+public class ProductQueryService {
+
+    private final ReactiveMongoTemplate mongoTemplate;
+
+    public Flux&lt;Product&gt; findAll() {
+        return mongoTemplate.findAll(Product.class);
+    }
+
+    public Mono&lt;Product&gt; findById(String id) {
+        return mongoTemplate.findById(id, Product.class);
+    }
+
+    public Flux&lt;Product&gt; findByCategory(String category) {
+        Query query = Query.query(Criteria.where("category").is(category));
+        return mongoTemplate.find(query, Product.class);
+    }
+
+    public Mono&lt;Product&gt; insert(Product product) {
+        return mongoTemplate.insert(product);
+    }
+
+    public Mono&lt;DeleteResult&gt; deleteById(String id) {
+        Query query = Query.query(Criteria.where("id").is(id));
+        return mongoTemplate.remove(query, Product.class);
+    }
+}</code></pre>
+<h3 id="813-query-update">8.1.3 Query와 Update 객체</h3>
+<p><code>Query</code> 객체는 MongoDB 쿼리 조건을, <code>Update</code> 객체는 수정할 필드와 값을 지정한다.</p>
+<pre class="highlight"><code class="language-java">// 특정 필드만 업데이트 (부분 업데이트)
+public Mono&lt;UpdateResult&gt; updatePrice(String productId, BigDecimal newPrice) {
+    Query query = Query.query(Criteria.where("id").is(productId));
+    Update update = new Update()
+        .set("price", newPrice)
+        .set("updatedAt", LocalDateTime.now());
+    return mongoTemplate.updateFirst(query, update, Product.class);
+}
+
+// 조건에 맞는 모든 도큐먼트 업데이트
+public Mono&lt;UpdateResult&gt; applyDiscount(String category, int discountPercent) {
+    Query query = Query.query(Criteria.where("category").is(category));
+    Update update = new Update()
+        .mul("price", (100 - discountPercent) / 100.0)
+        .set("updatedAt", LocalDateTime.now());
+    return mongoTemplate.updateMulti(query, update, Product.class);
+}</code></pre>
+<p><code>Update</code> 객체의 주요 메서드는 다음과 같다.</p>
+<table>
+<thead>
+<tr>
+<th>메서드</th>
+<th>MongoDB 연산자</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>set(key, value)</code></td>
+<td><code>$set</code></td>
+<td>필드 값 설정</td>
+</tr>
+<tr>
+<td><code>unset(key)</code></td>
+<td><code>$unset</code></td>
+<td>필드 제거</td>
+</tr>
+<tr>
+<td><code>inc(key, value)</code></td>
+<td><code>$inc</code></td>
+<td>숫자 증가/감소</td>
+</tr>
+<tr>
+<td><code>push(key, value)</code></td>
+<td><code>$push</code></td>
+<td>배열에 요소 추가</td>
+</tr>
+<tr>
+<td><code>pull(key, value)</code></td>
+<td><code>$pull</code></td>
+<td>배열에서 요소 제거</td>
+</tr>
+<tr>
+<td><code>addToSet(key, value)</code></td>
+<td><code>$addToSet</code></td>
+<td>배열에 중복 없이 추가</td>
+</tr>
+<tr>
+<td><code>min(key, value)</code> / <code>max(key, value)</code></td>
+<td><code>$min</code> / <code>$max</code></td>
+<td>현재 값과 비교하여 갱신</td>
+</tr>
+</tbody>
+</table>
+<h3 id="814-upsert-findandmodify">8.1.4 Upsert와 findAndModify</h3>
+<p><code>upsert</code>는 조건에 맞는 도큐먼트가 있으면 업데이트하고, 없으면 새로 삽입하는 원자적 연산이다. <code>findAndModify()</code>는 도큐먼트를 찾아 수정하고 결과를 반환하는 원자적 연산이다.</p>
+<pre class="highlight"><code class="language-java">// Upsert: 조회수 카운터 — 없으면 생성, 있으면 증가
+public Mono&lt;UpdateResult&gt; incrementViewCount(String productId) {
+    Query query = Query.query(Criteria.where("productId").is(productId));
+    Update update = new Update()
+        .inc("viewCount", 1)
+        .setOnInsert("productId", productId)
+        .setOnInsert("createdAt", LocalDateTime.now());
+    return mongoTemplate.upsert(query, update, "product_views");
+}
+
+// findAndModify: 재고 차감 — 원자적으로 수행하고 수정된 결과 반환
+public Mono&lt;Product&gt; decrementStock(String productId, int quantity) {
+    Query query = Query.query(
+        Criteria.where("id").is(productId).and("stock").gte(quantity)
+    );
+    Update update = new Update().inc("stock", -quantity);
+    FindAndModifyOptions options = FindAndModifyOptions.options()
+        .returnNew(true)
+        .upsert(false);
+    return mongoTemplate.findAndModify(query, update, options, Product.class);
+}</code></pre>
+<p><code>setOnInsert()</code>는 도큐먼트가 새로 삽입될 때만 적용되는 필드를 지정한다. MongoDB의 <code>$setOnInsert</code> 연산자에 대응한다.</p>
+<hr>
+<h2 id="82-criteria-api">8.2 커스텀 쿼리와 Criteria API</h2>
+<h3 id="821-criteria">8.2.1 Criteria 기본 사용법</h3>
+<p><code>Criteria</code>는 MongoDB 쿼리 조건을 빌더 패턴으로 구성하는 클래스다.</p>
+<pre class="highlight"><code class="language-java">Criteria.where("category").is("electronics");       // 등호
+Criteria.where("price").gte(10000).lte(50000);       // 범위
+Criteria.where("description").exists(true);           // 존재 여부
+Criteria.where("deletedAt").isNull();                 // null 체크</code></pre>
+<p>주요 비교 메서드는 다음과 같다.</p>
+<table>
+<thead>
+<tr>
+<th>메서드</th>
+<th>MongoDB 연산자</th>
+<th>의미</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>is</code> / <code>ne</code></td>
+<td><code>$eq</code> / <code>$ne</code></td>
+<td>같음 / 같지 않음</td>
+</tr>
+<tr>
+<td><code>gt</code> / <code>gte</code> / <code>lt</code> / <code>lte</code></td>
+<td><code>$gt</code> / <code>$gte</code> / <code>$lt</code> / <code>$lte</code></td>
+<td>비교 연산</td>
+</tr>
+<tr>
+<td><code>in</code> / <code>nin</code></td>
+<td><code>$in</code> / <code>$nin</code></td>
+<td>포함 / 미포함</td>
+</tr>
+<tr>
+<td><code>regex(pattern)</code></td>
+<td><code>$regex</code></td>
+<td>정규표현식 매칭</td>
+</tr>
+<tr>
+<td><code>exists(boolean)</code></td>
+<td><code>$exists</code></td>
+<td>필드 존재 여부</td>
+</tr>
+</tbody>
+</table>
+<h3 id="822-andorinregex">8.2.2 복잡한 조건 조합 (and/or/in/regex)</h3>
+<pre class="highlight"><code class="language-java">// AND 조건 — 체이닝
+Query query = Query.query(
+    Criteria.where("category").is("electronics")
+        .and("price").gte(10000).and("stock").gt(0)
+);
+
+// OR 조건
+Query query = Query.query(
+    new Criteria().orOperator(
+        Criteria.where("category").is("electronics"),
+        Criteria.where("category").is("books")
+    )
+);
+
+// AND + OR 혼합
+Query query = Query.query(
+    new Criteria().orOperator(
+        new Criteria().andOperator(
+            Criteria.where("category").is("electronics"),
+            Criteria.where("price").gte(10000)),
+        new Criteria().andOperator(
+            Criteria.where("category").is("books"),
+            Criteria.where("price").gte(5000))
+    )
+);
+
+// in, regex, elemMatch
+Criteria.where("category").in("electronics", "books", "clothing");
+Criteria.where("name").regex("갤럭시", "i");  // 대소문자 무시
+Criteria.where("tags").elemMatch(
+    Criteria.where("name").is("sale").and("active").is(true)
+);</code></pre>
+<h3 id="823-projection">8.2.3 정렬, 페이징, Projection</h3>
+<pre class="highlight"><code class="language-java">// 정렬 + 페이징
+public Flux&lt;Product&gt; findWithPaging(String category, int page, int size) {
+    Query query = Query.query(Criteria.where("category").is(category))
+        .with(Sort.by(Sort.Direction.DESC, "createdAt"))
+        .skip((long) page * size)
+        .limit(size);
+    return mongoTemplate.find(query, Product.class);
+}
+
+// 전체 건수 조회 (페이징 UI용)
+public Mono&lt;Long&gt; countByCategory(String category) {
+    Query query = Query.query(Criteria.where("category").is(category));
+    return mongoTemplate.count(query, Product.class);
+}
+
+// Projection — 필요한 필드만 선택
+public Flux&lt;ProductSummary&gt; findSummaries() {
+    Query query = new Query();
+    query.fields().include("name").include("price").include("category");
+    return mongoTemplate.find(query, ProductSummary.class, "products");
+}</code></pre>
+<h3 id="824">8.2.4 동적 쿼리 구성</h3>
+<p>실무에서는 사용자의 검색 조건에 따라 쿼리를 동적으로 구성해야 하는 경우가 많다.</p>
+<pre class="highlight"><code class="language-java">@Service
+@RequiredArgsConstructor
+public class ProductSearchService {
+
+    private final ReactiveMongoTemplate mongoTemplate;
+
+    public Flux&lt;Product&gt; search(ProductSearchCriteria sc) {
+        Query query = new Query();
+
+        if (sc.getCategory() != null) {
+            query.addCriteria(Criteria.where("category").is(sc.getCategory()));
+        }
+        if (sc.getMinPrice() != null || sc.getMaxPrice() != null) {
+            Criteria price = Criteria.where("price");
+            if (sc.getMinPrice() != null) price = price.gte(sc.getMinPrice());
+            if (sc.getMaxPrice() != null) price = price.lte(sc.getMaxPrice());
+            query.addCriteria(price);
+        }
+        if (sc.getKeyword() != null) {
+            query.addCriteria(Criteria.where("name").regex(sc.getKeyword(), "i"));
+        }
+        if (Boolean.TRUE.equals(sc.getInStockOnly())) {
+            query.addCriteria(Criteria.where("stock").gt(0));
+        }
+
+        query.with(Sort.by(
+            Sort.Direction.fromString(
+                sc.getSortDirection() != null ? sc.getSortDirection() : "DESC"),
+            sc.getSortBy() != null ? sc.getSortBy() : "createdAt"
+        ));
+        query.skip((long) sc.getPage() * sc.getSize()).limit(sc.getSize());
+
+        return mongoTemplate.find(query, Product.class);
+    }
+}</code></pre>
+<pre class="highlight"><code class="language-java">@Data
+@Builder
+public class ProductSearchCriteria {
+    private String category;
+    private BigDecimal minPrice;
+    private BigDecimal maxPrice;
+    private String keyword;
+    private Boolean inStockOnly;
+    private String sortBy;
+    private String sortDirection;
+    @Builder.Default private int page = 0;
+    @Builder.Default private int size = 20;
+}</code></pre>
+<hr>
+<h2 id="83-aggregation-pipeline">8.3 Aggregation Pipeline 사용</h2>
+<h3 id="831-aggregation-pipeline">8.3.1 Aggregation Pipeline 개념</h3>
+<p>MongoDB Aggregation Pipeline은 도큐먼트를 여러 단계(stage)에 걸쳐 변환하고 집계하는 프레임워크다. Spring Data MongoDB는 <code>Aggregation</code> 클래스를 통해 파이프라인을 구성하고, <code>ReactiveMongoTemplate.aggregate()</code>로 실행한다.</p>
+<table>
+<thead>
+<tr>
+<th>단계</th>
+<th>MongoDB 연산자</th>
+<th>Spring Data 메서드</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Match</td>
+<td><code>$match</code></td>
+<td><code>Aggregation.match()</code></td>
+<td>도큐먼트 필터링</td>
+</tr>
+<tr>
+<td>Group</td>
+<td><code>$group</code></td>
+<td><code>Aggregation.group()</code></td>
+<td>그룹별 집계</td>
+</tr>
+<tr>
+<td>Sort</td>
+<td><code>$sort</code></td>
+<td><code>Aggregation.sort()</code></td>
+<td>결과 정렬</td>
+</tr>
+<tr>
+<td>Project</td>
+<td><code>$project</code></td>
+<td><code>Aggregation.project()</code></td>
+<td>필드 선택/변환</td>
+</tr>
+<tr>
+<td>Unwind</td>
+<td><code>$unwind</code></td>
+<td><code>Aggregation.unwind()</code></td>
+<td>배열 분해</td>
+</tr>
+<tr>
+<td>Lookup</td>
+<td><code>$lookup</code></td>
+<td><code>Aggregation.lookup()</code></td>
+<td>컬렉션 조인</td>
+</tr>
+</tbody>
+</table>
+<h3 id="832">8.3.2 기본 집계: 카테고리별 통계</h3>
+<pre class="highlight"><code class="language-java">public Flux&lt;CategoryStats&gt; getCategoryStats() {
+    Aggregation aggregation = Aggregation.newAggregation(
+        Aggregation.match(Criteria.where("active").is(true)),
+        Aggregation.group("category")
+            .count().as("productCount")
+            .avg("price").as("avgPrice")
+            .min("price").as("minPrice")
+            .max("price").as("maxPrice")
+            .sum("stock").as("totalStock"),
+        Aggregation.sort(Sort.Direction.DESC, "productCount"),
+        Aggregation.project()
+            .and("_id").as("category")
+            .andInclude("productCount", "avgPrice", "minPrice", "maxPrice", "totalStock")
+    );
+    return mongoTemplate.aggregate(aggregation, "products", CategoryStats.class);
+}</code></pre>
+<pre class="highlight"><code class="language-java">@Data
+public class CategoryStats {
+    private String category;
+    private long productCount;
+    private double avgPrice;
+    private double minPrice;
+    private double maxPrice;
+    private long totalStock;
+}</code></pre>
+<h3 id="833-typedaggregation">8.3.3 TypedAggregation</h3>
+<p><code>TypedAggregation</code>은 입력 타입을 명시하여 컬렉션 이름을 <code>@Document</code> 어노테이션에서 자동 추론한다. <code>Aggregation.newAggregation(Product.class, ...)</code>처럼 첫 번째 인자로 도메인 클래스를 전달하면, <code>aggregate()</code> 호출 시 컬렉션 이름을 생략할 수 있다.</p>
+<h3 id="834-unwind-lookup">8.3.4 Unwind와 Lookup</h3>
+<p><strong>Unwind</strong>는 배열 필드를 개별 도큐먼트로 분해한다. <strong>Lookup</strong>은 다른 컬렉션과 조인한다.</p>
+<pre class="highlight"><code class="language-java">// 태그별 상품 수 집계 (Unwind)
+public Flux&lt;TagStats&gt; getTagStats() {
+    Aggregation aggregation = Aggregation.newAggregation(
+        Aggregation.unwind("tags"),
+        Aggregation.group("tags").count().as("count").avg("price").as("avgPrice"),
+        Aggregation.sort(Sort.Direction.DESC, "count"),
+        Aggregation.limit(10)
+    );
+    return mongoTemplate.aggregate(aggregation, "products", TagStats.class);
+}
+
+// 주문 + 사용자 조인 (Lookup)
+public Flux&lt;OrderWithUser&gt; getOrdersWithUserInfo() {
+    Aggregation aggregation = Aggregation.newAggregation(
+        Aggregation.lookup("users", "userId", "_id", "userInfo"),
+        Aggregation.unwind("userInfo"),
+        Aggregation.project()
+            .andInclude("orderDate", "totalAmount", "status")
+            .and("userInfo.name").as("userName")
+            .and("userInfo.email").as("userEmail")
+    );
+    return mongoTemplate.aggregate(aggregation, "orders", OrderWithUser.class);
+}</code></pre>
+<h3 id="835-api">8.3.5 실전 통계 API: 일별 매출 집계</h3>
+<pre class="highlight"><code class="language-java">@Service
+@RequiredArgsConstructor
+public class SalesStatisticsService {
+
+    private final ReactiveMongoTemplate mongoTemplate;
+
+    public Flux&lt;DailySales&gt; getDailySales(LocalDateTime from, LocalDateTime to) {
+        Aggregation aggregation = Aggregation.newAggregation(
+            Aggregation.match(
+                Criteria.where("orderDate").gte(from).lte(to)
+                    .and("status").is("COMPLETED")),
+            Aggregation.project()
+                .andExpression("dateToString('%Y-%m-%d', orderDate)").as("date")
+                .andInclude("totalAmount"),
+            Aggregation.group("date")
+                .sum("totalAmount").as("totalSales")
+                .count().as("orderCount")
+                .avg("totalAmount").as("avgOrderAmount"),
+            Aggregation.sort(Sort.Direction.ASC, "_id"),
+            Aggregation.project()
+                .and("_id").as("date")
+                .andInclude("totalSales", "orderCount", "avgOrderAmount")
+        );
+        return mongoTemplate.aggregate(aggregation, "orders", DailySales.class);
+    }
+}</code></pre>
+<pre class="highlight"><code class="language-java">@RestController
+@RequestMapping("/api/statistics")
+@RequiredArgsConstructor
+public class StatisticsController {
+
+    private final SalesStatisticsService salesStatisticsService;
+
+    @GetMapping("/daily-sales")
+    public Flux&lt;DailySales&gt; getDailySales(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
+        return salesStatisticsService.getDailySales(from, to);
+    }
+}</code></pre>
+<hr>
+<h2 id="84-change-streams">8.4 변경 스트림(Change Streams) 활용</h2>
+<h3 id="841-change-streams">8.4.1 Change Streams 개념</h3>
+<p>MongoDB Change Streams는 컬렉션의 데이터 변경(삽입, 수정, 삭제)을 실시간으로 감시하는 기능이다. 내부적으로 oplog를 기반으로 동작하며, <strong>Replica Set 또는 Sharded Cluster 환경에서만 사용할 수 있다</strong>. 실시간 알림, 이벤트 발행, 데이터 동기화, 캐시 무효화 등에 활용된다.</p>
+<h3 id="842-reactivemongotemplate-change-streams">8.4.2 ReactiveMongoTemplate으로 Change Streams 구독</h3>
+<pre class="highlight"><code class="language-java">@Service
+@RequiredArgsConstructor
+@Slf4j
+public class OrderChangeStreamService {
+
+    private final ReactiveMongoTemplate mongoTemplate;
+
+    // INSERT 이벤트 실시간 감시
+    public Flux&lt;ChangeStreamEvent&lt;Order&gt;&gt; watchNewOrders() {
+        return mongoTemplate.changeStream("orders",
+                ChangeStreamOptions.builder()
+                    .filter(Aggregation.newAggregation(
+                        Aggregation.match(
+                            Criteria.where("operationType").is("insert"))))
+                    .build(),
+                Order.class)
+            .doOnNext(event -&gt; log.info("새 주문 감지: orderId={}",
+                event.getBody().getId()));
+    }
+
+    // UPDATE 이벤트 감시 (전체 도큐먼트 수신)
+    public Flux&lt;ChangeStreamEvent&lt;Order&gt;&gt; watchOrderStatusChanges() {
+        return mongoTemplate.changeStream("orders",
+                ChangeStreamOptions.builder()
+                    .filter(Aggregation.newAggregation(
+                        Aggregation.match(
+                            Criteria.where("operationType").is("update")
+                                .and("updateDescription.updatedFields.status").exists(true))))
+                    .returnFullDocumentOnUpdate()
+                    .build(),
+                Order.class);
+    }
+}</code></pre>
+<p><code>returnFullDocumentOnUpdate()</code>를 호출하면 UPDATE 이벤트 시 전체 도큐먼트를 수신한다. 이 옵션이 없으면 변경된 필드 정보만 포함된다.</p>
+<h3 id="843-change-streams-sse">8.4.3 Change Streams + SSE 연동</h3>
+<p>Change Streams를 Server-Sent Events와 결합하면 클라이언트에게 실시간 알림을 전달할 수 있다.</p>
+<pre class="highlight"><code class="language-java">@RestController
+@RequestMapping("/api/notifications")
+@RequiredArgsConstructor
+public class NotificationController {
+
+    private final OrderChangeStreamService changeStreamService;
+
+    @GetMapping(value = "/orders", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux&lt;ServerSentEvent&lt;Order&gt;&gt; streamNewOrders() {
+        return changeStreamService.watchNewOrders()
+            .map(event -&gt; ServerSentEvent.&lt;Order&gt;builder()
+                .id(event.getResumeToken().toJson())
+                .event("new-order")
+                .data(event.getBody())
+                .build());
+    }
+}</code></pre>
+<h3 id="844-resume-token">8.4.4 Resume Token을 이용한 재연결</h3>
+<p>Change Streams는 <code>resume token</code>을 제공하여 연결이 끊어진 후 마지막 이벤트부터 다시 수신할 수 있다.</p>
+<pre class="highlight"><code class="language-java">@Service
+@RequiredArgsConstructor
+@Slf4j
+public class ResilientChangeStreamService {
+
+    private final ReactiveMongoTemplate mongoTemplate;
+    private final ResumeTokenStore tokenStore;
+
+    public Flux&lt;ChangeStreamEvent&lt;Order&gt;&gt; watchWithResume(String streamId) {
+        return tokenStore.getLastToken(streamId)
+            .flatMapMany(lastToken -&gt; {
+                ChangeStreamOptions.ChangeStreamOptionsBuilder builder =
+                    ChangeStreamOptions.builder();
+                if (lastToken != null) {
+                    builder.resumeAfter(lastToken);
+                }
+                return mongoTemplate.changeStream("orders", builder.build(), Order.class);
+            })
+            .doOnNext(event -&gt;
+                tokenStore.saveToken(streamId, event.getResumeToken()).subscribe())
+            .retryWhen(Retry.backoff(Long.MAX_VALUE, Duration.ofSeconds(1))
+                .maxBackoff(Duration.ofMinutes(1))
+                .doBeforeRetry(signal -&gt;
+                    log.warn("Change Stream 재연결 시도: attempt={}",
+                        signal.totalRetries())));
+    }
+}</code></pre>
+<p><code>ResumeTokenStore</code>는 resume token을 MongoDB에 저장/조회하는 컴포넌트로, <code>upsert</code>를 사용하여 구현한다. 이벤트를 처리할 때마다 토큰을 저장해두면 애플리케이션 재시작 후에도 유실 없이 이벤트를 이어서 수신할 수 있다.</p>
+<hr>
+<h2 id="85-reactivemongotransactionmanager">8.5 트랜잭션 처리 (ReactiveMongoTransactionManager)</h2>
+<h3 id="851-mongodb">8.5.1 MongoDB 트랜잭션의 전제 조건</h3>
+<p>MongoDB 트랜잭션은 <strong>Replica Set 환경에서만 사용할 수 있다</strong>. Docker Compose로 단일 노드 Replica Set을 구성하면 개발 환경에서도 트랜잭션을 테스트할 수 있다.</p>
+<pre class="highlight"><code class="language-yaml"># docker-compose.yml
+services:
+  mongodb:
+    image: mongo:7.0
+    ports:
+      - "27017:27017"
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      test: echo "try { rs.status() } catch (err) { rs.initiate() }" | mongosh
+      interval: 5s
+      timeout: 30s
+      retries: 5</code></pre>
+<h3 id="852-reactivemongotransactionmanager">8.5.2 ReactiveMongoTransactionManager 설정</h3>
+<pre class="highlight"><code class="language-java">@Configuration
+public class MongoTransactionConfig {
+
+    @Bean
+    public ReactiveMongoTransactionManager transactionManager(
+            ReactiveMongoDatabaseFactory dbFactory) {
+        return new ReactiveMongoTransactionManager(dbFactory);
+    }
+}</code></pre>
+<h3 id="853-transactional">8.5.3 @Transactional 어노테이션 사용</h3>
+<p>서비스 메서드에 <code>@Transactional</code>을 붙이면 리액티브 환경에서도 트랜잭션이 동작한다. 예외 발생 시 모든 연산이 자동 롤백된다.</p>
+<pre class="highlight"><code class="language-java">@Service
+@RequiredArgsConstructor
+public class OrderService {
+
+    private final ReactiveMongoTemplate mongoTemplate;
+    private final ProductService productService;
+
+    @Transactional
+    public Mono&lt;Order&gt; createOrder(OrderRequest request) {
+        return Flux.fromIterable(request.getItems())
+            .flatMap(item -&gt;
+                productService.decrementStock(item.getProductId(), item.getQuantity())
+                    .switchIfEmpty(Mono.error(new InsufficientStockException(
+                        "재고 부족: productId=" + item.getProductId()))))
+            .collectList()
+            .flatMap(products -&gt; {
+                Order order = Order.builder()
+                    .userId(request.getUserId())
+                    .items(request.getItems())
+                    .totalAmount(calculateTotal(request.getItems(), products))
+                    .status("CREATED")
+                    .orderDate(LocalDateTime.now())
+                    .build();
+                return mongoTemplate.insert(order);
+            });
+    }
+}</code></pre>
+<h3 id="854-transactionaloperator">8.5.4 TransactionalOperator 프로그래밍 방식</h3>
+<p><code>TransactionalOperator</code>를 사용하면 트랜잭션 경계를 프로그래밍 방식으로 제어할 수 있다.</p>
+<pre class="highlight"><code class="language-java">@Service
+@RequiredArgsConstructor
+public class TransferService {
+
+    private final ReactiveMongoTemplate mongoTemplate;
+    private final TransactionalOperator transactionalOperator;
+
+    public Mono&lt;TransferResult&gt; transferPoints(
+            String fromUserId, String toUserId, int amount) {
+
+        Mono&lt;TransferResult&gt; transferMono = deductPoints(fromUserId, amount)
+            .then(addPoints(toUserId, amount))
+            .then(createTransferLog(fromUserId, toUserId, amount))
+            .map(log -&gt; new TransferResult("SUCCESS", log.getId()));
+
+        return transactionalOperator.transactional(transferMono);
+    }
+
+    private Mono&lt;UpdateResult&gt; deductPoints(String userId, int amount) {
+        Query query = Query.query(
+            Criteria.where("id").is(userId).and("points").gte(amount));
+        Update update = new Update().inc("points", -amount);
+        return mongoTemplate.updateFirst(query, update, User.class)
+            .flatMap(result -&gt; result.getModifiedCount() == 0
+                ? Mono.error(new InsufficientPointsException("포인트 부족"))
+                : Mono.just(result));
+    }
+
+    private Mono&lt;UpdateResult&gt; addPoints(String userId, int amount) {
+        Query query = Query.query(Criteria.where("id").is(userId));
+        return mongoTemplate.updateFirst(query, new Update().inc("points", amount), User.class);
+    }
+
+    private Mono&lt;TransferLog&gt; createTransferLog(
+            String fromUserId, String toUserId, int amount) {
+        return mongoTemplate.insert(TransferLog.builder()
+            .fromUserId(fromUserId).toUserId(toUserId)
+            .amount(amount).transferredAt(LocalDateTime.now()).build());
+    }
+}</code></pre>
+<h3 id="855-transactional-vs-transactionaloperator">8.5.5 @Transactional vs TransactionalOperator 선택 기준</h3>
+<table>
+<thead>
+<tr>
+<th>비교 항목</th>
+<th>@Transactional</th>
+<th>TransactionalOperator</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>사용 방식</strong></td>
+<td>선언적 (어노테이션)</td>
+<td>프로그래밍 방식</td>
+</tr>
+<tr>
+<td><strong>적합한 곳</strong></td>
+<td>서비스 계층 메서드 단위</td>
+<td>함수형 엔드포인트, 세밀한 제어</td>
+</tr>
+<tr>
+<td><strong>트랜잭션 범위</strong></td>
+<td>메서드 전체</td>
+<td><code>transactional()</code> 호출 범위</td>
+</tr>
+<tr>
+<td><strong>유연성</strong></td>
+<td>제한적</td>
+<td>높음 (조건부 트랜잭션 등)</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="86">8.6 인덱스 관리와 쿼리 성능 최적화</h2>
+<h3 id="861-indexed">8.6.1 @Indexed 어노테이션</h3>
+<p>Spring Data MongoDB의 <code>@Indexed</code>로 단일 필드 인덱스를 선언한다.</p>
+<pre class="highlight"><code class="language-java">@Document(collection = "products")
+@Data @Builder @NoArgsConstructor @AllArgsConstructor
+public class Product {
+
+    @Id
+    private String id;
+    private String name;
+
+    @Indexed
+    private String category;
+
+    private BigDecimal price;
+
+    @Indexed(unique = true)
+    private String sku;
+
+    @Indexed(direction = IndexDirection.DESCENDING)
+    private LocalDateTime createdAt;
+
+    private int stock;
+    private boolean active;
+    private List&lt;String&gt; tags;
+}</code></pre>
+<blockquote>
+<p><strong>주의</strong>: Spring Boot 3.x부터 <code>auto-index-creation</code>이 기본값 <code>false</code>다. <code>@Indexed</code>가 동작하려면 명시적으로 활성화해야 한다.</p>
+</blockquote>
+<pre class="highlight"><code class="language-yaml">spring:
+  data:
+    mongodb:
+      auto-index-creation: true</code></pre>
+<h3 id="862-compoundindex">8.6.2 @CompoundIndex 복합 인덱스</h3>
+<p>여러 필드를 조합한 복합 인덱스는 <code>@CompoundIndex</code>로 선언한다.</p>
+<pre class="highlight"><code class="language-java">@Document(collection = "products")
+@CompoundIndex(name = "category_price_idx", def = "{'category': 1, 'price': -1}")
+@CompoundIndex(name = "category_active_created_idx",
+               def = "{'category': 1, 'active': 1, 'createdAt': -1}")
+public class Product { /* ... */ }</code></pre>
+<p>복합 인덱스 필드 순서는 <strong>ESR (Equality, Sort, Range) 규칙</strong>을 따르면 최적이다.</p>
+<ol>
+<li><strong>Equality</strong>: 등호(<code>=</code>) 조건 필드를 먼저 배치</li>
+<li><strong>Sort</strong>: 정렬 필드를 다음에 배치</li>
+<li><strong>Range</strong>: 범위 조건(<code>&gt;=</code>, <code>&lt;=</code>) 필드를 마지막에 배치</li>
+</ol>
+<pre class="highlight"><code class="language-java">// 쿼리: category = ? AND active = ?, 정렬: createdAt DESC, 조건: price &gt;= ?
+// 최적 인덱스: { category: 1, active: 1, createdAt: -1, price: 1 }
+@CompoundIndex(name = "optimized_search_idx",
+               def = "{'category': 1, 'active': 1, 'createdAt': -1, 'price': 1}")</code></pre>
+<h3 id="863-ttl">8.6.3 TTL 인덱스</h3>
+<p>TTL 인덱스는 지정된 시간이 지나면 도큐먼트를 자동 삭제한다. 세션, 임시 토큰, 로그에 적합하다.</p>
+<pre class="highlight"><code class="language-java">@Document(collection = "sessions")
+@Data @Builder @NoArgsConstructor @AllArgsConstructor
+public class Session {
+
+    @Id
+    private String id;
+    private String userId;
+    private String token;
+
+    @Indexed(expireAfterSeconds = 3600)  // 1시간 후 자동 삭제
+    private LocalDateTime createdAt;
+}</code></pre>
+<p>대상 필드는 반드시 <code>Date</code> 또는 <code>LocalDateTime</code> 타입이어야 한다. MongoDB 백그라운드 태스크가 60초 간격으로 만료 도큐먼트를 삭제하므로, 실제 삭제 시점은 약간의 지연이 있을 수 있다.</p>
+<h3 id="864-partial-index">8.6.4 프로그래밍 방식 인덱스 생성과 Partial Index</h3>
+<p><code>ReactiveMongoTemplate</code>의 <code>indexOps()</code>를 사용하면 애플리케이션 시작 시 프로그래밍 방식으로 인덱스를 생성할 수 있다. Partial Index는 특정 조건을 만족하는 도큐먼트에만 인덱스를 적용하여 저장 공간과 쓰기 성능을 절약한다.</p>
+<pre class="highlight"><code class="language-java">@Component
+@RequiredArgsConstructor
+@Slf4j
+public class IndexInitializer implements ApplicationRunner {
+
+    private final ReactiveMongoTemplate mongoTemplate;
+
+    @Override
+    public void run(ApplicationArguments args) {
+        ReactiveIndexOperations indexOps = mongoTemplate.indexOps(Product.class);
+        Index partialIndex = new Index()
+            .on("price", IndexDirection.ASCENDING)
+            .named("active_products_price_idx")
+            .partial(PartialIndexFilter.of(Criteria.where("active").is(true)));
+        indexOps.ensureIndex(partialIndex)
+            .doOnSuccess(name -&gt; log.info("인덱스 생성 완료: {}", name))
+            .subscribe();
+    }
+}</code></pre>
+<h3 id="865-explain">8.6.5 explain()으로 쿼리 실행 계획 분석</h3>
+<p>인덱스가 제대로 활용되는지 확인하려면 <code>explain()</code>으로 실행 계획을 분석한다. <code>ReactiveMongoTemplate</code>에서 네이티브 컬렉션을 가져와 <code>explain()</code>을 호출하고, 결과의 <code>queryPlanner.winningPlan.stage</code>가 <code>IXSCAN</code>(인덱스 스캔)인지 확인한다. <code>COLLSCAN</code>(컬렉션 풀 스캔)이라면 인덱스 추가가 필요하다. 또한 <code>totalDocsExamined</code>와 <code>nReturned</code>가 가까울수록 인덱스 효율이 좋다.</p>
+<h3 id="866">8.6.6 인덱스 설계 실무 가이드라인</h3>
+<ol>
+<li><strong>가장 자주 실행되는 쿼리부터 인덱스를 설계한다.</strong> 모든 필드에 인덱스를 걸 필요는 없다.</li>
+<li><strong>복합 인덱스는 ESR 규칙을 따른다.</strong> Equality, Sort, Range 순서로 필드를 배치한다.</li>
+<li><strong>인덱스는 쓰기 성능에 영향을 준다.</strong> INSERT/UPDATE마다 인덱스 갱신이 필요하므로 불필요한 인덱스는 제거한다.</li>
+<li><strong>Covered Query를 활용한다.</strong> 필요한 모든 필드가 인덱스에 포함되면 도큐먼트를 읽지 않고 결과를 반환한다.</li>
+<li><strong>Partial Index로 인덱스 크기를 줄인다.</strong> 조건을 만족하는 도큐먼트에만 인덱스를 적용한다.</li>
+</ol>
+<hr>
+<h2 id="_1">요약</h2>
+<table>
+<thead>
+<tr>
+<th>주제</th>
+<th>핵심 내용</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>ReactiveMongoTemplate</strong></td>
+<td><code>Query</code>/<code>Update</code> 객체로 세밀한 CRUD, 부분 업데이트, Upsert 수행</td>
+</tr>
+<tr>
+<td><strong>Criteria API</strong></td>
+<td>동적 쿼리 조합, and/or/in/regex 조건, 정렬/페이징/Projection</td>
+</tr>
+<tr>
+<td><strong>Aggregation Pipeline</strong></td>
+<td>match/group/sort/project/unwind/lookup으로 복잡한 집계와 통계 API 구현</td>
+</tr>
+<tr>
+<td><strong>Change Streams</strong></td>
+<td>컬렉션 변경을 실시간 감시, resume token으로 재연결 시 이벤트 유실 방지</td>
+</tr>
+<tr>
+<td><strong>트랜잭션</strong></td>
+<td>Replica Set 필수, <code>@Transactional</code> 또는 <code>TransactionalOperator</code>로 원자적 연산 보장</td>
+</tr>
+<tr>
+<td><strong>인덱스 최적화</strong></td>
+<td><code>@Indexed</code>, <code>@CompoundIndex</code>, TTL 인덱스, ESR 규칙, explain 분석으로 쿼리 성능 개선</td>
+</tr>
+</tbody>
+</table>
+<p>다음 장에서는 데이터 검증과 예외 처리를 다루며, Bean Validation, 커스텀 Validator, 글로벌 예외 처리, 에러 응답 표준화 등을 살펴본다.</p>
+    </main>
+    <footer class="site-footer">
+      &copy; 2024 Spring Boot + WebFlux + JPA (MongoDB) Book
+    </footer>
+  </div>
+</body>
+</html>

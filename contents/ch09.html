@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 9. 데이터 검증과 예외 처리 | Spring Boot + WebFlux + JPA (MongoDB)</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="site-header">
+    <h1><a href="../index.html">Spring Boot + WebFlux + JPA (MongoDB)</a></h1>
+  </header>
+    <nav class="nav-bar">
+    <a href="ch08.html">&larr; Chapter 8. MongoDB 리액티브 데이터 접근 심화</a>
+    <a href="../index.html">목차</a>
+    <a href="ch10.html">Chapter 10. WebFlux 필터와 인터셉터 &rarr;</a>
+  </nav>
+  <div class="wrapper">
+    <main class="content">
+      <h1 id="chapter-9">Chapter 9. 데이터 검증과 예외 처리</h1>
+<p>Chapter 8에서 MongoDB 데이터 접근을 심화했다면, 이번 장에서는 클라이언트로부터 유입되는 데이터의 <strong>검증</strong>과 애플리케이션 전반의 <strong>예외 처리</strong>를 다룬다. 올바르지 않은 입력은 가능한 한 빨리 걸러내야 하며, 예외가 발생했을 때는 일관된 형식으로 클라이언트에 전달해야 한다. Bean Validation, 커스텀 Validator, <code>@ControllerAdvice</code>, <code>ErrorWebExceptionHandler</code>, 그리고 RFC 7807 기반 Problem Details까지 단계별로 살펴본다.</p>
+<hr>
+<h2 id="91-bean-validation">9.1 Bean Validation을 활용한 입력 검증</h2>
+<h3 id="911">9.1.1 의존성 추가</h3>
+<p>Spring Boot에서 Bean Validation을 사용하려면 <code>spring-boot-starter-validation</code> 의존성이 필요하다.</p>
+<pre class="highlight"><code class="language-xml">&lt;dependency&gt;
+    &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+    &lt;artifactId&gt;spring-boot-starter-validation&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></pre>
+<p>이 스타터는 Hibernate Validator를 포함하며, Jakarta Bean Validation 3.0 API(<code>jakarta.validation</code> 패키지)를 제공한다.</p>
+<h3 id="912">9.1.2 주요 검증 어노테이션</h3>
+<p>자주 사용하는 Bean Validation 어노테이션을 정리한다.</p>
+<table>
+<thead>
+<tr>
+<th>어노테이션</th>
+<th>설명</th>
+<th>적용 대상</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>@NotNull</code></td>
+<td>null이 아니어야 한다</td>
+<td>모든 타입</td>
+</tr>
+<tr>
+<td><code>@NotBlank</code></td>
+<td>null이 아니고, 공백을 제외한 길이가 1 이상</td>
+<td><code>String</code></td>
+</tr>
+<tr>
+<td><code>@NotEmpty</code></td>
+<td>null이 아니고, 비어 있지 않아야 한다</td>
+<td><code>String</code>, <code>Collection</code>, <code>Map</code>, 배열</td>
+</tr>
+<tr>
+<td><code>@Size(min, max)</code></td>
+<td>길이 또는 크기가 범위 내</td>
+<td><code>String</code>, <code>Collection</code>, <code>Map</code>, 배열</td>
+</tr>
+<tr>
+<td><code>@Email</code></td>
+<td>이메일 형식이어야 한다</td>
+<td><code>String</code></td>
+</tr>
+<tr>
+<td><code>@Pattern(regexp)</code></td>
+<td>정규표현식에 매칭되어야 한다</td>
+<td><code>String</code></td>
+</tr>
+<tr>
+<td><code>@Min</code> / <code>@Max</code></td>
+<td>지정 값 이상 / 이하</td>
+<td>숫자 타입</td>
+</tr>
+<tr>
+<td><code>@Positive</code></td>
+<td>양수여야 한다</td>
+<td>숫자 타입</td>
+</tr>
+<tr>
+<td><code>@Past</code> / <code>@Future</code></td>
+<td>과거 / 미래 날짜여야 한다</td>
+<td>날짜, 시간 타입</td>
+</tr>
+</tbody>
+</table>
+<h3 id="913-dto">9.1.3 DTO에 검증 어노테이션 적용</h3>
+<p>Chapter 6에서 사용한 사용자 등록 DTO에 검증 로직을 추가한다.</p>
+<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.dto;
+
+import jakarta.validation.constraints.*;
+import lombok.*;
+
+@Getter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class UserCreateRequest {
+
+    @NotBlank(message = "이름은 필수 입력 항목입니다")
+    @Size(min = 2, max = 50, message = "이름은 2~50자 사이여야 합니다")
+    private String name;
+
+    @NotBlank(message = "이메일은 필수 입력 항목입니다")
+    @Email(message = "올바른 이메일 형식이 아닙니다")
+    private String email;
+
+    @NotBlank(message = "비밀번호는 필수 입력 항목입니다")
+    @Pattern(
+        regexp = "^(?=.*[A-Za-z])(?=.*\\d)(?=.*[@$!%*#?&amp;])[A-Za-z\\d@$!%*#?&amp;]{8,20}$",
+        message = "비밀번호는 8~20자이며, 영문, 숫자, 특수문자를 포함해야 합니다"
+    )
+    private String password;
+}</code></pre>
+<p>상품 생성 DTO에도 동일하게 적용한다.</p>
+<pre class="highlight"><code class="language-java">@Getter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class ProductCreateRequest {
+
+    @NotBlank(message = "상품명은 필수 입력 항목입니다")
+    @Size(max = 200, message = "상품명은 200자를 초과할 수 없습니다")
+    private String name;
+
+    @NotNull(message = "가격은 필수 입력 항목입니다")
+    @Positive(message = "가격은 양수여야 합니다")
+    private Integer price;
+
+    @Size(max = 1000, message = "설명은 1000자를 초과할 수 없습니다")
+    private String description;
+
+    @NotBlank(message = "카테고리는 필수 입력 항목입니다")
+    private String category;
+}</code></pre>
+<h3 id="914-valid">9.1.4 컨트롤러에서 @Valid 적용</h3>
+<p>WebFlux 어노테이션 기반 컨트롤러에서는 <code>@Valid</code>를 <code>@RequestBody</code>와 함께 사용한다.</p>
+<pre class="highlight"><code class="language-java">@RestController
+@RequestMapping("/api/users")
+@RequiredArgsConstructor
+public class UserController {
+
+    private final UserService userService;
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public Mono&lt;UserResponse&gt; createUser(
+            @Valid @RequestBody UserCreateRequest request) {
+        return userService.createUser(request);
+    }
+
+    @PutMapping("/{id}")
+    public Mono&lt;UserResponse&gt; updateUser(
+            @PathVariable String id,
+            @Valid @RequestBody UserUpdateRequest request) {
+        return userService.updateUser(id, request);
+    }
+}</code></pre>
+<p><code>@Valid</code>가 선언된 파라미터에서 검증이 실패하면, Spring WebFlux는 <code>WebExchangeBindException</code>을 발생시킨다. 이 예외는 9.3절에서 글로벌 예외 처리기로 가공하여 클라이언트에 반환한다.</p>
+<h3 id="915">9.1.5 함수형 엔드포인트에서의 검증</h3>
+<p>함수형 엔드포인트에서는 <code>@Valid</code>를 직접 사용할 수 없다. <code>Validator</code>를 주입받아 수동으로 검증을 수행한다.</p>
+<pre class="highlight"><code class="language-java">@Component
+@RequiredArgsConstructor
+public class ProductHandler {
+
+    private final ProductService productService;
+    private final Validator validator;
+
+    public Mono&lt;ServerResponse&gt; createProduct(ServerRequest request) {
+        return request.bodyToMono(ProductCreateRequest.class)
+            .doOnNext(this::validate)
+            .flatMap(productService::createProduct)
+            .flatMap(product -&gt; ServerResponse
+                .created(URI.create("/api/products/" + product.getId()))
+                .bodyValue(product));
+    }
+
+    private &lt;T&gt; void validate(T body) {
+        Set&lt;ConstraintViolation&lt;T&gt;&gt; violations = validator.validate(body);
+        if (!violations.isEmpty()) {
+            throw new ConstraintViolationException(violations);
+        }
+    }
+}</code></pre>
+<p><code>ConstraintViolation</code>이 발견되면 <code>ConstraintViolationException</code>을 던지며, 이 예외도 글로벌 예외 처리기에서 일괄 처리한다.</p>
+<hr>
+<h2 id="92-validator">9.2 커스텀 Validator 구현</h2>
+<h3 id="921">9.2.1 커스텀 어노테이션 정의</h3>
+<p>표준 어노테이션으로 표현하기 어려운 비즈니스 규칙은 커스텀 Validator로 구현한다. 허용된 카테고리 값만 받아들이는 검증기를 만들어 보자.</p>
+<pre class="highlight"><code class="language-java">@Documented
+@Constraint(validatedBy = AllowedCategoryValidator.class)
+@Target({ElementType.FIELD, ElementType.PARAMETER})
+@Retention(RetentionPolicy.RUNTIME)
+public @interface AllowedCategory {
+    String message() default "허용되지 않은 카테고리입니다";
+    Class&lt;?&gt;[] groups() default {};
+    Class&lt;? extends Payload&gt;[] payload() default {};
+    String[] values() default {};
+}</code></pre>
+<h3 id="922-constraintvalidator">9.2.2 ConstraintValidator 구현</h3>
+<p><code>ConstraintValidator&lt;A, T&gt;</code> 인터페이스를 구현한다. <code>A</code>는 어노테이션 타입, <code>T</code>는 검증 대상 필드 타입이다.</p>
+<pre class="highlight"><code class="language-java">public class AllowedCategoryValidator
+        implements ConstraintValidator&lt;AllowedCategory, String&gt; {
+
+    private Set&lt;String&gt; allowedValues;
+
+    @Override
+    public void initialize(AllowedCategory annotation) {
+        this.allowedValues = Set.of(annotation.values());
+    }
+
+    @Override
+    public boolean isValid(String value, ConstraintValidatorContext context) {
+        if (value == null) {
+            return true; // null 검사는 @NotBlank에 위임
+        }
+        return allowedValues.contains(value);
+    }
+}</code></pre>
+<p>DTO에 적용하면 다음과 같다.</p>
+<pre class="highlight"><code class="language-java">@AllowedCategory(
+    values = {"ELECTRONICS", "BOOKS", "CLOTHING", "FOOD"},
+    message = "카테고리는 ELECTRONICS, BOOKS, CLOTHING, FOOD 중 하나여야 합니다"
+)
+@NotBlank(message = "카테고리는 필수 입력 항목입니다")
+private String category;</code></pre>
+<h3 id="923-validator">9.2.3 크로스 필드 검증 (클래스 레벨 Validator)</h3>
+<p>비밀번호와 비밀번호 확인이 일치하는지처럼, 두 개 이상의 필드를 함께 검증해야 하는 경우에는 <strong>클래스 레벨 어노테이션</strong>을 사용한다.</p>
+<pre class="highlight"><code class="language-java">@Documented
+@Constraint(validatedBy = PasswordMatchValidator.class)
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface PasswordMatch {
+    String message() default "비밀번호와 비밀번호 확인이 일치하지 않습니다";
+    Class&lt;?&gt;[] groups() default {};
+    Class&lt;? extends Payload&gt;[] payload() default {};
+}</code></pre>
+<p>검증 대상 DTO가 구현할 인터페이스를 먼저 정의한다.</p>
+<pre class="highlight"><code class="language-java">public interface PasswordConfirmable {
+    String getPassword();
+    String getPasswordConfirm();
+}</code></pre>
+<pre class="highlight"><code class="language-java">public class PasswordMatchValidator
+        implements ConstraintValidator&lt;PasswordMatch, PasswordConfirmable&gt; {
+
+    @Override
+    public boolean isValid(PasswordConfirmable dto,
+                           ConstraintValidatorContext context) {
+        if (dto.getPassword() == null || dto.getPasswordConfirm() == null) {
+            return true;
+        }
+        boolean matches = dto.getPassword().equals(dto.getPasswordConfirm());
+        if (!matches) {
+            context.disableDefaultConstraintViolation();
+            context.buildConstraintViolationWithTemplate(
+                    "비밀번호와 비밀번호 확인이 일치하지 않습니다")
+                .addPropertyNode("passwordConfirm")
+                .addConstraintViolation();
+        }
+        return matches;
+    }
+}</code></pre>
+<p>DTO 클래스에 <code>@PasswordMatch</code>를 선언하면 필드 레벨 검증과 크로스 필드 검증이 모두 수행된다.</p>
+<pre class="highlight"><code class="language-java">@PasswordMatch
+@Getter @NoArgsConstructor @AllArgsConstructor @Builder
+public class SignUpRequest implements PasswordConfirmable {
+
+    @NotBlank(message = "이름은 필수 입력 항목입니다")
+    private String name;
+
+    @NotBlank @Email
+    private String email;
+
+    @NotBlank
+    private String password;
+
+    @NotBlank
+    private String passwordConfirm;
+}</code></pre>
+<hr>
+<h2 id="93-controlleradvice">9.3 글로벌 예외 처리 (@ControllerAdvice)</h2>
+<h3 id="931">9.3.1 커스텀 예외 클래스 정의</h3>
+<p>비즈니스 로직에서 발생하는 예외를 명확하게 구분하기 위해 커스텀 예외 계층을 정의한다.</p>
+<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.exception;
+
+import lombok.Getter;
+
+@Getter
+public class BusinessException extends RuntimeException {
+
+    private final ErrorCode errorCode;
+
+    public BusinessException(ErrorCode errorCode) {
+        super(errorCode.getMessage());
+        this.errorCode = errorCode;
+    }
+
+    public BusinessException(ErrorCode errorCode, String detail) {
+        super(detail);
+        this.errorCode = errorCode;
+    }
+}</code></pre>
+<pre class="highlight"><code class="language-java">public class ResourceNotFoundException extends BusinessException {
+    public ResourceNotFoundException(String resourceName, String id) {
+        super(ErrorCode.RESOURCE_NOT_FOUND,
+              resourceName + "을(를) 찾을 수 없습니다. ID: " + id);
+    }
+}
+
+public class DuplicateResourceException extends BusinessException {
+    public DuplicateResourceException(String resourceName, String field) {
+        super(ErrorCode.DUPLICATE_RESOURCE,
+              resourceName + "이(가) 이미 존재합니다. 필드: " + field);
+    }
+}</code></pre>
+<h3 id="932-errorcode">9.3.2 ErrorCode 열거형</h3>
+<p>에러 코드를 열거형으로 관리하면 에러 종류를 중앙에서 일관되게 유지할 수 있다.</p>
+<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.exception;
+
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+
+@Getter
+@RequiredArgsConstructor
+public enum ErrorCode {
+
+    // 공통
+    INVALID_INPUT(HttpStatus.BAD_REQUEST, "C001", "잘못된 입력값입니다"),
+    RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "C002", "리소스를 찾을 수 없습니다"),
+    INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "C003", "서버 내부 오류"),
+    DUPLICATE_RESOURCE(HttpStatus.CONFLICT, "C004", "중복된 리소스입니다"),
+
+    // 사용자
+    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "U001", "사용자를 찾을 수 없습니다"),
+    EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "U002", "이미 등록된 이메일입니다"),
+
+    // 상품
+    PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, "P001", "상품을 찾을 수 없습니다"),
+    INSUFFICIENT_STOCK(HttpStatus.BAD_REQUEST, "P002", "재고가 부족합니다");
+
+    private final HttpStatus status;
+    private final String code;
+    private final String message;
+}</code></pre>
+<h3 id="933-errorresponse-dto">9.3.3 ErrorResponse DTO</h3>
+<p>클라이언트에 반환할 에러 응답 형식을 정의한다.</p>
+<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.exception;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.*;
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Getter
+@Builder
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class ErrorResponse {
+
+    private final String code;
+    private final String message;
+    private final int status;
+    private final LocalDateTime timestamp;
+    private final List&lt;FieldError&gt; errors;
+
+    @Getter @Builder
+    public static class FieldError {
+        private final String field;
+        private final String value;
+        private final String reason;
+    }
+
+    public static ErrorResponse of(ErrorCode ec) {
+        return of(ec, ec.getMessage(), null);
+    }
+
+    public static ErrorResponse of(ErrorCode ec, String message) {
+        return of(ec, message, null);
+    }
+
+    public static ErrorResponse of(ErrorCode ec, List&lt;FieldError&gt; errors) {
+        return of(ec, ec.getMessage(), errors);
+    }
+
+    private static ErrorResponse of(ErrorCode ec, String msg,
+                                    List&lt;FieldError&gt; errors) {
+        return ErrorResponse.builder()
+            .code(ec.getCode()).message(msg)
+            .status(ec.getStatus().value())
+            .timestamp(LocalDateTime.now()).errors(errors)
+            .build();
+    }
+}</code></pre>
+<h3 id="934-restcontrolleradvice">9.3.4 @RestControllerAdvice 구현</h3>
+<p><code>@RestControllerAdvice</code>는 <code>@ControllerAdvice</code>와 <code>@ResponseBody</code>의 조합이다. 모든 컨트롤러에서 발생하는 예외를 한 곳에서 처리한다.</p>
+<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.exception;
+
+import jakarta.validation.ConstraintViolationException;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.support.WebExchangeBindException;
+import java.util.List;
+
+@Slf4j
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(WebExchangeBindException.class)
+    public ResponseEntity&lt;ErrorResponse&gt; handleValidation(
+            WebExchangeBindException ex) {
+
+        List&lt;ErrorResponse.FieldError&gt; fieldErrors = ex.getFieldErrors()
+            .stream()
+            .map(e -&gt; ErrorResponse.FieldError.builder()
+                .field(e.getField())
+                .value(e.getRejectedValue() != null
+                    ? e.getRejectedValue().toString() : "")
+                .reason(e.getDefaultMessage())
+                .build())
+            .toList();
+
+        log.warn("Validation failed: {}", fieldErrors);
+        return ResponseEntity.badRequest()
+            .body(ErrorResponse.of(ErrorCode.INVALID_INPUT, fieldErrors));
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity&lt;ErrorResponse&gt; handleConstraintViolation(
+            ConstraintViolationException ex) {
+        List&lt;ErrorResponse.FieldError&gt; fieldErrors = ex.getConstraintViolations()
+            .stream()
+            .map(v -&gt; ErrorResponse.FieldError.builder()
+                .field(v.getPropertyPath().toString())
+                .reason(v.getMessage()).build())
+            .toList();
+        return ResponseEntity.badRequest()
+            .body(ErrorResponse.of(ErrorCode.INVALID_INPUT, fieldErrors));
+    }
+
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity&lt;ErrorResponse&gt; handleBusiness(
+            BusinessException ex) {
+
+        ErrorCode ec = ex.getErrorCode();
+        log.warn("Business exception: [{}] {}", ec.getCode(), ex.getMessage());
+        return ResponseEntity.status(ec.getStatus())
+            .body(ErrorResponse.of(ec, ex.getMessage()));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity&lt;ErrorResponse&gt; handleException(Exception ex) {
+
+        log.error("Unhandled exception", ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .body(ErrorResponse.of(ErrorCode.INTERNAL_ERROR));
+    }
+}</code></pre>
+<h3 id="935">9.3.5 서비스 계층에서 예외 발생</h3>
+<p>리액티브 파이프라인 안에서 <code>switchIfEmpty</code>와 <code>Mono.error</code>를 조합하여 예외를 전파한다.</p>
+<pre class="highlight"><code class="language-java">@Service
+@RequiredArgsConstructor
+public class UserService {
+
+    private final UserRepository userRepository;
+
+    public Mono&lt;UserResponse&gt; findById(String id) {
+        return userRepository.findById(id)
+            .map(UserResponse::from)
+            .switchIfEmpty(Mono.error(
+                new ResourceNotFoundException("사용자", id)));
+    }
+
+    public Mono&lt;UserResponse&gt; createUser(UserCreateRequest request) {
+        return userRepository.findByEmail(request.getEmail())
+            .flatMap(existing -&gt; Mono.&lt;User&gt;error(
+                new DuplicateResourceException("이메일", request.getEmail())))
+            .switchIfEmpty(Mono.defer(() -&gt; {
+                User user = User.builder()
+                    .name(request.getName())
+                    .email(request.getEmail())
+                    .password(request.getPassword())
+                    .build();
+                return userRepository.save(user);
+            }))
+            .map(UserResponse::from);
+    }
+}</code></pre>
+<p>전파된 예외는 <code>GlobalExceptionHandler</code>가 캐치하여 적절한 HTTP 응답으로 변환한다.</p>
+<h3 id="936">9.3.6 에러 응답 예시</h3>
+<p>검증 실패 시 클라이언트가 받는 응답은 다음과 같다.</p>
+<pre class="highlight"><code class="language-json">{
+  "code": "C001",
+  "message": "잘못된 입력값입니다",
+  "status": 400,
+  "timestamp": "2026-02-14T10:30:00",
+  "errors": [
+    { "field": "name", "value": "", "reason": "이름은 필수 입력 항목입니다" },
+    { "field": "email", "value": "invalid", "reason": "올바른 이메일 형식이 아닙니다" }
+  ]
+}</code></pre>
+<p>리소스를 찾지 못한 경우는 다음과 같다.</p>
+<pre class="highlight"><code class="language-json">{
+  "code": "C002",
+  "message": "사용자을(를) 찾을 수 없습니다. ID: 64a1b2c3d4e5f6",
+  "status": 404,
+  "timestamp": "2026-02-14T10:31:00"
+}</code></pre>
+<hr>
+<h2 id="94-errorwebexceptionhandler">9.4 ErrorWebExceptionHandler를 활용한 함수형 예외 처리</h2>
+<h3 id="941-controlleradvice">9.4.1 @ControllerAdvice의 한계</h3>
+<p><code>@RestControllerAdvice</code>는 어노테이션 기반 컨트롤러에서 잘 동작하지만, 함수형 엔드포인트(<code>RouterFunction</code>)에서 발생하는 예외는 처리하지 못하는 경우가 있다. 특히 라우팅 전에 발생하는 예외나 필터 단계의 예외는 <code>@ExceptionHandler</code>의 범위 밖이다. WebFlux에서 모든 예외를 통합 처리하려면 <code>ErrorWebExceptionHandler</code>를 사용한다.</p>
+<h3 id="942-abstracterrorwebexceptionhandler">9.4.2 AbstractErrorWebExceptionHandler 확장</h3>
+<p>Spring Boot의 <code>AbstractErrorWebExceptionHandler</code>를 확장하면 기본 에러 처리를 커스터마이징할 수 있다. 핵심은 <code>getRoutingFunction()</code>을 오버라이드하여 모든 에러 요청을 커스텀 렌더 메서드로 보내는 것이다.</p>
+<pre class="highlight"><code class="language-java">@Component
+@Order(-2) // 기본 에러 핸들러(-1)보다 높은 우선순위
+public class CustomErrorWebExceptionHandler
+        extends AbstractErrorWebExceptionHandler {
+
+    public CustomErrorWebExceptionHandler(
+            ErrorAttributes errorAttributes, WebProperties webProperties,
+            ApplicationContext ctx, ServerCodecConfigurer configurer) {
+        super(errorAttributes, webProperties.getResources(), ctx);
+        this.setMessageWriters(configurer.getWriters());
+    }
+
+    @Override
+    protected RouterFunction&lt;ServerResponse&gt; getRoutingFunction(
+            ErrorAttributes errorAttributes) {
+        return RouterFunctions.route(
+            RequestPredicates.all(), this::renderErrorResponse);
+    }
+
+    private Mono&lt;ServerResponse&gt; renderErrorResponse(ServerRequest request) {
+        Throwable error = getError(request);
+        HttpStatus status;
+        String code, message;
+
+        if (error instanceof BusinessException bex) {
+            status = bex.getErrorCode().getStatus();
+            code = bex.getErrorCode().getCode();
+            message = bex.getMessage();
+        } else if (error instanceof WebExchangeBindException) {
+            status = HttpStatus.BAD_REQUEST;
+            code = "C001"; message = "잘못된 입력값입니다";
+        } else {
+            status = HttpStatus.INTERNAL_SERVER_ERROR;
+            code = "C003"; message = "서버 내부 오류가 발생했습니다";
+        }
+
+        Map&lt;String, Object&gt; body = Map.of(
+            "code", code, "message", message,
+            "status", status.value(),
+            "timestamp", LocalDateTime.now().toString(),
+            "path", request.path());
+
+        return ServerResponse.status(status)
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(BodyInserters.fromValue(body));
+    }
+}</code></pre>
+<h3 id="943-controlleradvice">9.4.3 @ControllerAdvice와의 공존</h3>
+<p><code>@Order(-2)</code>를 설정한 이유는 기본 <code>DefaultErrorWebExceptionHandler</code>가 <code>@Order(-1)</code>이기 때문이다. 두 방식을 함께 사용할 수 있으며, 처리 순서는 다음과 같다.</p>
+<table>
+<thead>
+<tr>
+<th>단계</th>
+<th>처리 주체</th>
+<th>대상</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>@ExceptionHandler</code></td>
+<td>어노테이션 컨트롤러에서 발생한 예외</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>ErrorWebExceptionHandler</code></td>
+<td>1단계에서 처리되지 않은 모든 예외</td>
+</tr>
+</tbody>
+</table>
+<p>어노테이션 기반 API에서는 <code>@RestControllerAdvice</code>가 예외를 잡고, 함수형 엔드포인트나 필터에서 발생한 예외는 <code>ErrorWebExceptionHandler</code>가 처리하는 구조를 권장한다. 두 방식의 에러 응답 형식을 반드시 통일해야 한다.</p>
+<hr>
+<h2 id="95-problem-details">9.5 에러 응답 표준화 (Problem Details)</h2>
+<h3 id="951-rfc-7807">9.5.1 RFC 7807이란?</h3>
+<p>RFC 7807(Problem Details for HTTP APIs)은 HTTP API에서 에러 응답의 표준 형식을 정의한 규격이다.</p>
+<table>
+<thead>
+<tr>
+<th>필드</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td>에러 유형을 식별하는 URI</td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td>에러의 짧은 요약</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>HTTP 상태 코드</td>
+</tr>
+<tr>
+<td><code>detail</code></td>
+<td>에러의 상세 설명</td>
+</tr>
+<tr>
+<td><code>instance</code></td>
+<td>에러가 발생한 구체적 URI</td>
+</tr>
+</tbody>
+</table>
+<p>Content-Type은 <code>application/problem+json</code>을 사용한다.</p>
+<h3 id="952-spring-framework-6-problemdetail">9.5.2 Spring Framework 6의 ProblemDetail</h3>
+<p>Spring Framework 6부터는 <code>ProblemDetail</code> 클래스를 기본 제공한다. <code>setProperty()</code>로 확장 필드를 추가할 수 있다.</p>
+<pre class="highlight"><code class="language-java">// ProblemDetail의 주요 구조
+public class ProblemDetail {
+    private URI type;
+    private String title;
+    private int status;
+    private String detail;
+    private URI instance;
+    private Map&lt;String, Object&gt; properties; // 확장 필드
+}</code></pre>
+<h3 id="953-problemdetail">9.5.3 ProblemDetail 기반 글로벌 예외 처리</h3>
+<p>9.3절의 <code>GlobalExceptionHandler</code>를 <code>ProblemDetail</code>을 반환하도록 리팩터링한다. 반환 타입을 <code>ResponseEntity&lt;ErrorResponse&gt;</code> 대신 <code>ProblemDetail</code>로 변경하면 된다.</p>
+<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.exception;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.support.WebExchangeBindException;
+import java.net.URI;
+import java.time.Instant;
+import java.util.*;
+
+@Slf4j
+@RestControllerAdvice
+public class ProblemDetailExceptionHandler {
+
+    private static final String BASE_TYPE = "https://api.example.com/errors/";
+
+    @ExceptionHandler(WebExchangeBindException.class)
+    public ProblemDetail handleValidation(WebExchangeBindException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST, "입력값 검증에 실패했습니다");
+        problem.setType(URI.create(BASE_TYPE + "validation-failed"));
+        problem.setTitle("Validation Failed");
+        problem.setProperty("errors", ex.getFieldErrors().stream()
+            .map(fe -&gt; Map.of("field", fe.getField(),
+                "message", Objects.toString(fe.getDefaultMessage(), "")))
+            .toList());
+        problem.setProperty("timestamp", Instant.now());
+        return problem;
+    }
+
+    @ExceptionHandler(BusinessException.class)
+    public ProblemDetail handleBusiness(BusinessException ex) {
+        ErrorCode ec = ex.getErrorCode();
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            ec.getStatus(), ex.getMessage());
+        problem.setType(URI.create(BASE_TYPE + ec.getCode()));
+        problem.setTitle(ec.getMessage());
+        problem.setProperty("errorCode", ec.getCode());
+        problem.setProperty("timestamp", Instant.now());
+        return problem;
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ProblemDetail handleUnhandled(Exception ex) {
+        log.error("Unhandled exception", ex);
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다");
+        problem.setType(URI.create(BASE_TYPE + "internal-error"));
+        problem.setTitle("Internal Server Error");
+        problem.setProperty("timestamp", Instant.now());
+        return problem;
+    }
+}</code></pre>
+<h3 id="954-problemdetail">9.5.4 ProblemDetail 응답 예시</h3>
+<p>검증 실패 시 응답은 <code>application/problem+json</code> 타입으로 반환된다.</p>
+<pre class="highlight"><code class="language-json">{
+  "type": "https://api.example.com/errors/validation-failed",
+  "title": "Validation Failed",
+  "status": 400,
+  "detail": "입력값 검증에 실패했습니다",
+  "errors": [
+    { "field": "name", "message": "이름은 필수 입력 항목입니다" },
+    { "field": "price", "message": "가격은 양수여야 합니다" }
+  ],
+  "timestamp": "2026-02-14T01:30:00Z"
+}</code></pre>
+<p>비즈니스 예외 응답은 다음과 같다.</p>
+<pre class="highlight"><code class="language-json">{
+  "type": "https://api.example.com/errors/U002",
+  "title": "이미 등록된 이메일입니다",
+  "status": 409,
+  "detail": "이메일이(가) 이미 존재합니다. 필드: user@example.com",
+  "errorCode": "U002",
+  "timestamp": "2026-02-14T01:31:00Z"
+}</code></pre>
+<h3 id="955-problemdetail">9.5.5 ProblemDetail 활성화 설정</h3>
+<p>Spring Boot 3에서 <code>ProblemDetail</code>을 완전히 활성화하려면 <code>application.yml</code>에 다음 설정을 추가한다.</p>
+<pre class="highlight"><code class="language-yaml">spring:
+  webflux:
+    problemdetails:
+      enabled: true</code></pre>
+<p>이 설정을 활성화하면 Spring이 기본으로 처리하는 예외(404 Not Found, 405 Method Not Allowed 등)도 <code>ProblemDetail</code> 형식으로 반환된다.</p>
+<h3 id="956-errorwebexceptionhandler-problemdetail">9.5.6 ErrorWebExceptionHandler에서 ProblemDetail 사용</h3>
+<p>9.4절의 <code>ErrorWebExceptionHandler</code>에서도 <code>ProblemDetail</code> 형식을 적용할 수 있다. <code>renderErrorResponse</code> 메서드에서 <code>Map</code> 대신 <code>ProblemDetail</code>을 생성하고, Content-Type을 <code>MediaType.APPLICATION_PROBLEM_JSON</code>으로 설정하면 된다.</p>
+<pre class="highlight"><code class="language-java">private Mono&lt;ServerResponse&gt; renderErrorResponse(ServerRequest request) {
+    Throwable error = getError(request);
+    HttpStatus status = (error instanceof BusinessException bex)
+        ? bex.getErrorCode().getStatus()
+        : HttpStatus.INTERNAL_SERVER_ERROR;
+
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+        status, error.getMessage());
+    problem.setInstance(URI.create(request.path()));
+    problem.setProperty("timestamp", Instant.now());
+
+    return ServerResponse.status(status)
+        .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+        .body(BodyInserters.fromValue(problem));
+}</code></pre>
+<p><code>APPLICATION_PROBLEM_JSON</code>을 사용하면 Content-Type이 <code>application/problem+json</code>으로 설정되어 RFC 7807 표준을 온전히 준수한다.</p>
+<hr>
+<h2 id="_1">요약</h2>
+<p>이번 장에서 다룬 핵심 내용을 정리한다.</p>
+<table>
+<thead>
+<tr>
+<th>주제</th>
+<th>핵심 내용</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Bean Validation</strong></td>
+<td><code>@NotBlank</code>, <code>@Email</code>, <code>@Pattern</code> 등으로 DTO 필드를 선언적으로 검증, 컨트롤러에서 <code>@Valid</code>로 활성화</td>
+</tr>
+<tr>
+<td><strong>커스텀 Validator</strong></td>
+<td><code>ConstraintValidator</code> 구현으로 비즈니스 규칙 검증, 클래스 레벨 어노테이션으로 크로스 필드 검증</td>
+</tr>
+<tr>
+<td><strong>@RestControllerAdvice</strong></td>
+<td><code>@ExceptionHandler</code>로 예외 유형별 처리, <code>ErrorResponse</code> DTO로 일관된 응답 반환</td>
+</tr>
+<tr>
+<td><strong>ErrorWebExceptionHandler</strong></td>
+<td><code>AbstractErrorWebExceptionHandler</code> 확장으로 함수형 엔드포인트 포함 모든 예외 통합 처리</td>
+</tr>
+<tr>
+<td><strong>Problem Details</strong></td>
+<td>RFC 7807 기반 <code>ProblemDetail</code> 클래스로 에러 응답 표준화, <code>application/problem+json</code> 타입 사용</td>
+</tr>
+</tbody>
+</table>
+<p>다음 장에서는 WebFlux 필터와 인터셉터를 다루며, <code>WebFilter</code>, <code>HandlerFilterFunction</code>을 활용한 요청/응답 로깅, CORS 설정, 요청 속도 제한 등을 살펴본다.</p>
+    </main>
+    <footer class="site-footer">
+      &copy; 2024 Spring Boot + WebFlux + JPA (MongoDB) Book
+    </footer>
+  </div>
+</body>
+</html>
