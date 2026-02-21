@@ -26,23 +26,27 @@
 <h3 id="511-jdk-17-sdkman">5.1.1 JDK 17+ 설치 — SDKMAN 활용</h3>
 <p>Spring Boot 3.x는 Java 17 이상을 필요로 한다. 프로젝트마다 JDK 버전을 달리 사용해야 하는 경우가 많기 때문에, 이런 상황에서 <strong>SDKMAN</strong>이 유용하다.</p>
 <p><strong>SDKMAN 설치 (macOS / Linux)</strong></p>
-<pre class="highlight"><code class="language-bash"># SDKMAN 설치
-curl -s "https://get.sdkman.io" | bash
-source "$HOME/.sdkman/bin/sdkman-init.sh"
-
-# 설치 확인
-sdk version</code></pre>
+<p>```bash</p>
+<h1 id="sdkman">SDKMAN 설치</h1>
+<p>curl -s "https://get.sdkman.io" | bash
+source "$HOME/.sdkman/bin/sdkman-init.sh"</p>
+<h1 id="_1">설치 확인</h1>
+<p>sdk version
+```</p>
 <p><strong>JDK 설치 및 버전 관리</strong></p>
-<pre class="highlight"><code class="language-bash">sdk list java                          # 설치 가능한 JDK 목록
+<p><code>bash
+sdk list java                          # 설치 가능한 JDK 목록
 sdk install java 21.0.5-amzn           # Amazon Corretto 21 설치 (LTS)
 sdk default java 21.0.5-amzn           # 기본 JDK 설정
-java -version                          # 확인</code></pre>
+java -version                          # 확인</code></p>
 <blockquote>
 <p><strong>Windows 사용자</strong>: SDKMAN 대신 <a href="https://scoop.sh">scoop</a>(<code>scoop install corretto21-jdk</code>)이나 직접 다운로드를 권장한다.</p>
 </blockquote>
 <p><strong>프로젝트별 JDK 자동 전환</strong> -- 프로젝트 루트에 <code>.sdkmanrc</code>를 만들어두면, 해당 디렉터리에 들어갈 때 자동으로 JDK 버전이 전환되는 기능이 있다.</p>
-<pre class="highlight"><code class="language-properties"># .sdkmanrc
-java=21.0.5-amzn</code></pre>
+<p>```properties</p>
+<h1 id="sdkmanrc">.sdkmanrc</h1>
+<p>java=21.0.5-amzn
+```</p>
 <h3 id="512-intellij-idea">5.1.2 IntelliJ IDEA 설정</h3>
 <p><strong>권장 에디션</strong>: IntelliJ IDEA Ultimate가 Spring Boot 개발에 최적화되어 있다. Community Edition을 써도 되지만, Spring 관련 고급 기능 지원에서는 다소 제한이 있을 수 있다.</p>
 <p><strong>필수 플러그인</strong></p>
@@ -80,12 +84,13 @@ java=21.0.5-amzn</code></pre>
 </ul>
 <h3 id="513-docker-desktop">5.1.3 Docker Desktop 설치</h3>
 <p>MongoDB를 로컬에서 실행하려면 Docker를 활용하는 것이 좋다. 설치와 제거가 간단해질 뿐 아니라 팀원들이 동일한 환경을 쉽게 구성할 수 있기 때문이다.</p>
-<pre class="highlight"><code class="language-bash"># macOS — Homebrew를 통한 설치
-brew install --cask docker
-
-# 설치 확인
-docker --version
-docker compose version</code></pre>
+<p>```bash</p>
+<h1 id="macos-homebrew">macOS — Homebrew를 통한 설치</h1>
+<p>brew install --cask docker</p>
+<h1 id="_2">설치 확인</h1>
+<p>docker --version
+docker compose version
+```</p>
 <p>Docker Desktop을 실행한 후 <strong>Resources</strong> 설정에서 메모리를 최소 4GB 이상 할당해 두면 좋다. MongoDB와 애플리케이션을 함께 실행할 때 여유 있게 돌아가기 때문이다.</p>
 <hr>
 <h2 id="52-spring-initializr">5.2 Spring Initializr로 프로젝트 생성</h2>
@@ -182,32 +187,28 @@ docker compose version</code></pre>
 <hr>
 <h2 id="53">5.3 주요 의존성 설정 및 빌드 파일 구성</h2>
 <h3 id="531-buildgradlekts">5.3.1 build.gradle.kts 전체 예시</h3>
-<pre class="highlight"><code class="language-kotlin">plugins {
+<p>```kotlin
+plugins {
     java
     id("org.springframework.boot") version "3.4.1"
     id("io.spring.dependency-management") version "1.1.7"
-}
-
-group = "com.example"
-version = "0.0.1-SNAPSHOT"
-
-java {
+}</p>
+<p>group = "com.example"
+version = "0.0.1-SNAPSHOT"</p>
+<p>java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
     }
-}
-
-configurations {
+}</p>
+<p>configurations {
     compileOnly {
         extendsFrom(configurations.annotationProcessor.get())
     }
-}
-
-repositories {
+}</p>
+<p>repositories {
     mavenCentral()
-}
-
-dependencies {
+}</p>
+<p>dependencies {
     // Spring WebFlux (Netty 기반 논블로킹 웹 서버)
     implementation("org.springframework.boot:spring-boot-starter-webflux")
     // Spring Data Reactive MongoDB
@@ -215,23 +216,23 @@ dependencies {
     // Validation (jakarta.validation)
     implementation("org.springframework.boot:spring-boot-starter-validation")
     // Actuator (헬스 체크, 메트릭)
-    implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")</p>
+<pre><code>// Lombok
+compileOnly("org.projectlombok:lombok")
+annotationProcessor("org.projectlombok:lombok")
+// DevTools (개발 시 자동 재시작)
+developmentOnly("org.springframework.boot:spring-boot-devtools")
 
-    // Lombok
-    compileOnly("org.projectlombok:lombok")
-    annotationProcessor("org.projectlombok:lombok")
-    // DevTools (개발 시 자동 재시작)
-    developmentOnly("org.springframework.boot:spring-boot-devtools")
-
-    // 테스트
-    testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("io.projectreactor:reactor-test")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-}
-
-tasks.withType&lt;Test&gt; {
+// 테스트
+testImplementation("org.springframework.boot:spring-boot-starter-test")
+testImplementation("io.projectreactor:reactor-test")
+testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+</code></pre>
+<p>}</p>
+<p>tasks.withType<Test> {
     useJUnitPlatform()
-}</code></pre>
+}
+```</p>
 <h3 id="532">5.3.2 의존성 상세 설명</h3>
 <table>
 <thead>
@@ -259,13 +260,15 @@ tasks.withType&lt;Test&gt; {
 <p><strong>주의</strong>: <code>spring-boot-starter-web</code>(Spring MVC)을 함께 추가하지 않도록 주의해야 한다. 만약 둘을 함께 설정하면 Spring이 MVC를 우선 적용하여 Netty 대신 Tomcat이 구동되기 때문이다.</p>
 </blockquote>
 <h3 id="533-gradle-wrapper">5.3.3 Gradle Wrapper 버전 관리</h3>
-<pre class="highlight"><code class="language-bash">./gradlew --version                        # 현재 버전 확인
-./gradlew wrapper --gradle-version=8.12    # 업그레이드</code></pre>
+<p><code>bash
+./gradlew --version                        # 현재 버전 확인
+./gradlew wrapper --gradle-version=8.12    # 업그레이드</code></p>
 <hr>
 <h2 id="54-applicationyml">5.4 application.yml 설정</h2>
 <p>기본으로 생성되는 <code>application.properties</code> 파일은 삭제하고 <code>application.yml</code>을 새로 만든다. YAML 형식이 설정 항목의 위계를 표현하는 데 훨씬 편하기 때문이다.</p>
 <h3 id="541-applicationyml">5.4.1 기본 설정 (application.yml)</h3>
-<pre class="highlight"><code class="language-yaml">spring:
+<p>```yaml
+spring:
   application:
     name: webflux-mongo-demo
   data:
@@ -276,35 +279,34 @@ tasks.withType&lt;Test&gt; {
     serialization:
       write-dates-as-timestamps: false
     deserialization:
-      fail-on-unknown-properties: false
-
-server:
+      fail-on-unknown-properties: false</p>
+<p>server:
   port: 8080
   netty:
     connection-timeout: 5000
-    idle-timeout: 15000
-
-management:
+    idle-timeout: 15000</p>
+<p>management:
   endpoints:
     web:
       exposure:
         include: health,info,metrics,env
   endpoint:
     health:
-      show-details: when-authorized
-
-logging:
+      show-details: when-authorized</p>
+<p>logging:
   level:
     root: INFO
     com.example.webfluxmongodemo: DEBUG
     org.springframework.data.mongodb: DEBUG
     reactor.netty: INFO
   pattern:
-    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"</code></pre>
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+```</p>
 <h3 id="542">5.4.2 프로파일별 설정</h3>
 <p>Spring Boot에서는 <code>application-{profile}.yml</code> 형식으로 파일을 나누면, 환경에 따라 다른 설정을 쉽게 적용할 수 있다.</p>
 <p><strong>application-local.yml (로컬 개발)</strong></p>
-<pre class="highlight"><code class="language-yaml">spring:
+<p>```yaml
+spring:
   data:
     mongodb:
       uri: mongodb://appuser:apppass@localhost:27017/webflux_demo?authSource=admin
@@ -312,32 +314,33 @@ logging:
     restart:
       enabled: true
       poll-interval: 2s
-      quiet-period: 1s
-
-logging:
+      quiet-period: 1s</p>
+<p>logging:
   level:
     com.example.webfluxmongodemo: DEBUG
-    org.springframework.data.mongodb.core.ReactiveMongoTemplate: DEBUG</code></pre>
+    org.springframework.data.mongodb.core.ReactiveMongoTemplate: DEBUG
+```</p>
 <p><strong>application-prod.yml (운영)</strong></p>
-<pre class="highlight"><code class="language-yaml">spring:
+<p>```yaml
+spring:
   data:
     mongodb:
-      uri: ${MONGODB_URI}    # 환경 변수에서 주입
-
-server:
-  port: ${SERVER_PORT:8080}   # 환경 변수 없으면 8080 기본값
-
-logging:
+      uri: ${MONGODB_URI}    # 환경 변수에서 주입</p>
+<p>server:
+  port: ${SERVER_PORT:8080}   # 환경 변수 없으면 8080 기본값</p>
+<p>logging:
   level:
     root: WARN
     com.example.webfluxmongodemo: INFO
-    org.springframework.data.mongodb: WARN</code></pre>
+    org.springframework.data.mongodb: WARN
+```</p>
 <p><strong>프로파일 활성화 방법</strong></p>
-<pre class="highlight"><code class="language-bash">java -jar app.jar --spring.profiles.active=local      # JVM 옵션
-export SPRING_PROFILES_ACTIVE=local                    # 환경 변수</code></pre>
+<p><code>bash
+java -jar app.jar --spring.profiles.active=local      # JVM 옵션
+export SPRING_PROFILES_ACTIVE=local                    # 환경 변수</code></p>
 <h3 id="543-mongodb-uri">5.4.3 MongoDB 연결 URI 상세</h3>
 <p>MongoDB 연결 문자열의 형식을 제대로 알아두면, 여러 환경에 유연하게 대응할 수 있다.</p>
-<pre class="highlight"><code>mongodb://[username:password@]host[:port]/database[?options]</code></pre>
+<p><code>mongodb://[username:password@]host[:port]/database[?options]</code></p>
 <table>
 <thead>
 <tr>
@@ -375,17 +378,18 @@ export SPRING_PROFILES_ACTIVE=local                    # 환경 변수</code></p
 </tbody>
 </table>
 <p><strong>복제 세트 연결 예시</strong></p>
-<pre class="highlight"><code class="language-yaml">spring:
+<p><code>yaml
+spring:
   data:
     mongodb:
-      uri: mongodb://user:pass@host1:27017,host2:27017,host3:27017/mydb?replicaSet=rs0&amp;readPreference=secondaryPreferred</code></pre>
+      uri: mongodb://user:pass@host1:27017,host2:27017,host3:27017/mydb?replicaSet=rs0&amp;readPreference=secondaryPreferred</code></p>
 <hr>
 <h2 id="55-mongodb-docker">5.5 MongoDB Docker 컨테이너 구성</h2>
 <h3 id="551-docker-composeyml">5.5.1 docker-compose.yml 작성</h3>
 <p>이제 MongoDB를 Docker로 실행하기 위한 설정 파일을 만들어보자.</p>
-<pre class="highlight"><code class="language-yaml">version: "3.9"
-
-services:
+<p>```yaml
+version: "3.9"</p>
+<p>services:
   # ──────────────────────────────────────────────
   # MongoDB
   # ──────────────────────────────────────────────
@@ -408,9 +412,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
-
-  # ──────────────────────────────────────────────
+      start_period: 30s</p>
+<p># ──────────────────────────────────────────────
   # Mongo Express (선택 — 웹 기반 관리 도구)
   # ──────────────────────────────────────────────
   mongo-express:
@@ -426,54 +429,58 @@ services:
       ME_CONFIG_BASICAUTH: "false"
     depends_on:
       mongodb:
-        condition: service_healthy
-
-volumes:
+        condition: service_healthy</p>
+<p>volumes:
   mongo-data:
-    driver: local</code></pre>
+    driver: local
+```</p>
 <h3 id="552">5.5.2 초기화 스크립트</h3>
 <p>MongoDB 컨테이너가 처음 시작될 때 자동으로 애플리케이션용 사용자와 데이터베이스를 만들어두면 편하다. <code>docker/mongo-init.js</code> 파일로 이를 구현한다.</p>
-<pre class="highlight"><code class="language-javascript">// docker/mongo-init.js
-// MongoDB 컨테이너 최초 실행 시 1회 실행된다.
-
-// 애플리케이션 전용 사용자 생성
-db = db.getSiblingDB("webflux_demo");
-
-db.createUser({
+<p>```javascript
+// docker/mongo-init.js
+// MongoDB 컨테이너 최초 실행 시 1회 실행된다.</p>
+<p>// 애플리케이션 전용 사용자 생성
+db = db.getSiblingDB("webflux_demo");</p>
+<p>db.createUser({
     user: "appuser",
     pwd: "apppass",
     roles: [
         { role: "readWrite", db: "webflux_demo" }
     ]
-});
-
-// 초기 컬렉션 생성 (선택)
+});</p>
+<p>// 초기 컬렉션 생성 (선택)
 db.createCollection("users");
-db.createCollection("posts");
-
-print("===== MongoDB 초기화 완료 =====");</code></pre>
+db.createCollection("posts");</p>
+<p>print("===== MongoDB 초기화 완료 =====");
+```</p>
 <h3 id="553-docker-compose">5.5.3 Docker Compose 실행</h3>
-<pre class="highlight"><code class="language-bash">docker compose up -d                    # 컨테이너 시작 (백그라운드)
+<p><code>bash
+docker compose up -d                    # 컨테이너 시작 (백그라운드)
 docker compose logs -f mongodb          # 로그 확인
 docker compose ps                       # 상태 확인
 docker compose down                     # 중지
-docker compose down -v                  # 중지 + 볼륨 삭제 (데이터 초기화)</code></pre>
+docker compose down -v                  # 중지 + 볼륨 삭제 (데이터 초기화)</code></p>
 <p><strong>정상 동작 확인</strong></p>
-<pre class="highlight"><code class="language-bash">docker exec -it webflux-mongo mongosh -u appuser -p apppass \
-  --authenticationDatabase admin webflux_demo
-
-# 셸 내부에서
-db.users.insertOne({ name: "테스트", email: "test@example.com" })
-db.users.find()</code></pre>
+<p>```bash
+docker exec -it webflux-mongo mongosh -u appuser -p apppass \
+  --authenticationDatabase admin webflux_demo</p>
+<h1 id="_3">셸 내부에서</h1>
+<p>db.users.insertOne({ name: "테스트", email: "test@example.com" })
+db.users.find()
+```</p>
 <h3 id="554-env">5.5.4 .env 파일로 민감 정보 분리</h3>
 <p>docker-compose.yml에 비밀번호를 하드코딩하는 것은 좋지 않다. <code>.env</code> 파일로 분리하고 <code>.gitignore</code>에 추가하면 더 안전하다.</p>
-<pre class="highlight"><code class="language-properties"># .env (git에 포함시키지 않는다)
-MONGO_ROOT_USERNAME=admin
-MONGO_ROOT_PASSWORD=admin1234</code></pre>
-<pre class="highlight"><code class="language-yaml"># docker-compose.yml에서 환경 변수 참조
-environment:
+<p>```properties</p>
+<h1 id="env-git">.env (git에 포함시키지 않는다)</h1>
+<p>MONGO_ROOT_USERNAME=admin
+MONGO_ROOT_PASSWORD=admin1234
+```</p>
+<p>```yaml</p>
+<h1 id="docker-composeyml">docker-compose.yml에서 환경 변수 참조</h1>
+<p>environment:
   MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
-  MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}</code></pre>
+  MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+```</p>
 <hr>
 <h2 id="56">5.6 프로젝트 구조 설계</h2>
 <p>프로젝트 규모가 커질수록 패키지 조직이 중요해진다. 코드를 찾기 쉽고 수정하기 좋으려면 초반부터 좋은 구조를 잡아야 한다. 널리 쓰이는 두 가지 접근법을 비교해보고, 이 책에서 권장하는 방식을 소개한다.</p>
@@ -506,7 +513,7 @@ environment:
 </table>
 <h3 id="562">5.6.2 본서의 권장 구조 — 도메인형 하이브리드</h3>
 <p>이 책에서는 도메인형 구조를 기본으로 삼으면서도, 설정이나 예외 처리처럼 여러 도메인에서 공통으로 쓰는 코드는 <code>global/</code> 패키지에 모아둔다. 이런 절충적인 방식이 실무에서 잘 먹혀간다.</p>
-<pre class="highlight"><code>webflux-mongo-demo/
+<p><code>webflux-mongo-demo/
 ├── build.gradle.kts
 ├── settings.gradle.kts
 ├── docker-compose.yml
@@ -571,147 +578,145 @@ environment:
             │   └── UserControllerTest.java
             └── post/
                 ├── PostServiceTest.java
-                └── PostControllerTest.java</code></pre>
+                └── PostControllerTest.java</code></p>
 <h3 id="563">5.6.3 핵심 클래스 골격 코드</h3>
 <p>구조를 설정했으니 이제 각 계층의 기본 틀을 만들어 보자. 세부 로직은 다음 장에서 채워 넣을 것이다.</p>
 <p><strong>메인 클래스</strong></p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo;
-
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
-@SpringBootApplication
-public class WebfluxMongoDemoApplication {
-
-    public static void main(String[] args) {
-        SpringApplication.run(WebfluxMongoDemoApplication.class, args);
-    }
-}</code></pre>
+<p>```java
+package com.example.webfluxmongodemo;</p>
+<p>import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;</p>
+<p>@SpringBootApplication
+public class WebfluxMongoDemoApplication {</p>
+<pre><code>public static void main(String[] args) {
+    SpringApplication.run(WebfluxMongoDemoApplication.class, args);
+}
+</code></pre>
+<p>}
+```</p>
 <p><strong>도메인 (Document)</strong></p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo.user.domain;
-
-import lombok.*;
+<p>```java
+package com.example.webfluxmongodemo.user.domain;</p>
+<p>import lombok.*;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.index.Indexed;
-
-import java.time.LocalDateTime;
-
-@Document(collection = "users")     // MongoDB 컬렉션 매핑
+import org.springframework.data.mongodb.core.index.Indexed;</p>
+<p>import java.time.LocalDateTime;</p>
+<p>@Document(collection = "users")     // MongoDB 컬렉션 매핑
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class User {
+public class User {</p>
+<pre><code>@Id
+private String id;              // MongoDB의 _id에 매핑
 
-    @Id
-    private String id;              // MongoDB의 _id에 매핑
+@Indexed(unique = true)         // 고유 인덱스 자동 생성
+private String email;
 
-    @Indexed(unique = true)         // 고유 인덱스 자동 생성
-    private String email;
+private String name;
+private String password;
 
-    private String name;
-    private String password;
+@CreatedDate
+private LocalDateTime createdAt;
 
-    @CreatedDate
-    private LocalDateTime createdAt;
+@LastModifiedDate
+private LocalDateTime updatedAt;
 
-    @LastModifiedDate
-    private LocalDateTime updatedAt;
-
-    public void updateName(String name) {
-        this.name = name;
-    }
-}</code></pre>
+public void updateName(String name) {
+    this.name = name;
+}
+</code></pre>
+<p>}
+```</p>
 <p><strong>리포지토리</strong></p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo.user.repository;
-
-import com.example.webfluxmongodemo.user.domain.User;
+<p>```java
+package com.example.webfluxmongodemo.user.repository;</p>
+<p>import com.example.webfluxmongodemo.user.domain.User;
 import org.springframework.data.mongodb.repository.ReactiveMongoRepository;
-import reactor.core.publisher.Mono;
+import reactor.core.publisher.Mono;</p>
+<p>public interface UserRepository extends ReactiveMongoRepository<User, String> {</p>
+<pre><code>Mono&lt;User&gt; findByEmail(String email);
 
-public interface UserRepository extends ReactiveMongoRepository&lt;User, String&gt; {
-
-    Mono&lt;User&gt; findByEmail(String email);
-
-    Mono&lt;Boolean&gt; existsByEmail(String email);
-}</code></pre>
+Mono&lt;Boolean&gt; existsByEmail(String email);
+</code></pre>
+<p>}
+```</p>
 <blockquote>
 <p><code>ReactiveMongoRepository</code>는 <code>ReactiveCrudRepository</code>를 상속받으면서 메서드들이 모두 <code>Mono</code>나 <code>Flux</code>를 반환한다. 덕분에 어디서도 블로킹이 일어나지 않는다.</p>
 </blockquote>
 <p><strong>서비스</strong></p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo.user.service;
-
-import com.example.webfluxmongodemo.user.domain.User;
+<p>```java
+package com.example.webfluxmongodemo.user.service;</p>
+<p>import com.example.webfluxmongodemo.user.domain.User;
 import com.example.webfluxmongodemo.user.dto.UserCreateRequest;
 import com.example.webfluxmongodemo.user.dto.UserResponse;
 import com.example.webfluxmongodemo.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
-@Service
+import reactor.core.publisher.Mono;</p>
+<p>@Service
 @RequiredArgsConstructor
-public class UserService {
+public class UserService {</p>
+<pre><code>private final UserRepository userRepository;
 
-    private final UserRepository userRepository;
+public Mono&lt;UserResponse&gt; createUser(UserCreateRequest request) {
+    User user = User.builder()
+            .email(request.email())
+            .name(request.name())
+            .password(request.password())   // 실제로는 암호화 필수
+            .build();
 
-    public Mono&lt;UserResponse&gt; createUser(UserCreateRequest request) {
-        User user = User.builder()
-                .email(request.email())
-                .name(request.name())
-                .password(request.password())   // 실제로는 암호화 필수
-                .build();
+    return userRepository.save(user)
+            .map(UserResponse::from);
+}
 
-        return userRepository.save(user)
-                .map(UserResponse::from);
-    }
+public Mono&lt;UserResponse&gt; getUserById(String id) {
+    return userRepository.findById(id)
+            .map(UserResponse::from)
+            .switchIfEmpty(Mono.error(
+                new IllegalArgumentException("사용자를 찾을 수 없습니다: " + id)
+            ));
+}
 
-    public Mono&lt;UserResponse&gt; getUserById(String id) {
-        return userRepository.findById(id)
-                .map(UserResponse::from)
-                .switchIfEmpty(Mono.error(
-                    new IllegalArgumentException("사용자를 찾을 수 없습니다: " + id)
-                ));
-    }
+public Flux&lt;UserResponse&gt; getAllUsers() {
+    return userRepository.findAll()
+            .map(UserResponse::from);
+}
 
-    public Flux&lt;UserResponse&gt; getAllUsers() {
-        return userRepository.findAll()
-                .map(UserResponse::from);
-    }
-
-    public Mono&lt;Void&gt; deleteUser(String id) {
-        return userRepository.deleteById(id);
-    }
-}</code></pre>
+public Mono&lt;Void&gt; deleteUser(String id) {
+    return userRepository.deleteById(id);
+}
+</code></pre>
+<p>}
+```</p>
 <p><strong>DTO (Java Record 활용)</strong></p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo.user.dto;
-
-import jakarta.validation.constraints.Email;
+<p>```java
+package com.example.webfluxmongodemo.user.dto;</p>
+<p>import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
-
-public record UserCreateRequest(
+import jakarta.validation.constraints.Size;</p>
+<p>public record UserCreateRequest(
     @NotBlank(message = "이름은 필수입니다")
-    String name,
+    String name,</p>
+<pre><code>@NotBlank(message = "이메일은 필수입니다")
+@Email(message = "올바른 이메일 형식이 아닙니다")
+String email,
 
-    @NotBlank(message = "이메일은 필수입니다")
-    @Email(message = "올바른 이메일 형식이 아닙니다")
-    String email,
-
-    @NotBlank(message = "비밀번호는 필수입니다")
-    @Size(min = 8, message = "비밀번호는 8자 이상이어야 합니다")
-    String password
-) {}</code></pre>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo.user.dto;
-
-import com.example.webfluxmongodemo.user.domain.User;
-import java.time.LocalDateTime;
-
-public record UserResponse(
+@NotBlank(message = "비밀번호는 필수입니다")
+@Size(min = 8, message = "비밀번호는 8자 이상이어야 합니다")
+String password
+</code></pre>
+<p>) {}
+```</p>
+<p>```java
+package com.example.webfluxmongodemo.user.dto;</p>
+<p>import com.example.webfluxmongodemo.user.domain.User;
+import java.time.LocalDateTime;</p>
+<p>public record UserResponse(
     String id,
     String name,
     String email,
@@ -725,11 +730,12 @@ public record UserResponse(
             user.getCreatedAt()
         );
     }
-}</code></pre>
+}
+```</p>
 <p><strong>컨트롤러</strong></p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo.user.controller;
-
-import com.example.webfluxmongodemo.user.dto.UserCreateRequest;
+<p>```java
+package com.example.webfluxmongodemo.user.controller;</p>
+<p>import com.example.webfluxmongodemo.user.dto.UserCreateRequest;
 import com.example.webfluxmongodemo.user.dto.UserResponse;
 import com.example.webfluxmongodemo.user.service.UserService;
 import jakarta.validation.Valid;
@@ -737,45 +743,44 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
-@RestController
+import reactor.core.publisher.Mono;</p>
+<p>@RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
-public class UserController {
+public class UserController {</p>
+<pre><code>private final UserService userService;
 
-    private final UserService userService;
+@PostMapping
+@ResponseStatus(HttpStatus.CREATED)
+public Mono&lt;UserResponse&gt; createUser(@Valid @RequestBody UserCreateRequest request) {
+    return userService.createUser(request);
+}
 
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Mono&lt;UserResponse&gt; createUser(@Valid @RequestBody UserCreateRequest request) {
-        return userService.createUser(request);
-    }
+@GetMapping("/{id}")
+public Mono&lt;UserResponse&gt; getUser(@PathVariable String id) {
+    return userService.getUserById(id);
+}
 
-    @GetMapping("/{id}")
-    public Mono&lt;UserResponse&gt; getUser(@PathVariable String id) {
-        return userService.getUserById(id);
-    }
+@GetMapping
+public Flux&lt;UserResponse&gt; getAllUsers() {
+    return userService.getAllUsers();
+}
 
-    @GetMapping
-    public Flux&lt;UserResponse&gt; getAllUsers() {
-        return userService.getAllUsers();
-    }
-
-    @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public Mono&lt;Void&gt; deleteUser(@PathVariable String id) {
-        return userService.deleteUser(id);
-    }
-}</code></pre>
+@DeleteMapping("/{id}")
+@ResponseStatus(HttpStatus.NO_CONTENT)
+public Mono&lt;Void&gt; deleteUser(@PathVariable String id) {
+    return userService.deleteUser(id);
+}
+</code></pre>
+<p>}
+```</p>
 <p><strong>MongoDB 설정 클래스</strong></p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo.global.config;
-
-import org.springframework.context.annotation.Configuration;
+<p>```java
+package com.example.webfluxmongodemo.global.config;</p>
+<p>import org.springframework.context.annotation.Configuration;
 import org.springframework.data.mongodb.config.EnableReactiveMongoAuditing;
-import org.springframework.data.mongodb.repository.config.EnableReactiveMongoRepositories;
-
-@Configuration
+import org.springframework.data.mongodb.repository.config.EnableReactiveMongoRepositories;</p>
+<p>@Configuration
 @EnableReactiveMongoRepositories(
     basePackages = "com.example.webfluxmongodemo"
 )
@@ -783,23 +788,25 @@ import org.springframework.data.mongodb.repository.config.EnableReactiveMongoRep
 public class MongoConfig {
     // ReactiveMongoClient는 Spring Boot가 자동 구성한다.
     // 커스텀 설정이 필요한 경우에만 Bean을 등록한다.
-}</code></pre>
+}
+```</p>
 <h3 id="564">5.6.4 프로젝트 실행 및 검증</h3>
-<pre class="highlight"><code class="language-bash">docker compose up -d                                          # MongoDB 시작
-./gradlew bootRun --args='--spring.profiles.active=local'     # 애플리케이션 시작</code></pre>
+<p><code>bash
+docker compose up -d                                          # MongoDB 시작
+./gradlew bootRun --args='--spring.profiles.active=local'     # 애플리케이션 시작</code></p>
 <p>정상적으로 구동되면 <code>Netty started on port 8080</code> 같은 로그가 나타날 것이다. 간단한 헬스 체크로 검증해 보자.</p>
-<pre class="highlight"><code class="language-bash"># 헬스 체크 — mongo 컴포넌트가 UP이면 성공
-curl http://localhost:8080/actuator/health
-
-# 사용자 생성
-curl -X POST http://localhost:8080/api/users \
+<p>```bash</p>
+<h1 id="mongo-up">헬스 체크 — mongo 컴포넌트가 UP이면 성공</h1>
+<p>curl http://localhost:8080/actuator/health</p>
+<h1 id="_4">사용자 생성</h1>
+<p>curl -X POST http://localhost:8080/api/users \
   -H "Content-Type: application/json" \
-  -d '{"name":"홍길동","email":"hong@example.com","password":"password1234"}'
-
-# 사용자 조회
-curl http://localhost:8080/api/users</code></pre>
+  -d '{"name":"홍길동","email":"hong@example.com","password":"password1234"}'</p>
+<h1 id="_5">사용자 조회</h1>
+<p>curl http://localhost:8080/api/users
+```</p>
 <hr>
-<h2 id="_1">정리</h2>
+<h2 id="_6">정리</h2>
 <p>이 장에서 다룬 개발 환경 구성을 한눈에 정리하면 이렇다.</p>
 <table>
 <thead>
@@ -843,6 +850,102 @@ curl http://localhost:8080/api/users</code></pre>
 </tr>
 </tbody>
 </table>
+<h3 id="_7">이 책에서 사용하는 주요 라이브러리 버전</h3>
+<p>이 책의 예제 코드에서 사용하는 주요 의존성 버전을 아래 표에 정리했다. Spring Boot의 의존성 관리(BOM)가 대부분 자동으로 처리해 주지만, 직접 명시해야 하는 라이브러리도 있으니 참고하기 바란다.</p>
+<table>
+<thead>
+<tr>
+<th>분류</th>
+<th>라이브러리</th>
+<th>버전</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>프레임워크</strong></td>
+<td>Spring Boot</td>
+<td>3.5.11</td>
+</tr>
+<tr>
+<td></td>
+<td>io.spring.dependency-management (Gradle 플러그인)</td>
+<td>1.1.7</td>
+</tr>
+<tr>
+<td><strong>보안/인증</strong></td>
+<td>jjwt (io.jsonwebtoken)</td>
+<td>0.13.0</td>
+</tr>
+<tr>
+<td><strong>API 문서</strong></td>
+<td>SpringDoc OpenAPI (springdoc-openapi-starter-webflux-ui)</td>
+<td>2.8.4</td>
+</tr>
+<tr>
+<td><strong>복원력</strong></td>
+<td>Resilience4j</td>
+<td>2.3.0</td>
+</tr>
+<tr>
+<td><strong>캐시</strong></td>
+<td>Caffeine</td>
+<td>3.2.3</td>
+</tr>
+<tr>
+<td><strong>속도 제한</strong></td>
+<td>Bucket4j (bucket4j-core)</td>
+<td>8.16.1</td>
+</tr>
+<tr>
+<td><strong>테스트</strong></td>
+<td>Testcontainers</td>
+<td>1.20.4</td>
+</tr>
+<tr>
+<td></td>
+<td>Flapdoodle Embedded MongoDB (spring3x)</td>
+<td>4.23.0</td>
+</tr>
+<tr>
+<td></td>
+<td>OkHttp MockWebServer</td>
+<td>4.12.0</td>
+</tr>
+<tr>
+<td></td>
+<td>BlockHound</td>
+<td>1.0.15.RELEASE</td>
+</tr>
+<tr>
+<td><strong>모니터링</strong></td>
+<td>Logstash Logback Encoder</td>
+<td>9.0</td>
+</tr>
+<tr>
+<td><strong>성능 테스트</strong></td>
+<td>JMH Gradle Plugin (me.champeau.jmh)</td>
+<td>0.7.3</td>
+</tr>
+<tr>
+<td></td>
+<td>Gatling Gradle Plugin</td>
+<td>3.14.9.8</td>
+</tr>
+<tr>
+<td><strong>배포</strong></td>
+<td>Jib (com.google.cloud.tools.jib)</td>
+<td>3.5.3</td>
+</tr>
+<tr>
+<td></td>
+<td>GraalVM Native Build Tools</td>
+<td>0.11.4</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>참고</strong>: Spring Boot BOM이 관리하는 의존성(Spring Security, Spring Data, Reactor, Netty 등)은 Spring Boot 버전에 맞는 호환 버전이 자동으로 적용되므로 별도로 명시하지 않아도 된다.</p>
+</blockquote>
 <p>다음 장부터 이 환경 위에서 실제 REST API를 구현해 보자. 도메인 모델을 정의하고 Repository, Service, Controller의 구체적인 로직을 채워 넣은 뒤, API를 테스트해 보는 과정까지 다룰 것이다.</p>
     </main>
     <footer class="site-footer">

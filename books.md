@@ -1,196 +1,3 @@
-# Spring Boot + WebFlux + JPA (MongoDB) 목차
-
----
-
-## Part 1. 기초 다지기
-
-### Chapter 1. 리액티브 프로그래밍 소개
-- 1.1 리액티브 프로그래밍이란?
-- 1.2 명령형 프로그래밍 vs 리액티브 프로그래밍
-- 1.3 리액티브 스트림(Reactive Streams) 표준
-- 1.4 배압(Backpressure)의 개념
-- 1.5 왜 리액티브가 필요한가?
-
-### Chapter 2. Spring WebFlux 개요
-- 2.1 Spring MVC와 Spring WebFlux 비교
-- 2.2 WebFlux의 내부 구조와 Netty
-- 2.3 논블로킹 I/O의 원리
-- 2.4 WebFlux를 선택해야 하는 경우와 그렇지 않은 경우
-- 2.5 WebFlux의 두 가지 프로그래밍 모델: 어노테이션 기반 vs 함수형
-
-### Chapter 3. Project Reactor 핵심
-- 3.1 Mono와 Flux 이해하기
-- 3.2 Reactor의 주요 연산자 (map, flatMap, filter, zip 등)
-- 3.3 에러 처리 전략 (onErrorResume, onErrorReturn, retry)
-- 3.4 스케줄러(Scheduler)와 스레드 모델
-- 3.5 Cold vs Hot Publisher
-- 3.6 Reactor 디버깅 기법
-
-### Chapter 4. MongoDB 소개
-- 4.1 NoSQL과 MongoDB의 특징
-- 4.2 도큐먼트 모델과 컬렉션
-- 4.3 MongoDB 설치 및 기본 CRUD
-- 4.4 인덱싱과 쿼리 최적화 기초
-- 4.5 MongoDB와 리액티브 드라이버
-
----
-
-## Part 2. 프로젝트 시작하기
-
-### Chapter 5. 개발 환경 구성
-- 5.1 JDK, IDE, Docker 설치
-- 5.2 Spring Initializr로 프로젝트 생성
-- 5.3 주요 의존성 설정 (WebFlux, Reactive MongoDB, Lombok 등)
-- 5.4 application.yml 설정
-- 5.5 MongoDB Docker 컨테이너 구성
-- 5.6 프로젝트 구조 설계
-
-### Chapter 6. 어노테이션 기반 REST API 구현
-- 6.1 도메인 모델(Document) 정의
-- 6.2 ReactiveMongoRepository 활용
-- 6.3 서비스 계층 구현
-- 6.4 @RestController로 CRUD API 만들기
-- 6.5 요청/응답 DTO 설계
-- 6.6 API 테스트 (cURL, Postman)
-
-### Chapter 7. 함수형 엔드포인트 (Router Functions)
-- 7.1 HandlerFunction과 RouterFunction 이해
-- 7.2 RouterFunction으로 라우팅 정의하기
-- 7.3 HandlerFunction 구현
-- 7.4 요청 파라미터 및 바디 처리
-- 7.5 어노테이션 방식과 함수형 방식 비교
-
----
-
-## Part 3. 심화 개발
-
-### Chapter 8. MongoDB 리액티브 데이터 접근 심화
-- 8.1 ReactiveMongoTemplate 활용
-- 8.2 커스텀 쿼리와 Criteria API
-- 8.3 Aggregation Pipeline 사용
-- 8.4 변경 스트림(Change Streams) 활용
-- 8.5 트랜잭션 처리 (ReactiveMongoTransactionManager)
-- 8.6 인덱스 관리와 쿼리 성능 최적화
-
-### Chapter 9. 데이터 검증과 예외 처리
-- 9.1 Bean Validation을 활용한 입력 검증
-- 9.2 커스텀 Validator 구현
-- 9.3 글로벌 예외 처리 (@ControllerAdvice)
-- 9.4 ErrorWebExceptionHandler를 활용한 함수형 예외 처리
-- 9.5 에러 응답 표준화 (Problem Details)
-
-### Chapter 10. WebFlux 필터와 인터셉터
-- 10.1 WebFilter 구현
-- 10.2 HandlerFilterFunction 활용
-- 10.3 요청/응답 로깅
-- 10.4 CORS 설정
-- 10.5 요청 속도 제한(Rate Limiting)
-
-### Chapter 11. 리액티브 보안 (Spring Security WebFlux)
-- 11.1 Spring Security Reactive 설정
-- 11.2 SecurityWebFilterChain 구성
-- 11.3 인증과 인가 구현
-- 11.4 JWT 기반 인증 구현
-- 11.5 리액티브 환경에서의 SecurityContext 관리
-- 11.6 OAuth2 / OpenID Connect 연동
-
----
-
-## Part 4. 실시간 통신과 고급 기능
-
-### Chapter 12. Server-Sent Events (SSE)
-- 12.1 SSE란 무엇인가?
-- 12.2 Flux를 활용한 SSE 엔드포인트 구현
-- 12.3 실시간 알림 시스템 구축
-- 12.4 MongoDB Change Streams + SSE 연동
-
-### Chapter 13. WebSocket
-- 13.1 WebSocket 프로토콜 이해
-- 13.2 WebFlux에서 WebSocket 핸들러 구현
-- 13.3 실시간 채팅 애플리케이션 구축
-- 13.4 WebSocket 세션 관리
-
-### Chapter 14. WebClient: 리액티브 HTTP 클라이언트
-- 14.1 WebClient 설정과 기본 사용법
-- 14.2 요청/응답 처리 (GET, POST, PUT, DELETE)
-- 14.3 에러 핸들링과 재시도 전략
-- 14.4 타임아웃 설정
-- 14.5 외부 API 연동 실전 예제
-- 14.6 WebClient 필터와 인터셉터
-
-### Chapter 15. R2DBC와의 통합 (보너스)
-- 15.1 R2DBC란?
-- 15.2 MongoDB + R2DBC(관계형 DB) 멀티 데이터소스 구성
-- 15.3 리액티브 환경에서 여러 데이터소스 조합하기
-
----
-
-## Part 5. 테스트와 품질
-
-### Chapter 16. 리액티브 테스트 전략
-- 16.1 StepVerifier를 활용한 단위 테스트
-- 16.2 WebTestClient를 활용한 통합 테스트
-- 16.3 Embedded MongoDB를 활용한 리포지토리 테스트
-- 16.4 Testcontainers로 MongoDB 테스트 환경 구성
-- 16.5 MockWebServer를 활용한 외부 API 모킹
-- 16.6 테스트 슬라이스(@WebFluxTest, @DataMongoTest)
-
-### Chapter 17. 문서화와 API 관리
-- 17.1 SpringDoc OpenAPI(Swagger) 연동
-- 17.2 리액티브 API 문서 자동 생성
-- 17.3 API 버전 관리 전략
-
----
-
-## Part 6. 운영과 배포
-
-### Chapter 18. 모니터링과 관측 가능성
-- 18.1 Spring Boot Actuator 설정
-- 18.2 Micrometer와 Prometheus 연동
-- 18.3 Grafana 대시보드 구성
-- 18.4 리액티브 스트림 메트릭 수집
-- 18.5 분산 추적 (Zipkin / Jaeger)
-- 18.6 구조화된 로깅 (Logback + MDC in Reactive)
-
-### Chapter 19. 성능 최적화
-- 19.1 리액티브 애플리케이션 성능 측정
-- 19.2 MongoDB 커넥션 풀 튜닝
-- 19.3 Netty 이벤트 루프 최적화
-- 19.4 캐싱 전략 (Caffeine, Redis)
-- 19.5 블로킹 코드 탐지 및 제거 (BlockHound)
-- 19.6 부하 테스트 (Gatling, k6)
-
-### Chapter 20. 컨테이너화와 배포
-- 20.1 Docker 이미지 빌드 (Jib, Buildpacks)
-- 20.2 Docker Compose로 전체 스택 구성
-- 20.3 Kubernetes 배포 기초
-- 20.4 MongoDB Atlas 클라우드 연동
-- 20.5 CI/CD 파이프라인 구성 (GitHub Actions)
-- 20.6 GraalVM Native Image 빌드
-
----
-
-## Part 7. 실전 프로젝트
-
-### Chapter 21. 실전 프로젝트: 실시간 게시판 서비스
-- 21.1 요구사항 분석 및 설계
-- 21.2 사용자 관리 (회원가입, 로그인, JWT)
-- 21.3 게시글 CRUD API 구현
-- 21.4 댓글 시스템 (내장 도큐먼트 vs 참조)
-- 21.5 실시간 알림 (SSE)
-- 21.6 페이징과 검색 기능
-- 21.7 파일 업로드 (GridFS)
-- 21.8 전체 테스트 작성
-- 21.9 Docker Compose로 배포
-
----
-
-## 부록
-
-### 부록 A. Reactor 주요 연산자 레퍼런스
-### 부록 B. MongoDB 쿼리 연산자 정리
-### 부록 C. 자주 발생하는 문제와 해결 방법 (FAQ)
-### 부록 D. 참고 자료 및 추천 학습 경로
 # Chapter 1. 리액티브 프로그래밍 소개
 
 현대 소프트웨어 시스템이 직면한 현실을 생각해 보자. 수백만 사용자의 동시 요청을 처리하고, 밀리초 단위의 응답 시간을 보장하며, 24/7 무중단 운영을 해야 한다는 것은 정말 과도한 요구사항처럼 들린다. 그런데 이미 우리는 그런 시스템들이 존재한다는 것을 알고 있다. 전통적인 명령형 프로그래밍 모델만으로는 이런 요구사항을 충족하기 어렵다는 것도 경험상 알 수 있기 때문이다. 이 장에서는 리액티브 프로그래밍의 핵심 개념을 살펴보면서, Spring WebFlux가 왜 이 패러다임을 선택했는지 그 이유를 함께 이해해 보자.
@@ -4097,6 +3904,31 @@ curl http://localhost:8080/api/users
 | 설정 관리 | application.yml + 프로파일 분리 |
 | 프로젝트 구조 | 도메인형 하이브리드 |
 
+### 이 책에서 사용하는 주요 라이브러리 버전
+
+이 책의 예제 코드에서 사용하는 주요 의존성 버전을 아래 표에 정리했다. Spring Boot의 의존성 관리(BOM)가 대부분 자동으로 처리해 주지만, 직접 명시해야 하는 라이브러리도 있으니 참고하기 바란다.
+
+| 분류 | 라이브러리 | 버전 |
+|------|-----------|------|
+| **프레임워크** | Spring Boot | 3.5.11 |
+| | io.spring.dependency-management (Gradle 플러그인) | 1.1.7 |
+| **보안/인증** | jjwt (io.jsonwebtoken) | 0.13.0 |
+| **API 문서** | SpringDoc OpenAPI (springdoc-openapi-starter-webflux-ui) | 2.8.4 |
+| **복원력** | Resilience4j | 2.3.0 |
+| **캐시** | Caffeine | 3.2.3 |
+| **속도 제한** | Bucket4j (bucket4j-core) | 8.16.1 |
+| **테스트** | Testcontainers | 1.20.4 |
+| | Flapdoodle Embedded MongoDB (spring3x) | 4.23.0 |
+| | OkHttp MockWebServer | 4.12.0 |
+| | BlockHound | 1.0.15.RELEASE |
+| **모니터링** | Logstash Logback Encoder | 9.0 |
+| **성능 테스트** | JMH Gradle Plugin (me.champeau.jmh) | 0.7.3 |
+| | Gatling Gradle Plugin | 3.14.9.8 |
+| **배포** | Jib (com.google.cloud.tools.jib) | 3.5.3 |
+| | GraalVM Native Build Tools | 0.11.4 |
+
+> **참고**: Spring Boot BOM이 관리하는 의존성(Spring Security, Spring Data, Reactor, Netty 등)은 Spring Boot 버전에 맞는 호환 버전이 자동으로 적용되므로 별도로 명시하지 않아도 된다.
+
 다음 장부터 이 환경 위에서 실제 REST API를 구현해 보자. 도메인 모델을 정의하고 Repository, Service, Controller의 구체적인 로직을 채워 넣은 뒤, API를 테스트해 보는 과정까지 다룰 것이다.
 # Chapter 6. 어노테이션 기반 REST API 구현
 
@@ -7900,7 +7732,7 @@ public class CorsConfig implements WebFluxConfigurer {
 
 ### 10.5.2 Bucket4j 의존성
 
-알고리즘을 직접 구현할 수도 있지만, **Bucket4j** 라이브러리를 사용하면 편하다. 토큰 버킷 알고리즘을 스레드 안전하게 구현했고, 성능도 검증되었다. `build.gradle.kts`에 의존성을 추가하자: `implementation("com.bucket4j:bucket4j-core:8.10.1")`
+알고리즘을 직접 구현할 수도 있지만, **Bucket4j** 라이브러리를 사용하면 편하다. 토큰 버킷 알고리즘을 스레드 안전하게 구현했고, 성능도 검증되었다. `build.gradle.kts`에 의존성을 추가하자: `implementation("com.bucket4j:bucket4j-core:8.16.1")`
 
 ### 10.5.3 IP 기반 속도 제한 필터
 
@@ -8083,7 +7915,7 @@ public class RateLimitConfig {
 
 ```kotlin
 dependencies {
-    implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
+    implementation("com.github.ben-manes.caffeine:caffeine:3.2.3")
 }
 ```
 
@@ -8134,9 +7966,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'
 
     // JWT (11.4절), OAuth2 (11.6절)
-    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+    implementation 'io.jsonwebtoken:jjwt-api:0.13.0'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.13.0'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.13.0'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
 
@@ -10898,8 +10730,8 @@ public Mono<Product> getProductWithBackoff(String id) {
 
 ```groovy
 dependencies {
-    implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
-    implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0'
+    implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.3.0'
+    implementation 'io.github.resilience4j:resilience4j-reactor:2.3.0'
 }
 ```
 
@@ -12684,7 +12516,7 @@ void 응답을_객체로_역직렬화하여_검증() {
 
 ```groovy
 dependencies {
-    testImplementation 'de.flapdoodle.embed:de.flapdoodle.embed.mongo.spring3x:4.11.0'
+    testImplementation 'de.flapdoodle.embed:de.flapdoodle.embed.mongo.spring3x:4.23.0'
 }
 ```
 
@@ -12865,9 +12697,9 @@ Embedded MongoDB는 분명 편하지만, 실제 MongoDB와 동작이 완전히 �
 
 ```groovy
 dependencies {
-    testImplementation 'org.testcontainers:testcontainers:1.19.3'
-    testImplementation 'org.testcontainers:mongodb:1.19.3'
-    testImplementation 'org.testcontainers:junit-jupiter:1.19.3'
+    testImplementation 'org.testcontainers:testcontainers:1.20.4'
+    testImplementation 'org.testcontainers:mongodb:1.20.4'
+    testImplementation 'org.testcontainers:junit-jupiter:1.20.4'
 }
 ```
 
@@ -14765,7 +14597,7 @@ public class PaymentProcessService {
 
 ```groovy
 dependencies {
-    implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
+    implementation 'net.logstash.logback:logstash-logback-encoder:9.0'
 }
 ```
 
@@ -15000,7 +14832,7 @@ JMH(Java Microbenchmark Harness)라는 도구를 알고 있나? JVM 수준의 �
 
 ```groovy
 plugins {
-    id 'me.champeau.jmh' version '0.7.2'
+    id 'me.champeau.jmh' version '0.7.3'
 }
 
 dependencies {
@@ -15328,7 +15160,7 @@ Caffeine은 JVM 에서 쓸 수 있는 고성능 로컬 캐시 라이브러리다
 
 ```groovy
 dependencies {
-    implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
+    implementation 'com.github.ben-manes.caffeine:caffeine:3.2.3'
 }
 ```
 
@@ -15524,7 +15356,7 @@ public class MultiLevelCacheService<T> {
 
 ```groovy
 dependencies {
-    testImplementation 'io.projectreactor.tools:blockhound:1.0.9.RELEASE'
+    testImplementation 'io.projectreactor.tools:blockhound:1.0.15.RELEASE'
 }
 ```
 
@@ -15662,11 +15494,11 @@ Gatling은 부하 테스트를 위한 강력한 도구다. Scala로 만들어졌
 
 ```groovy
 plugins {
-    id 'io.gatling.gradle' version '3.11.5.2'
+    id 'io.gatling.gradle' version '3.14.9.8'
 }
 
 dependencies {
-    gatlingImplementation 'io.gatling.highcharts:gatling-charts-highcharts:3.11.5'
+    gatlingImplementation 'io.gatling.highcharts:gatling-charts-highcharts:3.14.9'
 }
 ```
 
@@ -15863,9 +15695,9 @@ Jib은 Google이 만든 도구인데, 사실 꽤 편리하다. Docker 데몬을 
 
 ```groovy
 plugins {
-    id 'org.springframework.boot' version '3.4.1'
+    id 'org.springframework.boot' version '3.5.11'
     id 'io.spring.dependency-management' version '1.1.7'
-    id 'com.google.cloud.tools.jib' version '3.4.4'
+    id 'com.google.cloud.tools.jib' version '3.5.3'
     id 'java'
 }
 
@@ -16522,9 +16354,9 @@ jobs:
 
 ```groovy
 plugins {
-    id 'org.springframework.boot' version '3.4.1'
+    id 'org.springframework.boot' version '3.5.11'
     id 'io.spring.dependency-management' version '1.1.7'
-    id 'org.graalvm.buildtools.native' version '0.10.4'
+    id 'org.graalvm.buildtools.native' version '0.11.4'
     id 'java'
 }
 
@@ -16720,9 +16552,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
-    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+    implementation 'io.jsonwebtoken:jjwt-api:0.13.0'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.13.0'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.13.0'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'

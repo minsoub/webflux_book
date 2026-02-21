@@ -803,6 +803,31 @@ curl http://localhost:8080/api/users
 | 설정 관리 | application.yml + 프로파일 분리 |
 | 프로젝트 구조 | 도메인형 하이브리드 |
 
+### 이 책에서 사용하는 주요 라이브러리 버전
+
+이 책의 예제 코드에서 사용하는 주요 의존성 버전을 아래 표에 정리했다. Spring Boot의 의존성 관리(BOM)가 대부분 자동으로 처리해 주지만, 직접 명시해야 하는 라이브러리도 있으니 참고하기 바란다.
+
+| 분류 | 라이브러리 | 버전 |
+|------|-----------|------|
+| **프레임워크** | Spring Boot | 3.5.11 |
+| | io.spring.dependency-management (Gradle 플러그인) | 1.1.7 |
+| **보안/인증** | jjwt (io.jsonwebtoken) | 0.13.0 |
+| **API 문서** | SpringDoc OpenAPI (springdoc-openapi-starter-webflux-ui) | 2.8.4 |
+| **복원력** | Resilience4j | 2.3.0 |
+| **캐시** | Caffeine | 3.2.3 |
+| **속도 제한** | Bucket4j (bucket4j-core) | 8.16.1 |
+| **테스트** | Testcontainers | 1.20.4 |
+| | Flapdoodle Embedded MongoDB (spring3x) | 4.23.0 |
+| | OkHttp MockWebServer | 4.12.0 |
+| | BlockHound | 1.0.15.RELEASE |
+| **모니터링** | Logstash Logback Encoder | 9.0 |
+| **성능 테스트** | JMH Gradle Plugin (me.champeau.jmh) | 0.7.3 |
+| | Gatling Gradle Plugin | 3.14.9.8 |
+| **배포** | Jib (com.google.cloud.tools.jib) | 3.5.3 |
+| | GraalVM Native Build Tools | 0.11.4 |
+
+> **참고**: Spring Boot BOM이 관리하는 의존성(Spring Security, Spring Data, Reactor, Netty 등)은 Spring Boot 버전에 맞는 호환 버전이 자동으로 적용되므로 별도로 명시하지 않아도 된다.
+
 다음 장부터 이 환경 위에서 실제 REST API를 구현해 보자. 도메인 모델을 정의하고 Repository, Service, Controller의 구체적인 로직을 채워 넣은 뒤, API를 테스트해 보는 과정까지 다룰 것이다.
 # Chapter 6. 어노테이션 기반 REST API 구현
 

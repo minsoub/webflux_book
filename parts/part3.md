@@ -2174,7 +2174,7 @@ public class CorsConfig implements WebFluxConfigurer {
 
 ### 10.5.2 Bucket4j 의존성
 
-알고리즘을 직접 구현할 수도 있지만, **Bucket4j** 라이브러리를 사용하면 편하다. 토큰 버킷 알고리즘을 스레드 안전하게 구현했고, 성능도 검증되었다. `build.gradle.kts`에 의존성을 추가하자: `implementation("com.bucket4j:bucket4j-core:8.10.1")`
+알고리즘을 직접 구현할 수도 있지만, **Bucket4j** 라이브러리를 사용하면 편하다. 토큰 버킷 알고리즘을 스레드 안전하게 구현했고, 성능도 검증되었다. `build.gradle.kts`에 의존성을 추가하자: `implementation("com.bucket4j:bucket4j-core:8.16.1")`
 
 ### 10.5.3 IP 기반 속도 제한 필터
 
@@ -2357,7 +2357,7 @@ public class RateLimitConfig {
 
 ```kotlin
 dependencies {
-    implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
+    implementation("com.github.ben-manes.caffeine:caffeine:3.2.3")
 }
 ```
 
@@ -2408,9 +2408,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'
 
     // JWT (11.4절), OAuth2 (11.6절)
-    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+    implementation 'io.jsonwebtoken:jjwt-api:0.13.0'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.13.0'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.13.0'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
 

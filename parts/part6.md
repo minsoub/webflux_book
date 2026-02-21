@@ -671,7 +671,7 @@ public class PaymentProcessService {
 
 ```groovy
 dependencies {
-    implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
+    implementation 'net.logstash.logback:logstash-logback-encoder:9.0'
 }
 ```
 
@@ -906,7 +906,7 @@ JMH(Java Microbenchmark Harness)라는 도구를 알고 있나? JVM 수준의 �
 
 ```groovy
 plugins {
-    id 'me.champeau.jmh' version '0.7.2'
+    id 'me.champeau.jmh' version '0.7.3'
 }
 
 dependencies {
@@ -1234,7 +1234,7 @@ Caffeine은 JVM 에서 쓸 수 있는 고성능 로컬 캐시 라이브러리다
 
 ```groovy
 dependencies {
-    implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
+    implementation 'com.github.ben-manes.caffeine:caffeine:3.2.3'
 }
 ```
 
@@ -1430,7 +1430,7 @@ public class MultiLevelCacheService<T> {
 
 ```groovy
 dependencies {
-    testImplementation 'io.projectreactor.tools:blockhound:1.0.9.RELEASE'
+    testImplementation 'io.projectreactor.tools:blockhound:1.0.15.RELEASE'
 }
 ```
 
@@ -1568,11 +1568,11 @@ Gatling은 부하 테스트를 위한 강력한 도구다. Scala로 만들어졌
 
 ```groovy
 plugins {
-    id 'io.gatling.gradle' version '3.11.5.2'
+    id 'io.gatling.gradle' version '3.14.9.8'
 }
 
 dependencies {
-    gatlingImplementation 'io.gatling.highcharts:gatling-charts-highcharts:3.11.5'
+    gatlingImplementation 'io.gatling.highcharts:gatling-charts-highcharts:3.14.9'
 }
 ```
 
@@ -1769,9 +1769,9 @@ Jib은 Google이 만든 도구인데, 사실 꽤 편리하다. Docker 데몬을 
 
 ```groovy
 plugins {
-    id 'org.springframework.boot' version '3.4.1'
+    id 'org.springframework.boot' version '3.5.11'
     id 'io.spring.dependency-management' version '1.1.7'
-    id 'com.google.cloud.tools.jib' version '3.4.4'
+    id 'com.google.cloud.tools.jib' version '3.5.3'
     id 'java'
 }
 
@@ -2428,9 +2428,9 @@ jobs:
 
 ```groovy
 plugins {
-    id 'org.springframework.boot' version '3.4.1'
+    id 'org.springframework.boot' version '3.5.11'
     id 'io.spring.dependency-management' version '1.1.7'
-    id 'org.graalvm.buildtools.native' version '0.10.4'
+    id 'org.graalvm.buildtools.native' version '0.11.4'
     id 'java'
 }
 

@@ -432,7 +432,7 @@ void 응답을_객체로_역직렬화하여_검증() {
 
 ```groovy
 dependencies {
-    testImplementation 'de.flapdoodle.embed:de.flapdoodle.embed.mongo.spring3x:4.11.0'
+    testImplementation 'de.flapdoodle.embed:de.flapdoodle.embed.mongo.spring3x:4.23.0'
 }
 ```
 
@@ -613,9 +613,9 @@ Embedded MongoDB는 분명 편하지만, 실제 MongoDB와 동작이 완전히 �
 
 ```groovy
 dependencies {
-    testImplementation 'org.testcontainers:testcontainers:1.19.3'
-    testImplementation 'org.testcontainers:mongodb:1.19.3'
-    testImplementation 'org.testcontainers:junit-jupiter:1.19.3'
+    testImplementation 'org.testcontainers:testcontainers:1.20.4'
+    testImplementation 'org.testcontainers:mongodb:1.20.4'
+    testImplementation 'org.testcontainers:junit-jupiter:1.20.4'
 }
 ```
 

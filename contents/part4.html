@@ -35,11 +35,12 @@
 </ul>
 <h3 id="1212-sse">12.1.2 SSE 메시지 형식</h3>
 <p>SSE 메시지 형식은 매우 간단하다. 텍스트 줄들로 이루어져 있고, 각 필드는 콜론으로 분리된다.</p>
-<pre class="highlight"><code>id: 1
+<p>```
+id: 1
 event: notification
 data: {"message": "새 댓글이 등록되었습니다.", "postId": "abc123"}
-retry: 5000
-</code></pre>
+retry: 5000</p>
+<p>```</p>
 <p>각 필드가 무엇을 하는지 살펴보면 이렇다.</p>
 <table>
 <thead>
@@ -142,47 +143,49 @@ retry: 5000
 <p>SSE는 알림, 뉴스 피드, 주식 시세, 진행률 표시 같은 <strong>서버에서 클라이언트로의 단방향 스트리밍</strong> 시나리오에서 빛난다. 기존 HTTP 인프라(로드밸런서, 프록시, 인증)를 그대로 활용할 수 있다는 점이 큰 장점이고, 브라우저가 자동으로 재연결을 처리해주니 구현 복잡도도 낮다. 필자의 경험상 단순한 알림 시스템에서는 WebSocket보다 SSE를 선택하는 것이 훨씬 운영하기 편하다. 다만 채팅이나 게임처럼 양방향 실시간 통신이 필요하거나 바이너리 데이터를 자주 주고받아야 한다면 WebSocket이 더 나은 선택이다.</p>
 <h3 id="1214-eventsource-api">12.1.4 클라이언트 측 EventSource API</h3>
 <p>클라이언트 쪽에서 SSE를 수신하는 JavaScript 코드를 보자. 정말 간단하다.</p>
-<pre class="highlight"><code class="language-javascript">const eventSource = new EventSource('/api/notifications/stream');
-
-// 기본 message 이벤트 수신
+<p>```javascript
+const eventSource = new EventSource('/api/notifications/stream');</p>
+<p>// 기본 message 이벤트 수신
 eventSource.onmessage = (event) =&gt; {
     const data = JSON.parse(event.data);
     console.log('수신:', data);
-};
-
-// 특정 이벤트 타입 수신
+};</p>
+<p>// 특정 이벤트 타입 수신
 eventSource.addEventListener('notification', (event) =&gt; {
     const notification = JSON.parse(event.data);
     showNotification(notification);
-});
-
-// 에러 처리 및 연결 종료
+});</p>
+<p>// 에러 처리 및 연결 종료
 eventSource.onerror = (error) =&gt; {
     console.error('SSE 연결 오류:', error);
     if (eventSource.readyState === EventSource.CLOSED) {
         console.log('연결이 종료되었습니다.');
     }
-};</code></pre>
+};
+```</p>
 <p><code>EventSource</code>는 한 가지 놀라운 기능이 있는데, 연결이 떨어지면 자동으로 재연결을 시도한다는 것이다. 개발자가 따로 구현할 필요가 없다. <code>readyState</code> 속성으로 연결 상태를 확인할 수 있으며, 세 가지 상태(<code>CONNECTING(0)</code>, <code>OPEN(1)</code>, <code>CLOSED(2)</code>)를 가진다.</p>
 <hr>
 <h2 id="122-flux-sse">12.2 Flux를 활용한 SSE 엔드포인트 구현</h2>
 <h3 id="1221-text_event_stream">12.2.1 TEXT_EVENT_STREAM 미디어 타입</h3>
 <p>다행히 Spring WebFlux에는 SSE 지원이 이미 내장되어 있어서 추가 라이브러리를 설치할 필요가 없다. SSE 엔드포인트를 구현하는 가장 직관적인 방법은 컨트롤러 메서드에서 <code>Flux</code>를 반환하고 <code>produces</code> 속성에 <code>text/event-stream</code> 미디어 타입을 지정하는 것이다. 보기보다 간단하다.</p>
-<pre class="highlight"><code class="language-java">@RestController
+<p>```java
+@RestController
 @RequestMapping("/api/sse")
-public class SseController {
-
-    @GetMapping(value = "/time", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux&lt;String&gt; streamTime() {
-        return Flux.interval(Duration.ofSeconds(1))
-            .map(sequence -&gt; "현재 시각: " + LocalDateTime.now()
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-    }
-}</code></pre>
+public class SseController {</p>
+<pre><code>@GetMapping(value = "/time", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+public Flux&lt;String&gt; streamTime() {
+    return Flux.interval(Duration.ofSeconds(1))
+        .map(sequence -&gt; "현재 시각: " + LocalDateTime.now()
+            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+}
+</code></pre>
+<p>}
+```</p>
 <p>보면 알겠지만, <code>MediaType.TEXT_EVENT_STREAM_VALUE</code>는 단순히 <code>"text/event-stream"</code> 문자열을 상수로 정의한 것이다. 이것만 설정하면 Spring WebFlux가 나머지를 다 처리해준다. <code>Flux</code>의 각 요소가 자동으로 SSE 메시지 형식(<code>data:</code> 필드)으로 변환되어 클라이언트에 흘러간다.</p>
 <h3 id="1222-serversentevent">12.2.2 ServerSentEvent 클래스 활용</h3>
 <p>하지만 <code>data</code> 필드만으로는 부족한 경우가 많다. <code>id</code>, <code>event</code>, <code>retry</code> 같은 필드들도 제어하고 싶으면 <code>ServerSentEvent&lt;T&gt;</code> 제네릭 클래스를 사용하면 된다.</p>
-<pre class="highlight"><code class="language-java">@GetMapping(value = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+<p><code>java
+@GetMapping(value = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 public Flux&lt;ServerSentEvent&lt;String&gt;&gt; streamEvents() {
     return Flux.interval(Duration.ofSeconds(2))
         .map(sequence -&gt; ServerSentEvent.&lt;String&gt;builder()
@@ -192,9 +195,10 @@ public Flux&lt;ServerSentEvent&lt;String&gt;&gt; streamEvents() {
             .retry(Duration.ofSeconds(10))
             .comment("keep-alive")
             .build());
-}</code></pre>
+}</code></p>
 <p>흥미로운 점은 <code>ServerSentEvent</code>를 반환 타입으로 사용할 때는 <code>produces</code> 속성을 생략해도 된다는 것이다. Spring WebFlux가 반환 타입을 분석해서 자동으로 <code>text/event-stream</code>을 적용해버린다.</p>
-<pre class="highlight"><code class="language-java">// produces 생략 가능 - ServerSentEvent 반환 시 자동 적용
+<p><code>java
+// produces 생략 가능 - ServerSentEvent 반환 시 자동 적용
 @GetMapping("/events-auto")
 public Flux&lt;ServerSentEvent&lt;Map&lt;String, Object&gt;&gt;&gt; streamEventsAuto() {
     return Flux.interval(Duration.ofSeconds(3))
@@ -203,29 +207,32 @@ public Flux&lt;ServerSentEvent&lt;Map&lt;String, Object&gt;&gt;&gt; streamEvents
             .event("status-update")
             .data(Map.of("sequence", seq, "timestamp", Instant.now().toString()))
             .build());
-}</code></pre>
+}</code></p>
 <h3 id="1223-fluxinterval">12.2.3 Flux.interval을 활용한 주기적 데이터 전송</h3>
 <p>실제 SSE 구현에서는 타이머 같은 구조가 자주 나온다. <code>Flux.interval()</code>이 바로 그 도구다. 지정된 간격으로 0부터 시작하는 <code>Long</code> 값을 계속 내보내는 Hot Publisher다. 주기적으로 데이터를 보내야 하는 SSE 엔드포인트에 딱 맞다.</p>
-<pre class="highlight"><code class="language-java">@Slf4j
+<p>```java
+@Slf4j
 @RestController
 @RequestMapping("/api/sse")
 @RequiredArgsConstructor
-public class DashboardSseController {
+public class DashboardSseController {</p>
+<pre><code>private final SystemMetricsService metricsService;
 
-    private final SystemMetricsService metricsService;
-
-    @GetMapping(value = "/dashboard", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux&lt;ServerSentEvent&lt;DashboardData&gt;&gt; streamDashboard() {
-        return Flux.interval(Duration.ofSeconds(5))
-            .flatMap(tick -&gt; metricsService.collectMetrics())
-            .map(metrics -&gt; ServerSentEvent.&lt;DashboardData&gt;builder()
-                .event("dashboard-update")
-                .data(metrics)
-                .build())
-            .doOnCancel(() -&gt; log.info("대시보드 SSE 연결 해제"));
-    }
-}</code></pre>
-<pre class="highlight"><code class="language-java">@Data
+@GetMapping(value = "/dashboard", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+public Flux&lt;ServerSentEvent&lt;DashboardData&gt;&gt; streamDashboard() {
+    return Flux.interval(Duration.ofSeconds(5))
+        .flatMap(tick -&gt; metricsService.collectMetrics())
+        .map(metrics -&gt; ServerSentEvent.&lt;DashboardData&gt;builder()
+            .event("dashboard-update")
+            .data(metrics)
+            .build())
+        .doOnCancel(() -&gt; log.info("대시보드 SSE 연결 해제"));
+}
+</code></pre>
+<p>}
+```</p>
+<p><code>java
+@Data
 @Builder
 public class DashboardData {
     private double cpuUsage;
@@ -233,79 +240,84 @@ public class DashboardData {
     private long memoryTotal;
     private int activeThreads;
     private Instant timestamp;
-}</code></pre>
+}</code></p>
 <h3 id="1224-fluxmerge">12.2.4 이벤트 타입 혼합과 Flux.merge</h3>
 <p>실무에서는 한 가지 이벤트만 보내는 경우보다 여러 종류의 이벤트를 섞어서 보내야 할 때가 많다. 시스템 상태, 통계, 하트비트 같은 것들이 동시에 흘러가야 하는 상황 말이다. <code>Flux.merge</code>를 사용하면 여러 스트림을 하나로 합칠 수 있고, 클라이언트는 <code>addEventListener</code>로 필요한 이벤트만 골라서 받을 수 있다.</p>
-<pre class="highlight"><code class="language-java">@GetMapping(value = "/mixed", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+<p>```java
+@GetMapping(value = "/mixed", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 public Flux&lt;ServerSentEvent&lt;?&gt;&gt; streamMixedEvents() {
     Flux&lt;ServerSentEvent&lt;?&gt;&gt; statusStream = Flux.interval(Duration.ofSeconds(5))
         .map(tick -&gt; ServerSentEvent.builder()
             .event("system-status")
             .data(Map.of("status", "healthy", "uptime", tick * 5))
-            .build());
+            .build());</p>
+<pre><code>Flux&lt;ServerSentEvent&lt;?&gt;&gt; statsStream = Flux.interval(Duration.ofSeconds(10))
+    .map(tick -&gt; ServerSentEvent.builder()
+        .event("statistics")
+        .data(Map.of("activeUsers", 42 + tick, "requestsPerSec", 150))
+        .build());
 
-    Flux&lt;ServerSentEvent&lt;?&gt;&gt; statsStream = Flux.interval(Duration.ofSeconds(10))
-        .map(tick -&gt; ServerSentEvent.builder()
-            .event("statistics")
-            .data(Map.of("activeUsers", 42 + tick, "requestsPerSec", 150))
-            .build());
+// 30초마다 주석 기반 하트비트 전송 (연결 유지용)
+Flux&lt;ServerSentEvent&lt;?&gt;&gt; heartbeat = Flux.interval(Duration.ofSeconds(30))
+    .map(tick -&gt; ServerSentEvent.builder().comment("heartbeat").build());
 
-    // 30초마다 주석 기반 하트비트 전송 (연결 유지용)
-    Flux&lt;ServerSentEvent&lt;?&gt;&gt; heartbeat = Flux.interval(Duration.ofSeconds(30))
-        .map(tick -&gt; ServerSentEvent.builder().comment("heartbeat").build());
-
-    return Flux.merge(statusStream, statsStream, heartbeat);
-}</code></pre>
+return Flux.merge(statusStream, statsStream, heartbeat);
+</code></pre>
+<p>}
+```</p>
 <h3 id="1225-sse">12.2.5 함수형 라우터에서 SSE 구현</h3>
 <p>컨트롤러 방식 대신 Router Functions를 선호한다면 그쪽으로도 SSE를 구현할 수 있다.</p>
-<pre class="highlight"><code class="language-java">@Configuration
-public class SseRouterConfig {
-
-    @Bean
-    public RouterFunction&lt;ServerResponse&gt; sseRoutes(SseHandler handler) {
-        return RouterFunctions.route()
-            .GET("/api/sse/stream", handler::stream)
-            .build();
-    }
+<p>```java
+@Configuration
+public class SseRouterConfig {</p>
+<pre><code>@Bean
+public RouterFunction&lt;ServerResponse&gt; sseRoutes(SseHandler handler) {
+    return RouterFunctions.route()
+        .GET("/api/sse/stream", handler::stream)
+        .build();
 }
+</code></pre>
+<p>}</p>
+<p>@Component
+public class SseHandler {</p>
+<pre><code>public Mono&lt;ServerResponse&gt; stream(ServerRequest request) {
+    Flux&lt;ServerSentEvent&lt;String&gt;&gt; events = Flux.interval(Duration.ofSeconds(1))
+        .map(seq -&gt; ServerSentEvent.&lt;String&gt;builder()
+            .id(String.valueOf(seq))
+            .data("tick " + seq)
+            .build());
 
-@Component
-public class SseHandler {
-
-    public Mono&lt;ServerResponse&gt; stream(ServerRequest request) {
-        Flux&lt;ServerSentEvent&lt;String&gt;&gt; events = Flux.interval(Duration.ofSeconds(1))
-            .map(seq -&gt; ServerSentEvent.&lt;String&gt;builder()
-                .id(String.valueOf(seq))
-                .data("tick " + seq)
-                .build());
-
-        return ServerResponse.ok()
-            .contentType(MediaType.TEXT_EVENT_STREAM)
-            .body(events, ServerSentEvent.class);
-    }
-}</code></pre>
+    return ServerResponse.ok()
+        .contentType(MediaType.TEXT_EVENT_STREAM)
+        .body(events, ServerSentEvent.class);
+}
+</code></pre>
+<p>}
+```</p>
 <hr>
 <h2 id="123">12.3 실시간 알림 시스템 구축</h2>
 <h3 id="1231-sinks">12.3.1 Sinks를 활용한 이벤트 브로드캐스팅</h3>
 <p><code>Flux.interval()</code>로 주기적으로 데이터를 보내는 것만으로는 실무 서비스를 만들 수 없다. 댓글이 달리거나 특정 이벤트가 발생할 때 연결된 모든 클라이언트에게 즉각적으로 알려줘야 하니까. 바로 이런 상황에서 Reactor의 <code>Sinks</code>가 활용된다. 프로그래밍 방식으로 이벤트를 발행할 수 있는 Hot Publisher이기 때문에 이 목적에 완벽하다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>```java
+@Service
 @Slf4j
-public class NotificationBroadcaster {
+public class NotificationBroadcaster {</p>
+<pre><code>private final Sinks.Many&lt;Notification&gt; sink =
+    Sinks.many().multicast().onBackpressureBuffer(256);
 
-    private final Sinks.Many&lt;Notification&gt; sink =
-        Sinks.many().multicast().onBackpressureBuffer(256);
-
-    public void publish(Notification notification) {
-        Sinks.EmitResult result = sink.tryEmitNext(notification);
-        if (result.isFailure()) {
-            log.warn("알림 발행 실패: {}, result={}", notification.getId(), result);
-        }
+public void publish(Notification notification) {
+    Sinks.EmitResult result = sink.tryEmitNext(notification);
+    if (result.isFailure()) {
+        log.warn("알림 발행 실패: {}, result={}", notification.getId(), result);
     }
+}
 
-    public Flux&lt;Notification&gt; subscribe() {
-        return sink.asFlux();
-    }
-}</code></pre>
+public Flux&lt;Notification&gt; subscribe() {
+    return sink.asFlux();
+}
+</code></pre>
+<p>}
+```</p>
 <p>Sinks의 종류를 이해하려면 각 팩토리 메서드의 차이를 알아야 한다.</p>
 <table>
 <thead>
@@ -334,7 +346,8 @@ public class NotificationBroadcaster {
 </tbody>
 </table>
 <h3 id="1232">12.3.2 알림 도메인 모델</h3>
-<pre class="highlight"><code class="language-java">@Document(collection = "notifications")
+<p><code>java
+@Document(collection = "notifications")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -349,141 +362,146 @@ public class Notification {
     private Map&lt;String, Object&gt; metadata;  // 추가 정보 (postId, commentId 등)
     private boolean read;
     private LocalDateTime createdAt;
-}</code></pre>
-<pre class="highlight"><code class="language-java">public interface NotificationRepository
+}</code></p>
+<p><code>java
+public interface NotificationRepository
         extends ReactiveMongoRepository&lt;Notification, String&gt; {
     Flux&lt;Notification&gt; findByUserIdOrderByCreatedAtDesc(String userId);
     Flux&lt;Notification&gt; findByUserIdAndReadFalse(String userId);
     Mono&lt;Long&gt; countByUserIdAndReadFalse(String userId);
-}</code></pre>
+}</code></p>
 <h3 id="1233">12.3.3 사용자별 알림 구독 관리</h3>
 <p>모든 알림을 모든 사용자에게 보낼 수는 없다. 각 사용자마다 독립적인 구독을 관리해야 하고, 해당 사용자에게만 알림을 전달해야 한다. 이것이 실무에서 많이 쓰이는 패턴인데, 살펴보자.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>```java
+@Service
 @Slf4j
-public class NotificationService {
+public class NotificationService {</p>
+<pre><code>private final NotificationRepository notificationRepository;
+private final ConcurrentHashMap&lt;String, Sinks.Many&lt;Notification&gt;&gt; userSinks =
+    new ConcurrentHashMap&lt;&gt;();
 
-    private final NotificationRepository notificationRepository;
-    private final ConcurrentHashMap&lt;String, Sinks.Many&lt;Notification&gt;&gt; userSinks =
-        new ConcurrentHashMap&lt;&gt;();
+public NotificationService(NotificationRepository notificationRepository) {
+    this.notificationRepository = notificationRepository;
+}
 
-    public NotificationService(NotificationRepository notificationRepository) {
-        this.notificationRepository = notificationRepository;
-    }
+/**
+ * 사용자별 알림 스트림을 구독한다.
+ */
+public Flux&lt;ServerSentEvent&lt;Notification&gt;&gt; subscribe(String userId) {
+    Sinks.Many&lt;Notification&gt; userSink = userSinks.computeIfAbsent(userId,
+        key -&gt; {
+            log.info("사용자 {} 알림 구독 생성", key);
+            return Sinks.many().multicast().onBackpressureBuffer(128);
+        });
 
-    /**
-     * 사용자별 알림 스트림을 구독한다.
-     */
-    public Flux&lt;ServerSentEvent&lt;Notification&gt;&gt; subscribe(String userId) {
-        Sinks.Many&lt;Notification&gt; userSink = userSinks.computeIfAbsent(userId,
-            key -&gt; {
-                log.info("사용자 {} 알림 구독 생성", key);
-                return Sinks.many().multicast().onBackpressureBuffer(128);
-            });
+    return userSink.asFlux()
+        .map(notification -&gt; ServerSentEvent.&lt;Notification&gt;builder()
+            .id(notification.getId())
+            .event(notification.getType())
+            .data(notification)
+            .build());
+}
 
-        return userSink.asFlux()
-            .map(notification -&gt; ServerSentEvent.&lt;Notification&gt;builder()
-                .id(notification.getId())
-                .event(notification.getType())
-                .data(notification)
-                .build());
-    }
+/**
+ * 특정 사용자에게 알림을 전송한다.
+ * MongoDB에 저장하고, 접속 중이면 SSE로 실시간 전달한다.
+ */
+public Mono&lt;Notification&gt; sendNotification(Notification notification) {
+    notification.setCreatedAt(LocalDateTime.now());
+    notification.setRead(false);
 
-    /**
-     * 특정 사용자에게 알림을 전송한다.
-     * MongoDB에 저장하고, 접속 중이면 SSE로 실시간 전달한다.
-     */
-    public Mono&lt;Notification&gt; sendNotification(Notification notification) {
-        notification.setCreatedAt(LocalDateTime.now());
-        notification.setRead(false);
-
-        return notificationRepository.save(notification)
-            .doOnSuccess(saved -&gt; {
-                Sinks.Many&lt;Notification&gt; userSink =
-                    userSinks.get(saved.getUserId());
-                if (userSink != null) {
-                    Sinks.EmitResult result = userSink.tryEmitNext(saved);
-                    if (result.isFailure()) {
-                        log.warn("사용자 {} 알림 전송 실패: {}",
-                            saved.getUserId(), result);
-                    }
-                } else {
-                    log.debug("사용자 {} 미접속 상태, 알림은 DB에만 저장됨",
-                        saved.getUserId());
+    return notificationRepository.save(notification)
+        .doOnSuccess(saved -&gt; {
+            Sinks.Many&lt;Notification&gt; userSink =
+                userSinks.get(saved.getUserId());
+            if (userSink != null) {
+                Sinks.EmitResult result = userSink.tryEmitNext(saved);
+                if (result.isFailure()) {
+                    log.warn("사용자 {} 알림 전송 실패: {}",
+                        saved.getUserId(), result);
                 }
-            });
-    }
+            } else {
+                log.debug("사용자 {} 미접속 상태, 알림은 DB에만 저장됨",
+                    saved.getUserId());
+            }
+        });
+}
 
-    public Mono&lt;Long&gt; getUnreadCount(String userId) {
-        return notificationRepository.countByUserIdAndReadFalse(userId);
-    }
+public Mono&lt;Long&gt; getUnreadCount(String userId) {
+    return notificationRepository.countByUserIdAndReadFalse(userId);
+}
 
-    public Mono&lt;Notification&gt; markAsRead(String notificationId) {
-        return notificationRepository.findById(notificationId)
-            .map(notification -&gt; {
-                notification.setRead(true);
-                return notification;
-            })
-            .flatMap(notificationRepository::save);
-    }
+public Mono&lt;Notification&gt; markAsRead(String notificationId) {
+    return notificationRepository.findById(notificationId)
+        .map(notification -&gt; {
+            notification.setRead(true);
+            return notification;
+        })
+        .flatMap(notificationRepository::save);
+}
 
-    /**
-     * 사용자의 SSE 연결이 해제될 때 호출된다.
-     */
-    public void removeSubscription(String userId) {
-        Sinks.Many&lt;Notification&gt; removed = userSinks.remove(userId);
-        if (removed != null) {
-            removed.tryEmitComplete();
-            log.info("사용자 {} 알림 구독 해제", userId);
-        }
+/**
+ * 사용자의 SSE 연결이 해제될 때 호출된다.
+ */
+public void removeSubscription(String userId) {
+    Sinks.Many&lt;Notification&gt; removed = userSinks.remove(userId);
+    if (removed != null) {
+        removed.tryEmitComplete();
+        log.info("사용자 {} 알림 구독 해제", userId);
     }
-}</code></pre>
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1234-sse">12.3.4 알림 SSE 컨트롤러</h3>
-<pre class="highlight"><code class="language-java">@RestController
+<p>```java
+@RestController
 @RequestMapping("/api/notifications")
 @RequiredArgsConstructor
 @Slf4j
-public class NotificationController {
+public class NotificationController {</p>
+<pre><code>private final NotificationService notificationService;
 
-    private final NotificationService notificationService;
+@GetMapping(value = "/stream/{userId}",
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+public Flux&lt;ServerSentEvent&lt;Notification&gt;&gt; streamNotifications(
+        @PathVariable String userId) {
 
-    @GetMapping(value = "/stream/{userId}",
-                produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux&lt;ServerSentEvent&lt;Notification&gt;&gt; streamNotifications(
-            @PathVariable String userId) {
+    log.info("SSE 연결: userId={}", userId);
 
-        log.info("SSE 연결: userId={}", userId);
+    // 실시간 알림 스트림
+    Flux&lt;ServerSentEvent&lt;Notification&gt;&gt; notificationStream =
+        notificationService.subscribe(userId);
 
-        // 실시간 알림 스트림
-        Flux&lt;ServerSentEvent&lt;Notification&gt;&gt; notificationStream =
-            notificationService.subscribe(userId);
+    // 30초마다 하트비트 전송 (프록시/로드밸런서 타임아웃 방지)
+    Flux&lt;ServerSentEvent&lt;Notification&gt;&gt; heartbeat =
+        Flux.interval(Duration.ofSeconds(30))
+            .map(tick -&gt; ServerSentEvent.&lt;Notification&gt;builder()
+                .comment("heartbeat")
+                .build());
 
-        // 30초마다 하트비트 전송 (프록시/로드밸런서 타임아웃 방지)
-        Flux&lt;ServerSentEvent&lt;Notification&gt;&gt; heartbeat =
-            Flux.interval(Duration.ofSeconds(30))
-                .map(tick -&gt; ServerSentEvent.&lt;Notification&gt;builder()
-                    .comment("heartbeat")
-                    .build());
+    return Flux.merge(notificationStream, heartbeat)
+        .doOnCancel(() -&gt; {
+            log.info("SSE 연결 해제: userId={}", userId);
+            notificationService.removeSubscription(userId);
+        });
+}
 
-        return Flux.merge(notificationStream, heartbeat)
-            .doOnCancel(() -&gt; {
-                log.info("SSE 연결 해제: userId={}", userId);
-                notificationService.removeSubscription(userId);
-            });
-    }
+@PostMapping
+@ResponseStatus(HttpStatus.CREATED)
+public Mono&lt;Notification&gt; sendNotification(
+        @RequestBody Notification notification) {
+    return notificationService.sendNotification(notification);
+}
 
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Mono&lt;Notification&gt; sendNotification(
-            @RequestBody Notification notification) {
-        return notificationService.sendNotification(notification);
-    }
-
-    @PatchMapping("/{notificationId}/read")
-    public Mono&lt;Notification&gt; markAsRead(
-            @PathVariable String notificationId) {
-        return notificationService.markAsRead(notificationId);
-    }
-}</code></pre>
+@PatchMapping("/{notificationId}/read")
+public Mono&lt;Notification&gt; markAsRead(
+        @PathVariable String notificationId) {
+    return notificationService.markAsRead(notificationId);
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1235">12.3.5 연결 해제 처리와 리소스 정리</h3>
 <p>SSE 연결이 끊어지는 상황은 여러 가지가 있다. 정리해보면 이렇다.</p>
 <ol>
@@ -493,64 +511,69 @@ public class NotificationController {
 <li><strong>프록시/로드밸런서 타임아웃</strong>: 일정 시간 동안 데이터가 흐르지 않으면 자동으로 연결 종료</li>
 </ol>
 <p>모든 상황을 통일되게 처리하려면 <code>doFinally</code>를 사용하면 된다. 이 메서드는 <code>onComplete</code>, <code>onError</code>, <code>cancel</code> 모든 종료 신호를 감지하기 때문에, 리소스를 안전하게 정리하는 데 이상적이다.</p>
-<pre class="highlight"><code class="language-java">@GetMapping(value = "/stream/{userId}",
+<p>```java
+@GetMapping(value = "/stream/{userId}",
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-public Flux&lt;ServerSentEvent&lt;Notification&gt;&gt; streamWithCleanup(
-        @PathVariable String userId) {
-
-    return notificationService.subscribe(userId)
-        .timeout(Duration.ofHours(1))
-        .onErrorResume(TimeoutException.class, e -&gt; {
-            log.info("SSE 타임아웃: userId={}", userId);
-            return Flux.empty();
-        })
-        .doFinally(signalType -&gt; {
-            log.info("SSE 스트림 종료: userId={}, signal={}", userId, signalType);
-            notificationService.removeSubscription(userId);
-        });
-}</code></pre>
+public Flux<ServerSentEvent\<Notification>> streamWithCleanup(
+        @PathVariable String userId) {</p>
+<pre><code>return notificationService.subscribe(userId)
+    .timeout(Duration.ofHours(1))
+    .onErrorResume(TimeoutException.class, e -&gt; {
+        log.info("SSE 타임아웃: userId={}", userId);
+        return Flux.empty();
+    })
+    .doFinally(signalType -&gt; {
+        log.info("SSE 스트림 종료: userId={}, signal={}", userId, signalType);
+        notificationService.removeSubscription(userId);
+    });
+</code></pre>
+<p>}
+```</p>
 <h3 id="1236">12.3.6 알림 발행 연동 예제</h3>
 <p>여기까지 배운 것들을 실제로 조합해보자. 게시글에 댓글이 달릴 때 게시글 작성자에게 알림을 보내는 상황을 구현해보면 이렇게 된다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class CommentService {
+public class CommentService {</p>
+<pre><code>private final CommentRepository commentRepository;
+private final PostRepository postRepository;
+private final NotificationService notificationService;
 
-    private final CommentRepository commentRepository;
-    private final PostRepository postRepository;
-    private final NotificationService notificationService;
+public Mono&lt;Comment&gt; addComment(String postId, CommentRequest request) {
+    Comment comment = Comment.builder()
+        .postId(postId)
+        .authorId(request.getAuthorId())
+        .authorName(request.getAuthorName())
+        .content(request.getContent())
+        .createdAt(LocalDateTime.now())
+        .build();
 
-    public Mono&lt;Comment&gt; addComment(String postId, CommentRequest request) {
-        Comment comment = Comment.builder()
-            .postId(postId)
-            .authorId(request.getAuthorId())
-            .authorName(request.getAuthorName())
-            .content(request.getContent())
-            .createdAt(LocalDateTime.now())
-            .build();
-
-        return commentRepository.save(comment)
-            .flatMap(saved -&gt; postRepository.findById(postId)
-                .flatMap(post -&gt; {
-                    if (!post.getAuthorId().equals(request.getAuthorId())) {
-                        Notification notification = Notification.builder()
-                            .userId(post.getAuthorId())
-                            .type("COMMENT")
-                            .title("새 댓글")
-                            .message(request.getAuthorName() + "님이 '"
-                                + post.getTitle() + "'에 댓글을 남겼습니다.")
-                            .metadata(Map.of(
-                                "postId", postId,
-                                "commentId", saved.getId()))
-                            .build();
-                        return notificationService.sendNotification(notification)
-                            .thenReturn(saved);
-                    }
-                    return Mono.just(saved);
-                }));
-    }
-}</code></pre>
+    return commentRepository.save(comment)
+        .flatMap(saved -&gt; postRepository.findById(postId)
+            .flatMap(post -&gt; {
+                if (!post.getAuthorId().equals(request.getAuthorId())) {
+                    Notification notification = Notification.builder()
+                        .userId(post.getAuthorId())
+                        .type("COMMENT")
+                        .title("새 댓글")
+                        .message(request.getAuthorName() + "님이 '"
+                            + post.getTitle() + "'에 댓글을 남겼습니다.")
+                        .metadata(Map.of(
+                            "postId", postId,
+                            "commentId", saved.getId()))
+                        .build();
+                    return notificationService.sendNotification(notification)
+                        .thenReturn(saved);
+                }
+                return Mono.just(saved);
+            }));
+}
+</code></pre>
+<p>}
+```</p>
 <p>참고로, 11장에서 배운 JWT 인증을 이 시스템과 함께 사용하면 <code>ReactiveSecurityContextHolder</code>에서 현재 사용자를 가져와서 인증된 사용자 전용 SSE 구독을 만들 수 있다. 필자의 경험상 이렇게 조합하면 보안이 훨씬 단단해진다.</p>
-<pre class="highlight"><code class="language-java">@GetMapping(value = "/stream/me",
+<p><code>java
+@GetMapping(value = "/stream/me",
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 public Flux&lt;ServerSentEvent&lt;Notification&gt;&gt; streamMyNotifications() {
     return ReactiveSecurityContextHolder.getContext()
@@ -558,7 +581,7 @@ public Flux&lt;ServerSentEvent&lt;Notification&gt;&gt; streamMyNotifications() {
         .flatMapMany(username -&gt; notificationService.subscribe(username)
             .doFinally(signal -&gt;
                 notificationService.removeSubscription(username)));
-}</code></pre>
+}</code></p>
 <hr>
 <h2 id="124-mongodb-change-streams-sse">12.4 MongoDB Change Streams + SSE 연동</h2>
 <h3 id="1241-change-streams">12.4.1 Change Streams 개요</h3>
@@ -571,145 +594,155 @@ public Flux&lt;ServerSentEvent&lt;Notification&gt;&gt; streamMyNotifications() {
 </ul>
 <h3 id="1242-reactivemongotemplate-changestream">12.4.2 ReactiveMongoTemplate의 changeStream()</h3>
 <p>Spring Data MongoDB에서 제공하는 <code>ReactiveMongoTemplate</code>은 <code>changeStream()</code> 메서드로 MongoDB의 Change Streams를 <code>Flux</code>로 변환해준다. 간단하지만 강력한 도구다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>```java
+@Service
 @RequiredArgsConstructor
 @Slf4j
-public class ProductChangeStreamService {
+public class ProductChangeStreamService {</p>
+<pre><code>private final ReactiveMongoTemplate mongoTemplate;
 
-    private final ReactiveMongoTemplate mongoTemplate;
+public Flux&lt;ChangeStreamEvent&lt;Product&gt;&gt; watchProducts() {
+    return mongoTemplate.changeStream("products",
+            ChangeStreamOptions.builder()
+                .filter(Aggregation.newAggregation(
+                    Aggregation.match(Criteria.where("operationType")
+                        .in("insert", "update", "replace"))))
+                .build(),
+            Product.class)
+        .doOnNext(event -&gt; log.info("변경 감지: type={}, id={}",
+            event.getOperationType(), event.getBody()));
+}
 
-    public Flux&lt;ChangeStreamEvent&lt;Product&gt;&gt; watchProducts() {
-        return mongoTemplate.changeStream("products",
-                ChangeStreamOptions.builder()
-                    .filter(Aggregation.newAggregation(
-                        Aggregation.match(Criteria.where("operationType")
-                            .in("insert", "update", "replace"))))
-                    .build(),
-                Product.class)
-            .doOnNext(event -&gt; log.info("변경 감지: type={}, id={}",
-                event.getOperationType(), event.getBody()));
-    }
-
-    public Flux&lt;ChangeStreamEvent&lt;Product&gt;&gt; watchProductsByCategory(
-            String category) {
-        return mongoTemplate.changeStream("products",
-                ChangeStreamOptions.builder()
-                    .filter(Aggregation.newAggregation(
-                        Aggregation.match(Criteria.where("operationType")
-                            .in("insert", "update", "replace")
-                            .and("fullDocument.category").is(category))))
-                    .build(),
-                Product.class);
-    }
-}</code></pre>
+public Flux&lt;ChangeStreamEvent&lt;Product&gt;&gt; watchProductsByCategory(
+        String category) {
+    return mongoTemplate.changeStream("products",
+            ChangeStreamOptions.builder()
+                .filter(Aggregation.newAggregation(
+                    Aggregation.match(Criteria.where("operationType")
+                        .in("insert", "update", "replace")
+                        .and("fullDocument.category").is(category))))
+                .build(),
+            Product.class);
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1243-change-streams-sse">12.4.3 Change Streams를 SSE로 전달</h3>
 <p>MongoDB의 Change Streams 이벤트를 받아서 SSE로 클라이언트에게 보내는 컨트롤러를 만들어보자.</p>
-<pre class="highlight"><code class="language-java">@Data
+<p><code>java
+@Data
 @Builder
 public class ProductChangeEvent {
     private String operationType;
     private Product product;
     private Instant timestamp;
-}</code></pre>
-<pre class="highlight"><code class="language-java">@RestController
+}</code></p>
+<p>```java
+@RestController
 @RequestMapping("/api/products")
 @RequiredArgsConstructor
 @Slf4j
-public class ProductSseController {
+public class ProductSseController {</p>
+<pre><code>private final ProductChangeStreamService changeStreamService;
 
-    private final ProductChangeStreamService changeStreamService;
+@GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+public Flux&lt;ServerSentEvent&lt;ProductChangeEvent&gt;&gt; streamProductChanges() {
 
-    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux&lt;ServerSentEvent&lt;ProductChangeEvent&gt;&gt; streamProductChanges() {
+    Flux&lt;ServerSentEvent&lt;ProductChangeEvent&gt;&gt; changeStream =
+        changeStreamService.watchProducts()
+            .map(event -&gt; {
+                ProductChangeEvent payload = ProductChangeEvent.builder()
+                    .operationType(event.getOperationType().name())
+                    .product(event.getBody())
+                    .timestamp(Instant.now())
+                    .build();
 
-        Flux&lt;ServerSentEvent&lt;ProductChangeEvent&gt;&gt; changeStream =
-            changeStreamService.watchProducts()
-                .map(event -&gt; {
-                    ProductChangeEvent payload = ProductChangeEvent.builder()
-                        .operationType(event.getOperationType().name())
-                        .product(event.getBody())
-                        .timestamp(Instant.now())
-                        .build();
+                return ServerSentEvent.&lt;ProductChangeEvent&gt;builder()
+                    .id(event.getRaw() != null &amp;&amp; event.getRaw().getResumeToken() != null
+                        ? event.getRaw().getResumeToken().toJson() : null)
+                    .event("product-" + event.getOperationType().name())
+                    .data(payload)
+                    .build();
+            });
 
-                    return ServerSentEvent.&lt;ProductChangeEvent&gt;builder()
-                        .id(event.getRaw() != null &amp;&amp; event.getRaw().getResumeToken() != null
-                            ? event.getRaw().getResumeToken().toJson() : null)
-                        .event("product-" + event.getOperationType().name())
-                        .data(payload)
-                        .build();
-                });
+    Flux&lt;ServerSentEvent&lt;ProductChangeEvent&gt;&gt; heartbeat =
+        Flux.interval(Duration.ofSeconds(30))
+            .map(tick -&gt; ServerSentEvent.&lt;ProductChangeEvent&gt;builder()
+                .comment("heartbeat")
+                .build());
 
-        Flux&lt;ServerSentEvent&lt;ProductChangeEvent&gt;&gt; heartbeat =
-            Flux.interval(Duration.ofSeconds(30))
-                .map(tick -&gt; ServerSentEvent.&lt;ProductChangeEvent&gt;builder()
-                    .comment("heartbeat")
-                    .build());
-
-        return Flux.merge(changeStream, heartbeat)
-            .doOnCancel(() -&gt; log.info("상품 변경 SSE 연결 해제"));
-    }
-}</code></pre>
+    return Flux.merge(changeStream, heartbeat)
+        .doOnCancel(() -&gt; log.info("상품 변경 SSE 연결 해제"));
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1244-resume-token">12.4.4 Resume Token을 활용한 이벤트 복구</h3>
 <p>네트워크가 끊어지거나 클라이언트가 재연결할 때 이전에 받던 이벤트들을 빠뜨리지 않으려면 Resume Token을 활용해야 한다. SSE의 <code>id</code> 필드에 Resume Token을 넣어두면, 브라우저가 자동으로 재연결 시 <code>Last-Event-ID</code> 헤더에 담아서 보낸다. 매우 우아한 설계다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>```java
+@Service
 @RequiredArgsConstructor
 @Slf4j
-public class ResumableChangeStreamService {
+public class ResumableChangeStreamService {</p>
+<pre><code>private final ReactiveMongoTemplate mongoTemplate;
 
-    private final ReactiveMongoTemplate mongoTemplate;
+public Flux&lt;ChangeStreamEvent&lt;Product&gt;&gt; watchProducts(String resumeToken) {
+    ChangeStreamOptions.ChangeStreamOptionsBuilder optionsBuilder =
+        ChangeStreamOptions.builder()
+            .filter(Aggregation.newAggregation(
+                Aggregation.match(Criteria.where("operationType")
+                    .in("insert", "update", "replace"))));
 
-    public Flux&lt;ChangeStreamEvent&lt;Product&gt;&gt; watchProducts(String resumeToken) {
-        ChangeStreamOptions.ChangeStreamOptionsBuilder optionsBuilder =
-            ChangeStreamOptions.builder()
-                .filter(Aggregation.newAggregation(
-                    Aggregation.match(Criteria.where("operationType")
-                        .in("insert", "update", "replace"))));
-
-        if (resumeToken != null &amp;&amp; !resumeToken.isEmpty()) {
-            try {
-                BsonDocument token = BsonDocument.parse(resumeToken);
-                optionsBuilder.resumeAfter(token);
-                log.info("Resume Token으로 변경 스트림 재개");
-            } catch (Exception e) {
-                log.warn("유효하지 않은 Resume Token, 처음부터 시작");
-            }
+    if (resumeToken != null &amp;&amp; !resumeToken.isEmpty()) {
+        try {
+            BsonDocument token = BsonDocument.parse(resumeToken);
+            optionsBuilder.resumeAfter(token);
+            log.info("Resume Token으로 변경 스트림 재개");
+        } catch (Exception e) {
+            log.warn("유효하지 않은 Resume Token, 처음부터 시작");
         }
-
-        return mongoTemplate.changeStream("products",
-            optionsBuilder.build(), Product.class);
     }
-}</code></pre>
-<pre class="highlight"><code class="language-java">@GetMapping(value = "/stream/resumable",
+
+    return mongoTemplate.changeStream("products",
+        optionsBuilder.build(), Product.class);
+}
+</code></pre>
+<p>}
+```</p>
+<p>```java
+@GetMapping(value = "/stream/resumable",
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-public Flux&lt;ServerSentEvent&lt;ProductChangeEvent&gt;&gt; streamResumable(
+public Flux<ServerSentEvent\<ProductChangeEvent>> streamResumable(
         @RequestHeader(value = "Last-Event-ID", required = false)
-        String lastEventId) {
+        String lastEventId) {</p>
+<pre><code>return resumableChangeStreamService.watchProducts(lastEventId)
+    .map(event -&gt; {
+        String tokenJson = event.getRaw() != null &amp;&amp; event.getRaw().getResumeToken() != null
+            ? event.getRaw().getResumeToken().toJson() : null;
 
-    return resumableChangeStreamService.watchProducts(lastEventId)
-        .map(event -&gt; {
-            String tokenJson = event.getRaw() != null &amp;&amp; event.getRaw().getResumeToken() != null
-                ? event.getRaw().getResumeToken().toJson() : null;
+        ProductChangeEvent payload = ProductChangeEvent.builder()
+            .operationType(event.getOperationType().name())
+            .product(event.getBody())
+            .timestamp(Instant.now())
+            .build();
 
-            ProductChangeEvent payload = ProductChangeEvent.builder()
-                .operationType(event.getOperationType().name())
-                .product(event.getBody())
-                .timestamp(Instant.now())
-                .build();
-
-            return ServerSentEvent.&lt;ProductChangeEvent&gt;builder()
-                .id(tokenJson)
-                .event("product-change")
-                .data(payload)
-                .build();
-        });
-}</code></pre>
+        return ServerSentEvent.&lt;ProductChangeEvent&gt;builder()
+            .id(tokenJson)
+            .event("product-change")
+            .data(payload)
+            .build();
+    });
+</code></pre>
+<p>}
+```</p>
 <p>클라이언트 쪽에서는 특별히 할 일이 없다. <code>EventSource</code>가 알아서 재연결할 때 <code>Last-Event-ID</code>를 보내니까.</p>
-<pre class="highlight"><code class="language-javascript">const es = new EventSource('/api/products/stream/resumable');
+<p><code>javascript
+const es = new EventSource('/api/products/stream/resumable');
 es.addEventListener('product-change', (e) =&gt; {
     console.log('이벤트 ID:', e.lastEventId);
     const change = JSON.parse(e.data);
     applyChange(change);
-});</code></pre>
+});</code></p>
 <h3 id="1245">12.4.5 실시간 데이터 동기화 패턴</h3>
 <p>Change Streams와 SSE를 조합하면 여러 브라우저 탭이나 사용자 간에 데이터를 실시간으로 동기화할 수 있다. 한 사용자가 상품 정보를 수정하면, 같은 상품을 보고 있는 다른 사용자의 화면에 즉시 반영되는 그런 경험을 만들 수 있다는 뜻이다. 필자의 경험상 이 패턴을 구현할 때 핵심은 이렇다.</p>
 <ol>
@@ -725,7 +758,8 @@ es.addEventListener('product-change', (e) =&gt; {
 <p>SSE는 HTTP 연결을 계속 열어놓기 때문에, 동시 연결 수가 늘어나면 서버 메모리와 파일 디스크립터가 빠르게 소진된다. <code>AtomicInteger</code>로 활성 연결 수를 세어두고 최대 한계를 설정해둔다. 너무 많은 연결을 받지 않도록 선제적으로 차단하는 것이 좋다.</p>
 <p><strong>2. 프록시/로드밸런서 설정</strong></p>
 <p>Nginx 같은 리버스 프록시가 앞단에 있으면, SSE 연결이 조기에 끊어지는 문제가 자주 생긴다. 이를 방지하려면 프록시에서 버퍼링을 끄고 타임아웃을 충분히 길게 설정해야 한다.</p>
-<pre class="highlight"><code class="language-nginx">location /api/sse/ {
+<p><code>nginx
+location /api/sse/ {
     proxy_pass http://backend;
     proxy_http_version 1.1;
     proxy_set_header Connection '';
@@ -733,12 +767,13 @@ es.addEventListener('product-change', (e) =&gt; {
     proxy_cache off;
     proxy_read_timeout 86400s;
     chunked_transfer_encoding off;
-}</code></pre>
+}</code></p>
 <p><strong>3. 하트비트</strong></p>
 <p>프록시 타임아웃으로 연결이 끊어지는 것을 방지하려면 주기적으로 하트비트를 보내면 된다. SSE의 주석 문법(<code>:</code> 접두사)을 활용하면 클라이언트 쪽 이벤트 핸들러를 건드리지 않으면서도 연결을 살려둘 수 있다.</p>
 <p><strong>4. 에러 복구 전략</strong></p>
 <p>Change Stream이 갑자기 끊어질 수 있다. 데이터베이스가 재시작되거나 네트워크 문제가 생길 때 말이다. 이럴 때 자동으로 재시도하는 로직이 있으면 훨씬 안정적이다. <code>retryWhen</code>에 지수 백오프를 걸어두면 일시적 장애에서 우아하게 복구할 수 있다.</p>
-<pre class="highlight"><code class="language-java">private void watchCollectionWithRetry(String collectionName) {
+<p><code>java
+private void watchCollectionWithRetry(String collectionName) {
     mongoTemplate.changeStream(collectionName,
             ChangeStreamOptions.empty(), Document.class)
         .doOnError(e -&gt; log.error("{} Change Stream 오류", collectionName, e))
@@ -747,7 +782,7 @@ es.addEventListener('product-change', (e) =&gt; {
             .doBeforeRetry(signal -&gt; log.warn("{} Change Stream 재시도 #{}",
                 collectionName, signal.totalRetries())))
         .subscribe(this::processChangeEvent);
-}</code></pre>
+}</code></p>
 <hr>
 <h2 id="_1">요약</h2>
 <p>이번 장에서 배운 내용의 핵심을 다시 한 번 정리해보자.</p>
@@ -830,17 +865,17 @@ es.addEventListener('product-change', (e) =&gt; {
 <h3 id="1312-http">13.1.2 HTTP 핸드셰이크</h3>
 <p>흥미롭게도, WebSocket 연결은 일반 HTTP 요청으로 시작된다. 프로토콜을 업그레이드하는 과정을 거치는 것이다.</p>
 <p><strong>클라이언트 요청:</strong></p>
-<pre class="highlight"><code>GET /ws/chat HTTP/1.1
+<p><code>GET /ws/chat HTTP/1.1
 Host: localhost:8080
 Upgrade: websocket
 Connection: Upgrade
 Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
-Sec-WebSocket-Version: 13</code></pre>
+Sec-WebSocket-Version: 13</code></p>
 <p><strong>서버 응답:</strong></p>
-<pre class="highlight"><code>HTTP/1.1 101 Switching Protocols
+<p><code>HTTP/1.1 101 Switching Protocols
 Upgrade: websocket
 Connection: Upgrade
-Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=</code></pre>
+Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=</code></p>
 <p>구체적으로는 이렇게 진행된다:</p>
 <ol>
 <li>클라이언트가 <code>Upgrade: websocket</code> 헤더를 포함한 HTTP GET 요청을 보낸다</li>
@@ -929,129 +964,144 @@ Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=</code></pre>
 <h2 id="132-webflux-websocket">13.2 WebFlux에서 WebSocket 핸들러 구현</h2>
 <h3 id="1321">13.2.1 의존성 설정</h3>
 <p>좋은 소식은 Spring WebFlux에 WebSocket 지원이 이미 포함되어 있다는 것이다. 별도로 추가할 게 없다.</p>
-<pre class="highlight"><code class="language-groovy">dependencies {
+<p><code>groovy
+dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
-}</code></pre>
+}</code></p>
 <h3 id="1322-websockethandler">13.2.2 WebSocketHandler 인터페이스</h3>
 <p>Spring WebFlux에서 WebSocket을 다루는 핵심은 <code>WebSocketHandler</code> 인터페이스다.</p>
-<pre class="highlight"><code class="language-java">public interface WebSocketHandler {
+<p><code>java
+public interface WebSocketHandler {
     Mono&lt;Void&gt; handle(WebSocketSession session);
-}</code></pre>
+}</code></p>
 <p><code>handle()</code> 메서드가 연결이 수립되면 호출되고, 이 메서드가 반환하는 <code>Mono&lt;Void&gt;</code>가 완료되면 연결이 끝난다. <code>WebSocketSession</code> 객체는 <code>receive()</code>로 들어오는 메시지 스트림을 얻고, <code>send()</code>로 메시지를 보낸다.</p>
 <p>이해를 돕기 위해 간단한 에코 핸들러를 만들어보자.</p>
-<pre class="highlight"><code class="language-java">@Component
+<p>```java
+@Component
 @Slf4j
-public class EchoWebSocketHandler implements WebSocketHandler {
+public class EchoWebSocketHandler implements WebSocketHandler {</p>
+<pre><code>@Override
+public Mono&lt;Void&gt; handle(WebSocketSession session) {
+    log.info("WebSocket 연결 수립: sessionId={}", session.getId());
 
-    @Override
-    public Mono&lt;Void&gt; handle(WebSocketSession session) {
-        log.info("WebSocket 연결 수립: sessionId={}", session.getId());
+    Flux&lt;WebSocketMessage&gt; output = session.receive()
+        .map(message -&gt; {
+            String payload = message.getPayloadAsText();
+            log.info("수신 메시지: {}", payload);
+            return session.textMessage("Echo: " + payload);
+        });
 
-        Flux&lt;WebSocketMessage&gt; output = session.receive()
-            .map(message -&gt; {
-                String payload = message.getPayloadAsText();
-                log.info("수신 메시지: {}", payload);
-                return session.textMessage("Echo: " + payload);
-            });
-
-        return session.send(output)
-            .doFinally(signal -&gt;
-                log.info("WebSocket 연결 종료: sessionId={}", session.getId()));
-    }
-}</code></pre>
+    return session.send(output)
+        .doFinally(signal -&gt;
+            log.info("WebSocket 연결 종료: sessionId={}", session.getId()));
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1323-handlermapping">13.2.3 HandlerMapping 설정</h3>
 <p>이제 이 핸들러를 특정 URL 경로에 연결해야 한다. <code>HandlerMapping</code>과 <code>WebSocketHandlerAdapter</code>를 설정하면 된다.</p>
-<pre class="highlight"><code class="language-java">@Configuration
-public class WebSocketConfig {
+<p>```java
+@Configuration
+public class WebSocketConfig {</p>
+<pre><code>@Bean
+public HandlerMapping webSocketHandlerMapping(EchoWebSocketHandler echoHandler) {
+    Map&lt;String, WebSocketHandler&gt; handlerMap = Map.of("/ws/echo", echoHandler);
 
-    @Bean
-    public HandlerMapping webSocketHandlerMapping(EchoWebSocketHandler echoHandler) {
-        Map&lt;String, WebSocketHandler&gt; handlerMap = Map.of("/ws/echo", echoHandler);
+    SimpleUrlHandlerMapping mapping = new SimpleUrlHandlerMapping();
+    mapping.setUrlMap(handlerMap);
+    mapping.setOrder(Ordered.HIGHEST_PRECEDENCE);
+    return mapping;
+}
 
-        SimpleUrlHandlerMapping mapping = new SimpleUrlHandlerMapping();
-        mapping.setUrlMap(handlerMap);
-        mapping.setOrder(Ordered.HIGHEST_PRECEDENCE);
-        return mapping;
-    }
-
-    @Bean
-    public WebSocketHandlerAdapter webSocketHandlerAdapter() {
-        return new WebSocketHandlerAdapter();
-    }
-}</code></pre>
+@Bean
+public WebSocketHandlerAdapter webSocketHandlerAdapter() {
+    return new WebSocketHandlerAdapter();
+}
+</code></pre>
+<p>}
+```</p>
 <p><code>order</code>를 <code>Ordered.HIGHEST_PRECEDENCE</code>로 설정하여 다른 핸들러 매핑보다 먼저 WebSocket 요청을 처리한다.</p>
 <h3 id="1324">13.2.4 메시지 송수신 패턴</h3>
 <p>실제 구현할 때는 상황에 따라 다른 패턴을 쓴다. 기본적으로 세 가지를 생각해볼 수 있다.</p>
 <p><strong>패턴 1: 수신 전용</strong> — 클라이언트에서 오는 메시지를 받아서 처리하기만 한다</p>
-<pre class="highlight"><code class="language-java">public Mono&lt;Void&gt; handle(WebSocketSession session) {
+<p><code>java
+public Mono&lt;Void&gt; handle(WebSocketSession session) {
     return session.receive()
         .doOnNext(msg -&gt; log.info("수신: {}", msg.getPayloadAsText()))
         .then();
-}</code></pre>
+}</code></p>
 <p><strong>패턴 2: 송신 전용</strong> — 서버에서 클라이언트로 계속 데이터를 보낸다</p>
-<pre class="highlight"><code class="language-java">public Mono&lt;Void&gt; handle(WebSocketSession session) {
+<p><code>java
+public Mono&lt;Void&gt; handle(WebSocketSession session) {
     Flux&lt;WebSocketMessage&gt; output = Flux.interval(Duration.ofSeconds(1))
         .map(tick -&gt; session.textMessage("서버 시간: " + LocalDateTime.now()));
     return session.send(output);
-}</code></pre>
+}</code></p>
 <p><strong>패턴 3: 양방향</strong> — 수신과 송신을 동시에 처리한다</p>
-<pre class="highlight"><code class="language-java">public Mono&lt;Void&gt; handle(WebSocketSession session) {
-    Mono&lt;Void&gt; input = session.receive()
+<p>```java
+public Mono<Void> handle(WebSocketSession session) {
+    Mono<Void> input = session.receive()
         .doOnNext(msg -&gt; processMessage(msg.getPayloadAsText()))
-        .then();
+        .then();</p>
+<pre><code>Mono&lt;Void&gt; output = session.send(
+    externalEventSource().map(event -&gt; session.textMessage(event)));
 
-    Mono&lt;Void&gt; output = session.send(
-        externalEventSource().map(event -&gt; session.textMessage(event)));
-
-    return Mono.zip(input, output).then();
-}</code></pre>
+return Mono.zip(input, output).then();
+</code></pre>
+<p>}
+```</p>
 <h3 id="1325-json">13.2.5 JSON 메시지 처리</h3>
 <p>실무에서는 평문보다는 JSON 형식의 메시지를 주고받는다. 구조가 명확해서 다루기 훨씬 편하기 때문이다.</p>
-<pre class="highlight"><code class="language-java">@Data @Builder @NoArgsConstructor @AllArgsConstructor
+<p><code>java
+@Data @Builder @NoArgsConstructor @AllArgsConstructor
 public class ChatMessage {
     private String type;       // MESSAGE, JOIN, LEAVE
     private String roomId;
     private String sender;
     private String content;
     private LocalDateTime timestamp;
-}</code></pre>
-<pre class="highlight"><code class="language-java">@Component
+}</code></p>
+<p>```java
+@Component
 @RequiredArgsConstructor @Slf4j
-public class JsonWebSocketHandler implements WebSocketHandler {
+public class JsonWebSocketHandler implements WebSocketHandler {</p>
+<pre><code>private final ObjectMapper objectMapper;
 
-    private final ObjectMapper objectMapper;
-
-    @Override
-    public Mono&lt;Void&gt; handle(WebSocketSession session) {
-        Flux&lt;WebSocketMessage&gt; output = session.receive()
-            .map(WebSocketMessage::getPayloadAsText)
-            .flatMap(payload -&gt; {
-                try {
-                    ChatMessage msg = objectMapper.readValue(payload, ChatMessage.class);
-                    msg.setTimestamp(LocalDateTime.now());
-                    return Mono.just(session.textMessage(
-                        objectMapper.writeValueAsString(msg)));
-                } catch (JsonProcessingException e) {
-                    log.error("JSON 파싱 오류: {}", e.getMessage());
-                    return Mono.empty();
-                }
-            });
-        return session.send(output);
-    }
-}</code></pre>
+@Override
+public Mono&lt;Void&gt; handle(WebSocketSession session) {
+    Flux&lt;WebSocketMessage&gt; output = session.receive()
+        .map(WebSocketMessage::getPayloadAsText)
+        .flatMap(payload -&gt; {
+            try {
+                ChatMessage msg = objectMapper.readValue(payload, ChatMessage.class);
+                msg.setTimestamp(LocalDateTime.now());
+                return Mono.just(session.textMessage(
+                    objectMapper.writeValueAsString(msg)));
+            } catch (JsonProcessingException e) {
+                log.error("JSON 파싱 오류: {}", e.getMessage());
+                return Mono.empty();
+            }
+        });
+    return session.send(output);
+}
+</code></pre>
+<p>}
+```</p>
 <p>브라우저의 JavaScript로 동작을 테스트하면 다음과 같이 한다.</p>
-<pre class="highlight"><code class="language-javascript">const ws = new WebSocket('ws://localhost:8080/ws/echo');
+<p><code>javascript
+const ws = new WebSocket('ws://localhost:8080/ws/echo');
 ws.onopen = () =&gt; ws.send('Hello WebSocket!');
 ws.onmessage = (event) =&gt; console.log('수신:', event.data);
-ws.onclose = (event) =&gt; console.log('종료:', event.code);</code></pre>
+ws.onclose = (event) =&gt; console.log('종료:', event.code);</code></p>
 <hr>
 <h2 id="133">13.3 실시간 채팅 애플리케이션 구축</h2>
 <p>이제 WebSocket의 진정한 가치가 나오는 부분이다. WebSocket과 MongoDB를 결합해서 여러 채팅방을 지원하는 실시간 채팅 애플리케이션을 만들어보자.</p>
 <h3 id="1331">13.3.1 도메인 모델과 리포지토리</h3>
-<pre class="highlight"><code class="language-java">@Document(collection = "chat_rooms")
+<p><code>java
+@Document(collection = "chat_rooms")
 @Data @Builder @NoArgsConstructor @AllArgsConstructor
 public class ChatRoom {
     @Id private String id;
@@ -1060,8 +1110,9 @@ public class ChatRoom {
     private String createdBy;
     private Set&lt;String&gt; participants;
     private LocalDateTime createdAt;
-}</code></pre>
-<pre class="highlight"><code class="language-java">@Document(collection = "chat_messages")
+}</code></p>
+<p>```java
+@Document(collection = "chat_messages")
 @Data @Builder @NoArgsConstructor @AllArgsConstructor
 public class ChatMessageDocument {
     @Id private String id;
@@ -1069,201 +1120,212 @@ public class ChatMessageDocument {
     private String sender;
     private String content;
     private MessageType type;
-    private LocalDateTime timestamp;
+    private LocalDateTime timestamp;</p>
+<pre><code>public enum MessageType { MESSAGE, JOIN, LEAVE, SYSTEM }
+</code></pre>
+<p>}
+```</p>
+<p>```java
+public interface ChatRoomRepository extends ReactiveMongoRepository<ChatRoom, String> {
+    Flux<ChatRoom> findByParticipantsContaining(String username);
+}</p>
+<p>public interface ChatMessageRepository
+        extends ReactiveMongoRepository<ChatMessageDocument, String> {
+    Flux<ChatMessageDocument> findByRoomIdOrderByTimestampDesc(
+        String roomId, Pageable pageable);
+    Flux<ChatMessageDocument> findByRoomIdAndTimestampAfterOrderByTimestampAsc(
+        String roomId, LocalDateTime after);
+}
+```</p>
+<h3 id="1332">13.3.2 채팅방 관리 서비스</h3>
+<p>```java
+@Service
+@RequiredArgsConstructor
+public class ChatRoomService {</p>
+<pre><code>private final ChatRoomRepository chatRoomRepository;
 
-    public enum MessageType { MESSAGE, JOIN, LEAVE, SYSTEM }
-}</code></pre>
-<pre class="highlight"><code class="language-java">public interface ChatRoomRepository extends ReactiveMongoRepository&lt;ChatRoom, String&gt; {
-    Flux&lt;ChatRoom&gt; findByParticipantsContaining(String username);
+public Mono&lt;ChatRoom&gt; createRoom(String name, String description,
+                                  String createdBy) {
+    ChatRoom room = ChatRoom.builder()
+        .name(name).description(description).createdBy(createdBy)
+        .participants(new HashSet&lt;&gt;(Set.of(createdBy)))
+        .createdAt(LocalDateTime.now()).build();
+    return chatRoomRepository.save(room);
 }
 
-public interface ChatMessageRepository
-        extends ReactiveMongoRepository&lt;ChatMessageDocument, String&gt; {
-    Flux&lt;ChatMessageDocument&gt; findByRoomIdOrderByTimestampDesc(
-        String roomId, Pageable pageable);
-    Flux&lt;ChatMessageDocument&gt; findByRoomIdAndTimestampAfterOrderByTimestampAsc(
-        String roomId, LocalDateTime after);
-}</code></pre>
-<h3 id="1332">13.3.2 채팅방 관리 서비스</h3>
-<pre class="highlight"><code class="language-java">@Service
-@RequiredArgsConstructor
-public class ChatRoomService {
+public Flux&lt;ChatRoom&gt; getAllRooms() {
+    return chatRoomRepository.findAll();
+}
 
-    private final ChatRoomRepository chatRoomRepository;
+public Mono&lt;ChatRoom&gt; joinRoom(String roomId, String username) {
+    return chatRoomRepository.findById(roomId)
+        .flatMap(room -&gt; {
+            room.getParticipants().add(username);
+            return chatRoomRepository.save(room);
+        });
+}
 
-    public Mono&lt;ChatRoom&gt; createRoom(String name, String description,
-                                      String createdBy) {
-        ChatRoom room = ChatRoom.builder()
-            .name(name).description(description).createdBy(createdBy)
-            .participants(new HashSet&lt;&gt;(Set.of(createdBy)))
-            .createdAt(LocalDateTime.now()).build();
-        return chatRoomRepository.save(room);
-    }
-
-    public Flux&lt;ChatRoom&gt; getAllRooms() {
-        return chatRoomRepository.findAll();
-    }
-
-    public Mono&lt;ChatRoom&gt; joinRoom(String roomId, String username) {
-        return chatRoomRepository.findById(roomId)
-            .flatMap(room -&gt; {
-                room.getParticipants().add(username);
-                return chatRoomRepository.save(room);
-            });
-    }
-
-    public Mono&lt;ChatRoom&gt; leaveRoom(String roomId, String username) {
-        return chatRoomRepository.findById(roomId)
-            .flatMap(room -&gt; {
-                room.getParticipants().remove(username);
-                return chatRoomRepository.save(room);
-            });
-    }
-}</code></pre>
+public Mono&lt;ChatRoom&gt; leaveRoom(String roomId, String username) {
+    return chatRoomRepository.findById(roomId)
+        .flatMap(room -&gt; {
+            room.getParticipants().remove(username);
+            return chatRoomRepository.save(room);
+        });
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1333">13.3.3 메시지 브로드캐스팅</h3>
 <p>이제 핵심 부분이다. 한 사용자가 메시지를 보내면 같은 채팅방의 모든 다른 사용자들에게 전달해야 한다. Reactor의 <code>Sinks</code>라는 기능을 사용하면 이를 깔끔하게 구현할 수 있다. 한쪽에서 메시지를 발행하면 여러 세션이 이를 구독하는 구조인데, 필자의 경험상 채팅처럼 다대다 통신이 필요한 경우 <code>Sinks</code>가 정말 유용하다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>```java
+@Service
 @Slf4j
-public class ChatMessageBroker {
+public class ChatMessageBroker {</p>
+<pre><code>private final Map&lt;String, Sinks.Many&lt;ChatMessageDocument&gt;&gt; roomSinks =
+    new ConcurrentHashMap&lt;&gt;();
 
-    private final Map&lt;String, Sinks.Many&lt;ChatMessageDocument&gt;&gt; roomSinks =
-        new ConcurrentHashMap&lt;&gt;();
+public Sinks.Many&lt;ChatMessageDocument&gt; getRoomSink(String roomId) {
+    return roomSinks.computeIfAbsent(roomId,
+        id -&gt; Sinks.many().multicast().onBackpressureBuffer(256));
+}
 
-    public Sinks.Many&lt;ChatMessageDocument&gt; getRoomSink(String roomId) {
-        return roomSinks.computeIfAbsent(roomId,
-            id -&gt; Sinks.many().multicast().onBackpressureBuffer(256));
+public void publish(String roomId, ChatMessageDocument message) {
+    Sinks.EmitResult result = getRoomSink(roomId).tryEmitNext(message);
+    if (result.isFailure()) {
+        log.warn("메시지 발행 실패: roomId={}, result={}", roomId, result);
     }
+}
 
-    public void publish(String roomId, ChatMessageDocument message) {
-        Sinks.EmitResult result = getRoomSink(roomId).tryEmitNext(message);
-        if (result.isFailure()) {
-            log.warn("메시지 발행 실패: roomId={}, result={}", roomId, result);
-        }
-    }
+public Flux&lt;ChatMessageDocument&gt; subscribe(String roomId) {
+    return getRoomSink(roomId).asFlux();
+}
 
-    public Flux&lt;ChatMessageDocument&gt; subscribe(String roomId) {
-        return getRoomSink(roomId).asFlux();
-    }
-
-    public void removeRoom(String roomId) {
-        Sinks.Many&lt;ChatMessageDocument&gt; removed = roomSinks.remove(roomId);
-        if (removed != null) removed.tryEmitComplete();
-    }
-}</code></pre>
+public void removeRoom(String roomId) {
+    Sinks.Many&lt;ChatMessageDocument&gt; removed = roomSinks.remove(roomId);
+    if (removed != null) removed.tryEmitComplete();
+}
+</code></pre>
+<p>}
+```</p>
 <p><code>Sinks.many().multicast().onBackpressureBuffer(256)</code>는 여러 구독자에게 동시에 메시지를 전달하는 Hot Publisher를 만든다. 만약 어떤 클라이언트가 느려서 메시지를 처리하지 못하면, 최대 256개까지 버퍼에 보관했다가 추후에 보낸다. 이렇게 하면 느린 클라이언트 때문에 빠른 클라이언트까지 영향을 받지 않는다.</p>
 <h3 id="1334">13.3.4 채팅 메시지 서비스</h3>
 <p>메시지를 저장하고 브로드캐스팅하는 로직을 한 곳에 모으자.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>```java
+@Service
 @RequiredArgsConstructor @Slf4j
-public class ChatMessageService {
+public class ChatMessageService {</p>
+<pre><code>private final ChatMessageRepository chatMessageRepository;
+private final ChatMessageBroker messageBroker;
 
-    private final ChatMessageRepository chatMessageRepository;
-    private final ChatMessageBroker messageBroker;
+public Mono&lt;ChatMessageDocument&gt; saveAndBroadcast(ChatMessageDocument message) {
+    message.setTimestamp(LocalDateTime.now());
+    return chatMessageRepository.save(message)
+        .doOnSuccess(saved -&gt; messageBroker.publish(saved.getRoomId(), saved));
+}
 
-    public Mono&lt;ChatMessageDocument&gt; saveAndBroadcast(ChatMessageDocument message) {
-        message.setTimestamp(LocalDateTime.now());
-        return chatMessageRepository.save(message)
-            .doOnSuccess(saved -&gt; messageBroker.publish(saved.getRoomId(), saved));
-    }
+public Flux&lt;ChatMessageDocument&gt; getRecentMessages(String roomId, int limit) {
+    return chatMessageRepository.findByRoomIdOrderByTimestampDesc(
+        roomId, PageRequest.of(0, limit));
+}
 
-    public Flux&lt;ChatMessageDocument&gt; getRecentMessages(String roomId, int limit) {
-        return chatMessageRepository.findByRoomIdOrderByTimestampDesc(
-            roomId, PageRequest.of(0, limit));
-    }
-
-    public Flux&lt;ChatMessageDocument&gt; getMessagesSince(
-            String roomId, LocalDateTime since) {
-        return chatMessageRepository
-            .findByRoomIdAndTimestampAfterOrderByTimestampAsc(roomId, since);
-    }
-}</code></pre>
+public Flux&lt;ChatMessageDocument&gt; getMessagesSince(
+        String roomId, LocalDateTime since) {
+    return chatMessageRepository
+        .findByRoomIdAndTimestampAfterOrderByTimestampAsc(roomId, since);
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1335-websocket">13.3.5 채팅 WebSocket 핸들러</h3>
 <p>지금까지 만든 서비스들을 모두 조합해서 실제 채팅을 처리할 WebSocket 핸들러를 만든다.</p>
-<pre class="highlight"><code class="language-java">@Component
+<p>```java
+@Component
 @RequiredArgsConstructor @Slf4j
-public class ChatWebSocketHandler implements WebSocketHandler {
+public class ChatWebSocketHandler implements WebSocketHandler {</p>
+<pre><code>private final ChatMessageService chatMessageService;
+private final ChatMessageBroker messageBroker;
+private final ObjectMapper objectMapper;
 
-    private final ChatMessageService chatMessageService;
-    private final ChatMessageBroker messageBroker;
-    private final ObjectMapper objectMapper;
+@Override
+public Mono&lt;Void&gt; handle(WebSocketSession session) {
+    URI uri = session.getHandshakeInfo().getUri();
+    Map&lt;String, String&gt; params = parseQueryParams(uri);
+    String roomId = params.get("roomId");
+    String username = params.get("username");
 
-    @Override
-    public Mono&lt;Void&gt; handle(WebSocketSession session) {
-        URI uri = session.getHandshakeInfo().getUri();
-        Map&lt;String, String&gt; params = parseQueryParams(uri);
-        String roomId = params.get("roomId");
-        String username = params.get("username");
-
-        if (roomId == null || username == null) {
-            return session.close(CloseStatus.POLICY_VIOLATION);
-        }
-
-        log.info("채팅 연결: roomId={}, username={}", roomId, username);
-
-        // 입장 알림
-        Mono&lt;Void&gt; joinNotification = createSystemMessage(
-            roomId, username + "님이 입장했습니다.",
-            ChatMessageDocument.MessageType.JOIN);
-
-        // 수신: 클라이언트 메시지를 저장 및 브로드캐스트
-        Mono&lt;Void&gt; input = session.receive()
-            .flatMap(msg -&gt; handleIncoming(msg.getPayloadAsText(), roomId, username))
-            .doFinally(signal -&gt; createSystemMessage(roomId,
-                username + "님이 퇴장했습니다.",
-                ChatMessageDocument.MessageType.LEAVE).subscribe())
-            .then();
-
-        // 송신: 채팅방 브로드캐스트 스트림 구독
-        Flux&lt;WebSocketMessage&gt; output = messageBroker.subscribe(roomId)
-            .mapNotNull(chatMsg -&gt; toWebSocketMessage(session, chatMsg));
-
-        return joinNotification
-            .then(Mono.zip(input, session.send(output)).then());
+    if (roomId == null || username == null) {
+        return session.close(CloseStatus.POLICY_VIOLATION);
     }
 
-    private Mono&lt;ChatMessageDocument&gt; handleIncoming(
-            String payload, String roomId, String sender) {
-        try {
-            ChatMessage incoming = objectMapper.readValue(payload, ChatMessage.class);
-            ChatMessageDocument doc = ChatMessageDocument.builder()
-                .roomId(roomId).sender(sender).content(incoming.getContent())
-                .type(ChatMessageDocument.MessageType.MESSAGE).build();
-            return chatMessageService.saveAndBroadcast(doc);
-        } catch (JsonProcessingException e) {
-            log.error("메시지 파싱 오류: {}", e.getMessage());
-            return Mono.empty();
-        }
-    }
+    log.info("채팅 연결: roomId={}, username={}", roomId, username);
 
-    private Mono&lt;Void&gt; createSystemMessage(String roomId, String content,
-                                            ChatMessageDocument.MessageType type) {
-        ChatMessageDocument msg = ChatMessageDocument.builder()
-            .roomId(roomId).sender("SYSTEM").content(content).type(type).build();
-        return chatMessageService.saveAndBroadcast(msg).then();
-    }
+    // 입장 알림
+    Mono&lt;Void&gt; joinNotification = createSystemMessage(
+        roomId, username + "님이 입장했습니다.",
+        ChatMessageDocument.MessageType.JOIN);
 
-    private WebSocketMessage toWebSocketMessage(
-            WebSocketSession session, ChatMessageDocument msg) {
-        try {
-            return session.textMessage(objectMapper.writeValueAsString(msg));
-        } catch (JsonProcessingException e) {
-            return null;
-        }
-    }
+    // 수신: 클라이언트 메시지를 저장 및 브로드캐스트
+    Mono&lt;Void&gt; input = session.receive()
+        .flatMap(msg -&gt; handleIncoming(msg.getPayloadAsText(), roomId, username))
+        .doFinally(signal -&gt; createSystemMessage(roomId,
+            username + "님이 퇴장했습니다.",
+            ChatMessageDocument.MessageType.LEAVE).subscribe())
+        .then();
 
-    private Map&lt;String, String&gt; parseQueryParams(URI uri) {
-        Map&lt;String, String&gt; params = new HashMap&lt;&gt;();
-        String query = uri.getQuery();
-        if (query == null) return params;
-        for (String param : query.split("&amp;")) {
-            String[] pair = param.split("=", 2);
-            if (pair.length == 2) params.put(pair[0], pair[1]);
-        }
-        return params;
+    // 송신: 채팅방 브로드캐스트 스트림 구독
+    Flux&lt;WebSocketMessage&gt; output = messageBroker.subscribe(roomId)
+        .mapNotNull(chatMsg -&gt; toWebSocketMessage(session, chatMsg));
+
+    return joinNotification
+        .then(Mono.zip(input, session.send(output)).then());
+}
+
+private Mono&lt;ChatMessageDocument&gt; handleIncoming(
+        String payload, String roomId, String sender) {
+    try {
+        ChatMessage incoming = objectMapper.readValue(payload, ChatMessage.class);
+        ChatMessageDocument doc = ChatMessageDocument.builder()
+            .roomId(roomId).sender(sender).content(incoming.getContent())
+            .type(ChatMessageDocument.MessageType.MESSAGE).build();
+        return chatMessageService.saveAndBroadcast(doc);
+    } catch (JsonProcessingException e) {
+        log.error("메시지 파싱 오류: {}", e.getMessage());
+        return Mono.empty();
     }
-}</code></pre>
+}
+
+private Mono&lt;Void&gt; createSystemMessage(String roomId, String content,
+                                        ChatMessageDocument.MessageType type) {
+    ChatMessageDocument msg = ChatMessageDocument.builder()
+        .roomId(roomId).sender("SYSTEM").content(content).type(type).build();
+    return chatMessageService.saveAndBroadcast(msg).then();
+}
+
+private WebSocketMessage toWebSocketMessage(
+        WebSocketSession session, ChatMessageDocument msg) {
+    try {
+        return session.textMessage(objectMapper.writeValueAsString(msg));
+    } catch (JsonProcessingException e) {
+        return null;
+    }
+}
+
+private Map&lt;String, String&gt; parseQueryParams(URI uri) {
+    Map&lt;String, String&gt; params = new HashMap&lt;&gt;();
+    String query = uri.getQuery();
+    if (query == null) return params;
+    for (String param : query.split("&amp;")) {
+        String[] pair = param.split("=", 2);
+        if (pair.length == 2) params.put(pair[0], pair[1]);
+    }
+    return params;
+}
+</code></pre>
+<p>}
+```</p>
 <p>WebSocket 라우팅에 등록한다.</p>
-<pre class="highlight"><code class="language-java">@Configuration
+<p>```java
+@Configuration
 public class WebSocketConfig {
     @Bean
     public HandlerMapping webSocketHandlerMapping(ChatWebSocketHandler chatHandler) {
@@ -1271,180 +1333,194 @@ public class WebSocketConfig {
         mapping.setUrlMap(Map.of("/ws/chat", chatHandler));
         mapping.setOrder(Ordered.HIGHEST_PRECEDENCE);
         return mapping;
-    }
-
-    @Bean
-    public WebSocketHandlerAdapter webSocketHandlerAdapter() {
-        return new WebSocketHandlerAdapter();
-    }
-}</code></pre>
+    }</p>
+<pre><code>@Bean
+public WebSocketHandlerAdapter webSocketHandlerAdapter() {
+    return new WebSocketHandlerAdapter();
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1336-rest-api">13.3.6 채팅방 REST API</h3>
 <p>WebSocket 연결이 시작되기 전에 채팅방을 만들고 관리해야 한다. 이를 위한 REST API를 준비하자.</p>
-<pre class="highlight"><code class="language-java">@RestController
+<p>```java
+@RestController
 @RequestMapping("/api/chat/rooms")
 @RequiredArgsConstructor
-public class ChatRoomController {
+public class ChatRoomController {</p>
+<pre><code>private final ChatRoomService chatRoomService;
+private final ChatMessageService chatMessageService;
 
-    private final ChatRoomService chatRoomService;
-    private final ChatMessageService chatMessageService;
+@PostMapping
+@ResponseStatus(HttpStatus.CREATED)
+public Mono&lt;ChatRoom&gt; createRoom(@RequestBody CreateRoomRequest request) {
+    return chatRoomService.createRoom(
+        request.getName(), request.getDescription(), request.getCreatedBy());
+}
 
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Mono&lt;ChatRoom&gt; createRoom(@RequestBody CreateRoomRequest request) {
-        return chatRoomService.createRoom(
-            request.getName(), request.getDescription(), request.getCreatedBy());
-    }
+@GetMapping
+public Flux&lt;ChatRoom&gt; getAllRooms() {
+    return chatRoomService.getAllRooms();
+}
 
-    @GetMapping
-    public Flux&lt;ChatRoom&gt; getAllRooms() {
-        return chatRoomService.getAllRooms();
-    }
+@GetMapping("/{roomId}/messages")
+public Flux&lt;ChatMessageDocument&gt; getRecentMessages(
+        @PathVariable String roomId,
+        @RequestParam(defaultValue = "50") int limit) {
+    return chatMessageService.getRecentMessages(roomId, limit);
+}
 
-    @GetMapping("/{roomId}/messages")
-    public Flux&lt;ChatMessageDocument&gt; getRecentMessages(
-            @PathVariable String roomId,
-            @RequestParam(defaultValue = "50") int limit) {
-        return chatMessageService.getRecentMessages(roomId, limit);
-    }
-
-    @PostMapping("/{roomId}/join")
-    public Mono&lt;ChatRoom&gt; joinRoom(@PathVariable String roomId,
-                                    @RequestParam String username) {
-        return chatRoomService.joinRoom(roomId, username);
-    }
-}</code></pre>
+@PostMapping("/{roomId}/join")
+public Mono&lt;ChatRoom&gt; joinRoom(@PathVariable String roomId,
+                                @RequestParam String username) {
+    return chatRoomService.joinRoom(roomId, username);
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1337">13.3.7 이전 메시지 로드</h3>
 <p>채팅에서 중요한 부분 중 하나는 사용자가 입장했을 때 기존 메시지를 보여주는 것이다. 이를 하는 방법은 크게 두 가지가 있다.</p>
 <p><strong>전략 1: REST API를 통한 초기 로드</strong> — WebSocket 연결을 맺기 전에 REST API로 최근 메시지를 미리 가져온다</p>
-<pre class="highlight"><code class="language-javascript">async function joinChatRoom(roomId, username) {
-    const res = await fetch(`/api/chat/rooms/${roomId}/messages?limit=50`);
+<p><code>``javascript
+async function joinChatRoom(roomId, username) {
+    const res = await fetch(</code>/api/chat/rooms/${roomId}/messages?limit=50`);
     const history = await res.json();
-    history.reverse().forEach(msg =&gt; displayMessage(msg));
-
-    const ws = new WebSocket(
-        `ws://localhost:8080/ws/chat?roomId=${roomId}&amp;username=${username}`);
-    ws.onmessage = (e) =&gt; displayMessage(JSON.parse(e.data));
-}</code></pre>
+    history.reverse().forEach(msg =&gt; displayMessage(msg));</p>
+<pre><code>const ws = new WebSocket(
+    `ws://localhost:8080/ws/chat?roomId=${roomId}&amp;username=${username}`);
+ws.onmessage = (e) =&gt; displayMessage(JSON.parse(e.data));
+</code></pre>
+<p>}
+```</p>
 <p><strong>전략 2: WebSocket 내 히스토리 전송</strong> — 연결 직후 과거 메시지를 먼저 보낸 다음, 실시간 메시지로 전환한다</p>
-<pre class="highlight"><code class="language-java">Flux&lt;WebSocketMessage&gt; history = chatMessageService.getRecentMessages(roomId, 50)
+<p>```java
+Flux<WebSocketMessage> history = chatMessageService.getRecentMessages(roomId, 50)
     .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));
-Flux&lt;WebSocketMessage&gt; live = messageBroker.subscribe(roomId)
-    .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));
-
-Flux&lt;WebSocketMessage&gt; output = history.concatWith(live);</code></pre>
+Flux<WebSocketMessage> live = messageBroker.subscribe(roomId)
+    .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));</p>
+<p>Flux<WebSocketMessage> output = history.concatWith(live);
+```</p>
 <p>일반적으로는 전략 1이 더 간단하고, 과거 메시지와 실시간 메시지 사이에 누락될 위험도 적다. 필자의 경험상 프로덕션 환경에서는 전략 1을 쓰는 것이 더 안정적이다.</p>
 <h3 id="1338-mongodb">13.3.8 MongoDB 인덱스 설정</h3>
 <p>채팅방별로 시간 순서대로 메시지를 자주 조회하므로, 성능을 위해 복합 인덱스를 만들어두자.</p>
-<pre class="highlight"><code class="language-java">@Configuration
+<p>```java
+@Configuration
 @RequiredArgsConstructor
 public class MongoIndexConfig {
-    private final ReactiveMongoTemplate mongoTemplate;
-
-    @PostConstruct
-    public void initIndexes() {
-        mongoTemplate.indexOps(ChatMessageDocument.class)
-            .ensureIndex(new Index()
-                .on("roomId", Sort.Direction.ASC)
-                .on("timestamp", Sort.Direction.DESC))
-            .subscribe();
-    }
-}</code></pre>
+    private final ReactiveMongoTemplate mongoTemplate;</p>
+<pre><code>@PostConstruct
+public void initIndexes() {
+    mongoTemplate.indexOps(ChatMessageDocument.class)
+        .ensureIndex(new Index()
+            .on("roomId", Sort.Direction.ASC)
+            .on("timestamp", Sort.Direction.DESC))
+        .subscribe();
+}
+</code></pre>
+<p>}
+```</p>
 <hr>
 <h2 id="134-websocket">13.4 WebSocket 세션 관리</h2>
 <h3 id="1341">13.4.1 세션 라이프사이클</h3>
 <p>WebSocket 세션도 생명주기가 있다: <code>CONNECTING -&gt; OPEN -&gt; CLOSING -&gt; CLOSED</code>. 여러 세션을 추적하고 필요할 때 제어하려면 세션을 중앙에서 관리해야 한다.</p>
-<pre class="highlight"><code class="language-java">@Component @Slf4j
-public class WebSocketSessionRegistry {
+<p>```java
+@Component @Slf4j
+public class WebSocketSessionRegistry {</p>
+<pre><code>private final Map&lt;String, Map&lt;String, WebSocketSession&gt;&gt; roomSessions =
+    new ConcurrentHashMap&lt;&gt;();
+private final Map&lt;String, String&gt; sessionUserMap = new ConcurrentHashMap&lt;&gt;();
 
-    private final Map&lt;String, Map&lt;String, WebSocketSession&gt;&gt; roomSessions =
-        new ConcurrentHashMap&lt;&gt;();
-    private final Map&lt;String, String&gt; sessionUserMap = new ConcurrentHashMap&lt;&gt;();
+public void register(String roomId, String username, WebSocketSession session) {
+    roomSessions.computeIfAbsent(roomId, k -&gt; new ConcurrentHashMap&lt;&gt;())
+        .put(session.getId(), session);
+    sessionUserMap.put(session.getId(), username);
+    log.info("세션 등록: roomId={}, username={}, 현재 인원={}",
+        roomId, username, getSessionCount(roomId));
+}
 
-    public void register(String roomId, String username, WebSocketSession session) {
-        roomSessions.computeIfAbsent(roomId, k -&gt; new ConcurrentHashMap&lt;&gt;())
-            .put(session.getId(), session);
-        sessionUserMap.put(session.getId(), username);
-        log.info("세션 등록: roomId={}, username={}, 현재 인원={}",
-            roomId, username, getSessionCount(roomId));
+public void unregister(String roomId, WebSocketSession session) {
+    Map&lt;String, WebSocketSession&gt; sessions = roomSessions.get(roomId);
+    if (sessions != null) {
+        sessions.remove(session.getId());
+        if (sessions.isEmpty()) roomSessions.remove(roomId);
     }
+    sessionUserMap.remove(session.getId());
+}
 
-    public void unregister(String roomId, WebSocketSession session) {
-        Map&lt;String, WebSocketSession&gt; sessions = roomSessions.get(roomId);
-        if (sessions != null) {
-            sessions.remove(session.getId());
-            if (sessions.isEmpty()) roomSessions.remove(roomId);
-        }
-        sessionUserMap.remove(session.getId());
-    }
+public int getSessionCount(String roomId) {
+    Map&lt;String, WebSocketSession&gt; s = roomSessions.get(roomId);
+    return s != null ? s.size() : 0;
+}
 
-    public int getSessionCount(String roomId) {
-        Map&lt;String, WebSocketSession&gt; s = roomSessions.get(roomId);
-        return s != null ? s.size() : 0;
-    }
+public Set&lt;String&gt; getOnlineUsers(String roomId) {
+    Map&lt;String, WebSocketSession&gt; sessions = roomSessions.get(roomId);
+    if (sessions == null) return Collections.emptySet();
+    return sessions.keySet().stream()
+        .map(sessionUserMap::get).filter(Objects::nonNull)
+        .collect(Collectors.toSet());
+}
 
-    public Set&lt;String&gt; getOnlineUsers(String roomId) {
-        Map&lt;String, WebSocketSession&gt; sessions = roomSessions.get(roomId);
-        if (sessions == null) return Collections.emptySet();
-        return sessions.keySet().stream()
-            .map(sessionUserMap::get).filter(Objects::nonNull)
-            .collect(Collectors.toSet());
-    }
+public Map&lt;String, WebSocketSession&gt; getSessions(String roomId) {
+    return roomSessions.getOrDefault(roomId, new ConcurrentHashMap&lt;&gt;());
+}
 
-    public Map&lt;String, WebSocketSession&gt; getSessions(String roomId) {
-        return roomSessions.getOrDefault(roomId, new ConcurrentHashMap&lt;&gt;());
-    }
+public String getUsername(String sessionId) {
+    return sessionUserMap.getOrDefault(sessionId, "unknown");
+}
 
-    public String getUsername(String sessionId) {
-        return sessionUserMap.getOrDefault(sessionId, "unknown");
-    }
-
-    public Map&lt;String, WebSocketSession&gt; getAllSessions() {
-        Map&lt;String, WebSocketSession&gt; all = new ConcurrentHashMap&lt;&gt;();
-        roomSessions.values().forEach(all::putAll);
-        return all;
-    }
-}</code></pre>
+public Map&lt;String, WebSocketSession&gt; getAllSessions() {
+    Map&lt;String, WebSocketSession&gt; all = new ConcurrentHashMap&lt;&gt;();
+    roomSessions.values().forEach(all::putAll);
+    return all;
+}
+</code></pre>
+<p>}
+```</p>
 <p>ChatWebSocketHandler에 이를 통합하면, 연결 시점에 <code>register()</code>를 호출하고, 연결이 끝나는 시점인 <code>doFinally()</code>에서 <code>unregister()</code>를 호출하는 식으로 세션 생명주기를 관리한다.</p>
 <h3 id="1342-pingpong">13.4.2 Ping/Pong 하트비트</h3>
 <p>네트워크가 불안정하거나 오랫동안 아무 메시지도 없으면, 프록시나 방화벽이 유휴 연결을 끊어버릴 수 있다. 이를 방지하려면 주기적으로 Ping/Pong을 주고받으면서 연결이 살아있음을 알린다.</p>
 <p><strong>서버 측 Ping 스케줄러:</strong></p>
-<pre class="highlight"><code class="language-java">@Component
+<p>```java
+@Component
 @RequiredArgsConstructor @Slf4j
-public class WebSocketPingScheduler {
+public class WebSocketPingScheduler {</p>
+<pre><code>private final WebSocketSessionRegistry sessionRegistry;
 
-    private final WebSocketSessionRegistry sessionRegistry;
-
-    @Scheduled(fixedRate = 30000)
-    public void sendPing() {
-        sessionRegistry.getAllSessions().forEach((sessionId, session) -&gt; {
-            if (session.isOpen()) {
-                session.send(Mono.just(session.pingMessage(factory -&gt;
-                    factory.wrap("ping".getBytes(StandardCharsets.UTF_8)))))
-                    .subscribe(null, error -&gt;
-                        log.warn("Ping 실패: sessionId={}", sessionId));
-            }
-        });
-    }
-}</code></pre>
+@Scheduled(fixedRate = 30000)
+public void sendPing() {
+    sessionRegistry.getAllSessions().forEach((sessionId, session) -&gt; {
+        if (session.isOpen()) {
+            session.send(Mono.just(session.pingMessage(factory -&gt;
+                factory.wrap("ping".getBytes(StandardCharsets.UTF_8)))))
+                .subscribe(null, error -&gt;
+                    log.warn("Ping 실패: sessionId={}", sessionId));
+        }
+    });
+}
+</code></pre>
+<p>}
+```</p>
 <p><code>@EnableScheduling</code>을 메인 애플리케이션에 추가해야 한다.</p>
 <p><strong>애플리케이션 레벨 하트비트:</strong></p>
 <p>그런데 프록시나 방화벽이 WebSocket 프레임을 제대로 지원하지 않는 경우도 있다. 이런 상황에서는 애플리케이션 레벨에서 직접 하트비트를 처리해야 한다.</p>
-<pre class="highlight"><code class="language-java">// 수신 시 하트비트 필터링
-Mono&lt;Void&gt; input = session.receive()
+<p>```java
+// 수신 시 하트비트 필터링
+Mono<Void> input = session.receive()
     .filter(msg -&gt; !"HEARTBEAT".equals(msg.getPayloadAsText()))
     .flatMap(msg -&gt; handleIncoming(msg.getPayloadAsText(), roomId, username))
-    .then();
-
-// 송신 시 하트비트와 실시간 메시지 병합
-Flux&lt;WebSocketMessage&gt; heartbeat = Flux.interval(Duration.ofSeconds(25))
+    .then();</p>
+<p>// 송신 시 하트비트와 실시간 메시지 병합
+Flux<WebSocketMessage> heartbeat = Flux.interval(Duration.ofSeconds(25))
     .map(tick -&gt; session.textMessage("HEARTBEAT"));
-Flux&lt;WebSocketMessage&gt; output = Flux.merge(
+Flux<WebSocketMessage> output = Flux.merge(
     messageBroker.subscribe(roomId).mapNotNull(m -&gt; toWebSocketMessage(session, m)),
-    heartbeat);</code></pre>
+    heartbeat);
+```</p>
 <h3 id="1343">13.4.3 재연결 처리</h3>
 <p>결국 네트워크는 끊긴다. 이를 대비한 자동 재연결 메커니즘은 필수다. 클라이언트와 서버 양쪽에서 대비해야 한다.</p>
 <p><strong>클라이언트 재연결 (지수 백오프):</strong></p>
-<pre class="highlight"><code class="language-javascript">class ReconnectingWebSocket {
+<p>```javascript
+class ReconnectingWebSocket {
     constructor(url, options = {}) {
         this.url = url;
         this.maxRetries = options.maxRetries || 10;
@@ -1453,69 +1529,72 @@ Flux&lt;WebSocketMessage&gt; output = Flux.merge(
         this.retryCount = 0;
         this.lastMessageTimestamp = null;
         this.connect();
+    }</p>
+<pre><code>connect() {
+    let connectUrl = this.url;
+    if (this.lastMessageTimestamp) {
+        const sep = connectUrl.includes('?') ? '&amp;' : '?';
+        connectUrl += `${sep}since=${this.lastMessageTimestamp}`;
     }
+    this.ws = new WebSocket(connectUrl);
 
-    connect() {
-        let connectUrl = this.url;
-        if (this.lastMessageTimestamp) {
-            const sep = connectUrl.includes('?') ? '&amp;' : '?';
-            connectUrl += `${sep}since=${this.lastMessageTimestamp}`;
+    this.ws.onopen = () =&gt; { this.retryCount = 0; };
+    this.ws.onmessage = (e) =&gt; {
+        if (e.data === 'HEARTBEAT') return;
+        const msg = JSON.parse(e.data);
+        this.lastMessageTimestamp = msg.timestamp;
+        this.onMessage?.(msg);
+    };
+    this.ws.onclose = (e) =&gt; {
+        if (e.code !== 1000 &amp;&amp; this.retryCount &lt; this.maxRetries) {
+            const delay = Math.min(
+                this.retryDelay * Math.pow(2, this.retryCount),
+                this.maxRetryDelay);
+            setTimeout(() =&gt; { this.retryCount++; this.connect(); }, delay);
         }
-        this.ws = new WebSocket(connectUrl);
+    };
+}
 
-        this.ws.onopen = () =&gt; { this.retryCount = 0; };
-        this.ws.onmessage = (e) =&gt; {
-            if (e.data === 'HEARTBEAT') return;
-            const msg = JSON.parse(e.data);
-            this.lastMessageTimestamp = msg.timestamp;
-            this.onMessage?.(msg);
-        };
-        this.ws.onclose = (e) =&gt; {
-            if (e.code !== 1000 &amp;&amp; this.retryCount &lt; this.maxRetries) {
-                const delay = Math.min(
-                    this.retryDelay * Math.pow(2, this.retryCount),
-                    this.maxRetryDelay);
-                setTimeout(() =&gt; { this.retryCount++; this.connect(); }, delay);
-            }
-        };
-    }
+send(data) {
+    if (this.ws?.readyState === WebSocket.OPEN)
+        this.ws.send(typeof data === 'string' ? data : JSON.stringify(data));
+}
 
-    send(data) {
-        if (this.ws?.readyState === WebSocket.OPEN)
-            this.ws.send(typeof data === 'string' ? data : JSON.stringify(data));
-    }
-
-    close() { this.maxRetries = 0; this.ws?.close(1000); }
-}</code></pre>
+close() { this.maxRetries = 0; this.ws?.close(1000); }
+</code></pre>
+<p>}
+```</p>
 <p><strong>서버 측 메시지 복구:</strong></p>
 <p>클라이언트가 재연결할 때 타임스탬프를 전달하면, 그 이후의 메시지들을 모두 전송해줄 수 있다.</p>
-<pre class="highlight"><code class="language-java">@Override
-public Mono&lt;Void&gt; handle(WebSocketSession session) {
+<p>```java
+@Override
+public Mono<Void> handle(WebSocketSession session) {
     // ... 파라미터 추출 ...
-    String sinceParam = params.get("since");
-
-    // 재연결 시 놓친 메시지 복구
-    Flux&lt;WebSocketMessage&gt; missedMessages = Flux.empty();
-    if (sinceParam != null) {
-        LocalDateTime since = LocalDateTime.parse(sinceParam);
-        missedMessages = chatMessageService.getMessagesSince(roomId, since)
-            .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));
-    }
-
-    Flux&lt;WebSocketMessage&gt; liveMessages = messageBroker.subscribe(roomId)
+    String sinceParam = params.get("since");</p>
+<pre><code>// 재연결 시 놓친 메시지 복구
+Flux&lt;WebSocketMessage&gt; missedMessages = Flux.empty();
+if (sinceParam != null) {
+    LocalDateTime since = LocalDateTime.parse(sinceParam);
+    missedMessages = chatMessageService.getMessagesSince(roomId, since)
         .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));
+}
 
-    // 놓친 메시지 먼저 전송 후 실시간 스트림 전환
-    Flux&lt;WebSocketMessage&gt; output = missedMessages.concatWith(liveMessages);
+Flux&lt;WebSocketMessage&gt; liveMessages = messageBroker.subscribe(roomId)
+    .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));
 
-    Mono&lt;Void&gt; input = session.receive()
-        .filter(msg -&gt; !"HEARTBEAT".equals(msg.getPayloadAsText()))
-        .flatMap(msg -&gt; handleIncoming(msg.getPayloadAsText(), roomId, username))
-        .doFinally(signal -&gt; sessionRegistry.unregister(roomId, session))
-        .then();
+// 놓친 메시지 먼저 전송 후 실시간 스트림 전환
+Flux&lt;WebSocketMessage&gt; output = missedMessages.concatWith(liveMessages);
 
-    return Mono.zip(input, session.send(output)).then();
-}</code></pre>
+Mono&lt;Void&gt; input = session.receive()
+    .filter(msg -&gt; !"HEARTBEAT".equals(msg.getPayloadAsText()))
+    .flatMap(msg -&gt; handleIncoming(msg.getPayloadAsText(), roomId, username))
+    .doFinally(signal -&gt; sessionRegistry.unregister(roomId, session))
+    .then();
+
+return Mono.zip(input, session.send(output)).then();
+</code></pre>
+<p>}
+```</p>
 <h3 id="1344">13.4.4 연결 종료와 보안</h3>
 <p>WebSocket 연결을 닫을 때는 <code>CloseStatus</code> 코드로 종료 사유를 알린다. 주요 코드들이다.</p>
 <table>
@@ -1549,15 +1628,17 @@ public Mono&lt;Void&gt; handle(WebSocketSession session) {
 </tbody>
 </table>
 <p>예를 들어, 부정행위를 하는 사용자를 강제로 퇴장시키려면 이렇게 할 수 있다.</p>
-<pre class="highlight"><code class="language-java">public Mono&lt;Void&gt; disconnectUser(String roomId, String targetUsername) {
+<p><code>java
+public Mono&lt;Void&gt; disconnectUser(String roomId, String targetUsername) {
     return Flux.fromIterable(sessionRegistry.getSessions(roomId).entrySet())
         .filter(e -&gt; targetUsername.equals(sessionRegistry.getUsername(e.getKey())))
         .flatMap(e -&gt; e.getValue()
             .close(new CloseStatus(4001, "관리자에 의해 종료")))
         .then();
-}</code></pre>
+}</code></p>
 <p>WebSocket 엔드포인트도 당연히 인증이 필요하다. WebSocket 핸드셰이크가 사실 HTTP 요청이므로, Spring Security를 그냥 적용할 수 있다. 다만 JWT 토큰 같은 걸 어떻게 전달할지는 생각해야 한다. 일반적으로는 쿼리 파라미터나 첫 번째 메시지에 담아서 보낸다.</p>
-<pre class="highlight"><code class="language-java">@Bean
+<p><code>java
+@Bean
 public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
     return http
         .authorizeExchange(ex -&gt; ex
@@ -1566,17 +1647,19 @@ public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
             .anyExchange().authenticated())
         .csrf(csrf -&gt; csrf.disable())
         .build();
-}</code></pre>
-<pre class="highlight"><code class="language-java">// 핸들러 내부에서 JWT 검증
+}</code></p>
+<p><code>java
+// 핸들러 내부에서 JWT 검증
 String token = params.get("token");
 if (token == null || !jwtTokenProvider.validateToken(token)) {
     return session.close(new CloseStatus(4401, "인증 실패"));
 }
-String username = jwtTokenProvider.getUsernameFromToken(token);</code></pre>
-<pre class="highlight"><code class="language-javascript">// 클라이언트에서 토큰 전달
+String username = jwtTokenProvider.getUsernameFromToken(token);</code></p>
+<p><code>javascript
+// 클라이언트에서 토큰 전달
 const token = localStorage.getItem('accessToken');
 const ws = new WebSocket(
-    `ws://localhost:8080/ws/chat?roomId=${roomId}&amp;username=${user}&amp;token=${token}`);</code></pre>
+    `ws://localhost:8080/ws/chat?roomId=${roomId}&amp;username=${user}&amp;token=${token}`);</code></p>
 <blockquote>
 <p><strong>주의</strong>: URL 쿼리 파라미터로 토큰을 전달하면 로그에 그대로 남을 수 있다. 서버 로그, 브라우저 히스토리, 프록시 로그 등 여러 곳에 보인다는 뜻이다. 필자의 경험상 프로덕션에서는 쿠키를 쓰거나, WebSocket 연결 직후 첫 번째 메시지로 토큰을 보내는 것이 더 안전하다.</p>
 </blockquote>
@@ -1649,28 +1732,31 @@ const ws = new WebSocket(
 </table>
 <h3 id="1412-webclient">14.1.2 WebClient 생성과 빈 설정</h3>
 <p><code>WebClient</code>를 생성하는 방법은 몇 가지가 있다. <code>create()</code>, <code>create(baseUrl)</code>, <code>builder()</code>인데, 필자의 경험상 실전에서는 <code>builder()</code>로 설정하고 빈으로 등록하는 것이 가장 깔끔하다. 여러 외부 서비스를 호출해야 한다면, 각 서비스마다 별도 빈을 만드는 게 나중에 유지보수하기 좋다.</p>
-<pre class="highlight"><code class="language-java">@Configuration
-public class WebClientConfig {
+<p>```java
+@Configuration
+public class WebClientConfig {</p>
+<pre><code>@Bean("userServiceClient")
+public WebClient userServiceClient() {
+    return WebClient.builder()
+        .baseUrl("https://user-service.example.com")
+        .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+        .build();
+}
 
-    @Bean("userServiceClient")
-    public WebClient userServiceClient() {
-        return WebClient.builder()
-            .baseUrl("https://user-service.example.com")
-            .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-            .build();
-    }
-
-    @Bean("orderServiceClient")
-    public WebClient orderServiceClient() {
-        return WebClient.builder()
-            .baseUrl("https://order-service.example.com")
-            .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-            .build();
-    }
-}</code></pre>
+@Bean("orderServiceClient")
+public WebClient orderServiceClient() {
+    return WebClient.builder()
+        .baseUrl("https://order-service.example.com")
+        .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+        .build();
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1413">14.1.3 커넥션 풀 설정</h3>
 <p>운영 환경이라면 Reactor Netty 커넥션 풀을 꼭 설정해줘야 한다. 기본값으로 두면 의외로 성능이 떨어질 수 있다.</p>
-<pre class="highlight"><code class="language-java">@Bean
+<p>```java
+@Bean
 public WebClient webClient() {
     ConnectionProvider provider = ConnectionProvider.builder("custom-pool")
         .maxConnections(500)                           // 최대 커넥션 수
@@ -1678,113 +1764,120 @@ public WebClient webClient() {
         .maxLifeTime(Duration.ofSeconds(60))            // 커넥션 최대 수명
         .pendingAcquireTimeout(Duration.ofSeconds(60))  // 커넥션 대기 타임아웃
         .evictInBackground(Duration.ofSeconds(120))     // 백그라운드 정리 주기
-        .build();
+        .build();</p>
+<pre><code>HttpClient httpClient = HttpClient.create(provider)
+    .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
+    .compress(true);
 
-    HttpClient httpClient = HttpClient.create(provider)
-        .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
-        .compress(true);
-
-    return WebClient.builder()
-        .baseUrl("https://api.example.com")
-        .clientConnector(new ReactorClientHttpConnector(httpClient))
-        .build();
-}</code></pre>
+return WebClient.builder()
+    .baseUrl("https://api.example.com")
+    .clientConnector(new ReactorClientHttpConnector(httpClient))
+    .build();
+</code></pre>
+<p>}
+```</p>
 <h3 id="1414-codec">14.1.4 코덱(Codec) 설정</h3>
 <p>대용량 응답을 다루거나 커스텀 직렬화가 필요하면 코덱을 설정해야 한다. <code>maxInMemorySize</code>는 응답 본문을 메모리에 버퍼링할 때 최대 크기인데, 기본값이 256KB이다. 실무에서 큰 JSON 파일을 받다 보면 <code>DataBufferLimitException</code>이 터질 수 있으니, 그럴 땐 이 값을 올려야 한다.</p>
-<pre class="highlight"><code class="language-java">@Bean
+<p>```java
+@Bean
 public WebClient webClient() {
     return WebClient.builder()
         .codecs(configurer -&gt; {
-            configurer.defaultCodecs().maxInMemorySize(10 * 1024 * 1024); // 10MB
-
-            ObjectMapper mapper = new ObjectMapper();
-            mapper.registerModule(new JavaTimeModule());
-            mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
-            configurer.defaultCodecs().jackson2JsonEncoder(
-                new Jackson2JsonEncoder(mapper, MediaType.APPLICATION_JSON));
-            configurer.defaultCodecs().jackson2JsonDecoder(
-                new Jackson2JsonDecoder(mapper, MediaType.APPLICATION_JSON));
-        })
-        .build();
-}</code></pre>
+            configurer.defaultCodecs().maxInMemorySize(10 * 1024 * 1024); // 10MB</p>
+<pre><code>        ObjectMapper mapper = new ObjectMapper();
+        mapper.registerModule(new JavaTimeModule());
+        mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+        configurer.defaultCodecs().jackson2JsonEncoder(
+            new Jackson2JsonEncoder(mapper, MediaType.APPLICATION_JSON));
+        configurer.defaultCodecs().jackson2JsonDecoder(
+            new Jackson2JsonDecoder(mapper, MediaType.APPLICATION_JSON));
+    })
+    .build();
+</code></pre>
+<p>}
+```</p>
 <hr>
 <h2 id="142-get-post-put-delete">14.2 요청/응답 처리 (GET, POST, PUT, DELETE)</h2>
 <p>GET, POST, PUT, DELETE 각각을 어떻게 처리하는지 하나씩 살펴보자.</p>
 <h3 id="1421-get">14.2.1 GET 요청</h3>
-<pre class="highlight"><code class="language-java">@Service
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class ProductClientService {
+public class ProductClientService {</p>
+<pre><code>private final WebClient webClient;
 
-    private final WebClient webClient;
+// 단일 객체 조회
+public Mono&lt;Product&gt; getProduct(String id) {
+    return webClient.get()
+        .uri("/api/products/{id}", id)
+        .retrieve()
+        .bodyToMono(Product.class);
+}
 
-    // 단일 객체 조회
-    public Mono&lt;Product&gt; getProduct(String id) {
-        return webClient.get()
-            .uri("/api/products/{id}", id)
-            .retrieve()
-            .bodyToMono(Product.class);
-    }
+// 목록 조회
+public Flux&lt;Product&gt; getAllProducts() {
+    return webClient.get()
+        .uri("/api/products")
+        .retrieve()
+        .bodyToFlux(Product.class);
+}
 
-    // 목록 조회
-    public Flux&lt;Product&gt; getAllProducts() {
-        return webClient.get()
-            .uri("/api/products")
-            .retrieve()
-            .bodyToFlux(Product.class);
-    }
-
-    // 쿼리 파라미터 사용
-    public Flux&lt;Product&gt; searchProducts(String keyword, int page, int size) {
-        return webClient.get()
-            .uri(uriBuilder -&gt; uriBuilder
-                .path("/api/products/search")
-                .queryParam("keyword", keyword)
-                .queryParam("page", page)
-                .queryParam("size", size)
-                .build())
-            .retrieve()
-            .bodyToFlux(Product.class);
-    }
-}</code></pre>
+// 쿼리 파라미터 사용
+public Flux&lt;Product&gt; searchProducts(String keyword, int page, int size) {
+    return webClient.get()
+        .uri(uriBuilder -&gt; uriBuilder
+            .path("/api/products/search")
+            .queryParam("keyword", keyword)
+            .queryParam("page", page)
+            .queryParam("size", size)
+            .build())
+        .retrieve()
+        .bodyToFlux(Product.class);
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1422-post">14.2.2 POST 요청</h3>
-<pre class="highlight"><code class="language-java">// JSON 본문 전송 (bodyValue: 준비된 객체)
-public Mono&lt;Product&gt; createProduct(ProductRequest request) {
+<p>```java
+// JSON 본문 전송 (bodyValue: 준비된 객체)
+public Mono<Product> createProduct(ProductRequest request) {
     return webClient.post().uri("/api/products")
         .bodyValue(request).retrieve().bodyToMono(Product.class);
-}
-
-// Mono 본문 전송 (body: Publisher 타입)
-public Mono&lt;Product&gt; createProductReactive(Mono&lt;ProductRequest&gt; request) {
+}</p>
+<p>// Mono 본문 전송 (body: Publisher 타입)
+public Mono<Product> createProductReactive(Mono<ProductRequest> request) {
     return webClient.post().uri("/api/products")
         .body(request, ProductRequest.class).retrieve().bodyToMono(Product.class);
-}
-
-// 폼 데이터 전송
-public Mono&lt;String&gt; submitForm(String username, String password) {
+}</p>
+<p>// 폼 데이터 전송
+public Mono<String> submitForm(String username, String password) {
     return webClient.post().uri("/api/auth/login")
         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
         .body(BodyInserters.fromFormData("username", username)
             .with("password", password))
         .retrieve().bodyToMono(String.class);
-}</code></pre>
+}
+```</p>
 <h3 id="1423-put-delete">14.2.3 PUT과 DELETE 요청</h3>
-<pre class="highlight"><code class="language-java">public Mono&lt;Product&gt; updateProduct(String id, ProductRequest request) {
+<p>```java
+public Mono<Product> updateProduct(String id, ProductRequest request) {
     return webClient.put()
         .uri("/api/products/{id}", id)
         .bodyValue(request)
         .retrieve()
         .bodyToMono(Product.class);
-}
-
-public Mono&lt;Void&gt; deleteProduct(String id) {
+}</p>
+<p>public Mono<Void> deleteProduct(String id) {
     return webClient.delete()
         .uri("/api/products/{id}", id)
         .retrieve()
         .bodyToMono(Void.class);
-}</code></pre>
+}
+```</p>
 <h3 id="1424-retrieve-vs-exchangetomono">14.2.4 retrieve() vs exchangeToMono()</h3>
 <p>두 가지 방식이 있고 상황에 따라 쓰임이 다르다. <code>retrieve()</code>는 응답 본문만 간단하게 뽑아내주고 4xx/5xx 에러는 자동으로 예외를 던진다. 반면 <code>exchangeToMono()</code>를 쓰면 상태 코드나 헤더 같은 전체 응답 정보에 접근할 수 있어서 더 세밀한 제어가 가능하다.</p>
-<pre class="highlight"><code class="language-java">public Mono&lt;Product&gt; getProductWithStatus(String id) {
+<p><code>java
+public Mono&lt;Product&gt; getProductWithStatus(String id) {
     return webClient.get()
         .uri("/api/products/{id}", id)
         .exchangeToMono(response -&gt; {
@@ -1796,38 +1889,41 @@ public Mono&lt;Void&gt; deleteProduct(String id) {
                 return response.createError();
             }
         });
-}</code></pre>
+}</code></p>
 <blockquote>
 <p><strong>주의</strong>: 이전 버전의 <code>exchange()</code> 메서드는 deprecated되었다. 리소스 누수 위험이 있으므로, 반드시 <code>exchangeToMono()</code> 또는 <code>exchangeToFlux()</code>를 사용한다.</p>
 </blockquote>
 <p>응답 헤더와 상태 코드가 모두 필요하면 <code>toEntity()</code>를 사용한다.</p>
-<pre class="highlight"><code class="language-java">public Mono&lt;ResponseEntity&lt;Product&gt;&gt; getProductWithHeaders(String id) {
+<p><code>java
+public Mono&lt;ResponseEntity&lt;Product&gt;&gt; getProductWithHeaders(String id) {
     return webClient.get()
         .uri("/api/products/{id}", id)
         .retrieve()
         .toEntity(Product.class);
-}</code></pre>
+}</code></p>
 <h3 id="1425">14.2.5 스트리밍 응답 처리</h3>
 <p>음, SSE나 NDJSON 같은 스트리밍 응답도 당연히 처리할 수 있다.</p>
-<pre class="highlight"><code class="language-java">// SSE 스트림
-public Flux&lt;ServerSentEvent&lt;String&gt;&gt; subscribeToEvents() {
+<p>```java
+// SSE 스트림
+public Flux<ServerSentEvent\<String>> subscribeToEvents() {
     return webClient.get().uri("/api/events/stream")
         .accept(MediaType.TEXT_EVENT_STREAM).retrieve()
-        .bodyToFlux(new ParameterizedTypeReference&lt;ServerSentEvent&lt;String&gt;&gt;() {});
-}
-
-// NDJSON 스트림
-public Flux&lt;Product&gt; streamProducts() {
+        .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent\<String>>() {});
+}</p>
+<p>// NDJSON 스트림
+public Flux<Product> streamProducts() {
     return webClient.get().uri("/api/products/stream")
         .accept(MediaType.APPLICATION_NDJSON).retrieve()
         .bodyToFlux(Product.class);
-}</code></pre>
+}
+```</p>
 <hr>
 <h2 id="143">14.3 에러 핸들링과 재시도 전략</h2>
 <p>외부 API를 호출하면 당연히 에러가 날 수 있다. 네트워크 문제, 서버 다운, 타임아웃... 이런 것들을 어떻게 처리할지가 중요하다.</p>
 <h3 id="1431-onstatus">14.3.1 onStatus()를 활용한 상태 코드별 처리</h3>
 <p><code>retrieve()</code>는 기본적으로 4xx/5xx 응답에 <code>WebClientResponseException</code>을 자동으로 던진다. 하지만 <code>onStatus()</code>를 사용하면 각 상태 코드별로 맞춤 처리를 정의할 수 있다.</p>
-<pre class="highlight"><code class="language-java">public Mono&lt;Product&gt; getProduct(String id) {
+<p><code>java
+public Mono&lt;Product&gt; getProduct(String id) {
     return webClient.get()
         .uri("/api/products/{id}", id)
         .retrieve()
@@ -1846,10 +1942,11 @@ public Flux&lt;Product&gt; streamProducts() {
                     new ExternalServiceException("서버 에러: " + body)))
         )
         .bodyToMono(Product.class);
-}</code></pre>
+}</code></p>
 <h3 id="1432-retrywhen-retrybackoff">14.3.2 retryWhen()과 Retry.backoff()</h3>
 <p>단순 <code>retry(n)</code>은 실패하면 바로 재시도하는데, 이건 외부 서비스에 부하를 받게 만들 수 있다. 운영 환경에서는 반드시 <code>Retry.backoff()</code>로 지수 백오프(exponential backoff)를 적용해야 한다. 처음엔 짧게 기다렸다가 점점 더 길게 기다리는 방식이다.</p>
-<pre class="highlight"><code class="language-java">public Mono&lt;Product&gt; getProductWithBackoff(String id) {
+<p><code>java
+public Mono&lt;Product&gt; getProductWithBackoff(String id) {
     return webClient.get()
         .uri("/api/products/{id}", id)
         .retrieve()
@@ -1868,7 +1965,7 @@ public Flux&lt;Product&gt; streamProducts() {
                     "재시도 횟수 초과: " + signal.failure().getMessage(),
                     signal.failure()))
         );
-}</code></pre>
+}</code></p>
 <table>
 <thead>
 <tr>
@@ -1898,41 +1995,45 @@ public Flux&lt;Product&gt; streamProducts() {
 <p><code>jitter</code>는 여러 클라이언트가 동시에 재시도하여 부하가 집중되는 "thundering herd" 문제를 방지한다.</p>
 <h3 id="1433">14.3.3 서킷 브레이커 패턴</h3>
 <p>외부 서비스가 계속 장애 상태라면 재시도만 해서는 소용없다. 이럴 땐 요청 자체를 차단하고 빨리 실패하는 게 낫다. Resilience4j라는 라이브러리로 서킷 브레이커 패턴을 구현하면 된다.</p>
-<pre class="highlight"><code class="language-groovy">dependencies {
-    implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
-    implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0'
-}</code></pre>
-<pre class="highlight"><code class="language-yaml">resilience4j:
+<p><code>groovy
+dependencies {
+    implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.3.0'
+    implementation 'io.github.resilience4j:resilience4j-reactor:2.3.0'
+}</code></p>
+<p><code>yaml
+resilience4j:
   circuitbreaker:
     instances:
       productService:
         sliding-window-size: 10
         failure-rate-threshold: 50
         wait-duration-in-open-state: 30s
-        permitted-number-of-calls-in-half-open-state: 3</code></pre>
-<pre class="highlight"><code class="language-java">@Service
+        permitted-number-of-calls-in-half-open-state: 3</code></p>
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class ProductClientService {
+public class ProductClientService {</p>
+<pre><code>private final WebClient webClient;
+private final CircuitBreakerRegistry circuitBreakerRegistry;
 
-    private final WebClient webClient;
-    private final CircuitBreakerRegistry circuitBreakerRegistry;
+public Mono&lt;Product&gt; getProduct(String id) {
+    CircuitBreaker cb = circuitBreakerRegistry.circuitBreaker("productService");
 
-    public Mono&lt;Product&gt; getProduct(String id) {
-        CircuitBreaker cb = circuitBreakerRegistry.circuitBreaker("productService");
-
-        return webClient.get()
-            .uri("/api/products/{id}", id)
-            .retrieve()
-            .bodyToMono(Product.class)
-            .transformDeferred(CircuitBreakerOperator.of(cb))
-            .onErrorResume(CallNotPermittedException.class, ex -&gt; {
-                log.warn("서킷 브레이커 OPEN - 폴백 실행");
-                return Mono.just(Product.fallback(id));
-            })
-            .retryWhen(Retry.backoff(2, Duration.ofMillis(500))
-                .filter(ex -&gt; !(ex instanceof CallNotPermittedException)));
-    }
-}</code></pre>
+    return webClient.get()
+        .uri("/api/products/{id}", id)
+        .retrieve()
+        .bodyToMono(Product.class)
+        .transformDeferred(CircuitBreakerOperator.of(cb))
+        .onErrorResume(CallNotPermittedException.class, ex -&gt; {
+            log.warn("서킷 브레이커 OPEN - 폴백 실행");
+            return Mono.just(Product.fallback(id));
+        })
+        .retryWhen(Retry.backoff(2, Duration.ofMillis(500))
+            .filter(ex -&gt; !(ex instanceof CallNotPermittedException)));
+}
+</code></pre>
+<p>}
+```</p>
 <table>
 <thead>
 <tr>
@@ -1960,7 +2061,8 @@ public class ProductClientService {
 <p>타임아웃은 정말 중요하다. 만약 타임아웃이 없다면 외부 서비스의 장애가 자신의 서버까지 파급되어 버린다. 클라이언트가 계속 응답을 기다리다 보니 스레드 또는 리소스가 고갈되는 거다.</p>
 <h3 id="1441">14.4.1 계층별 타임아웃</h3>
 <p>네트워크 요청은 여러 단계로 이루어져 있는데, 각 단계마다 타임아웃을 설정할 수 있다.</p>
-<pre class="highlight"><code class="language-java">HttpClient httpClient = HttpClient.create()
+<p>```java
+HttpClient httpClient = HttpClient.create()
     // 1. 커넥션 타임아웃: TCP 연결 수립
     .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 3000)
     // 2. 응답 타임아웃: 첫 응답 바이트 수신까지
@@ -1968,14 +2070,15 @@ public class ProductClientService {
     // 3. 읽기/쓰기 타임아웃: 데이터 전송 중 무응답
     .doOnConnected(conn -&gt; conn
         .addHandlerLast(new ReadTimeoutHandler(10, TimeUnit.SECONDS))
-        .addHandlerLast(new WriteTimeoutHandler(10, TimeUnit.SECONDS)));
-
-WebClient webClient = WebClient.builder()
+        .addHandlerLast(new WriteTimeoutHandler(10, TimeUnit.SECONDS)));</p>
+<p>WebClient webClient = WebClient.builder()
     .clientConnector(new ReactorClientHttpConnector(httpClient))
-    .build();</code></pre>
+    .build();
+```</p>
 <h3 id="1442-reactor-timeout">14.4.2 Reactor timeout() 연산자</h3>
 <p>Reactor 레벨에서 제공하는 <code>timeout()</code> 연산자로 전체 리액티브 체인, 재시도를 포함한 최종 시간을 제한할 수 있다.</p>
-<pre class="highlight"><code class="language-java">public Mono&lt;Product&gt; getProduct(String id) {
+<p><code>java
+public Mono&lt;Product&gt; getProduct(String id) {
     return webClient.get()
         .uri("/api/products/{id}", id)
         .retrieve()
@@ -1984,7 +2087,7 @@ WebClient webClient = WebClient.builder()
         .timeout(Duration.ofSeconds(15))
         .onErrorResume(TimeoutException.class, ex -&gt;
             Mono.error(new ExternalServiceException("응답 시간 초과")));
-}</code></pre>
+}</code></p>
 <h3 id="1443">14.4.3 타임아웃 종합 정리</h3>
 <table>
 <thead>
@@ -2027,76 +2130,83 @@ WebClient webClient = WebClient.builder()
 <p>지금까지 배운 기법들을 실제 프로젝트에서 어떻게 조합해서 쓰는지 보자.</p>
 <h3 id="1451-rest-api">14.5.1 REST API 호출 서비스</h3>
 <p>외부 날씨 API를 호출하는 예제를 만들어 보자. 에러 처리, 재시도, 타임아웃까지 모두 함께 적용해야 한다.</p>
-<pre class="highlight"><code class="language-java">@Slf4j
+<p>```java
+@Slf4j
 @Service
-public class WeatherClientService {
+public class WeatherClientService {</p>
+<pre><code>private final WebClient webClient;
 
-    private final WebClient webClient;
+public WeatherClientService(WebClient.Builder builder,
+                            @Value("${weather.api.key}") String apiKey) {
+    this.webClient = builder
+        .baseUrl("https://api.openweathermap.org/data/2.5")
+        .build();
+}
 
-    public WeatherClientService(WebClient.Builder builder,
-                                @Value("${weather.api.key}") String apiKey) {
-        this.webClient = builder
-            .baseUrl("https://api.openweathermap.org/data/2.5")
-            .build();
-    }
-
-    public Mono&lt;WeatherResponse&gt; getCurrentWeather(String city) {
-        return webClient.get()
-            .uri(uriBuilder -&gt; uriBuilder.path("/weather")
-                .queryParam("q", city).queryParam("appid", apiKey)
-                .queryParam("units", "metric").build())
-            .retrieve()
-            .onStatus(HttpStatusCode::is4xxClientError, response -&gt;
-                response.statusCode() == HttpStatus.NOT_FOUND
-                    ? Mono.error(new CityNotFoundException("도시를 찾을 수 없습니다: " + city))
-                    : response.createException())
-            .bodyToMono(WeatherResponse.class)
-            .retryWhen(Retry.backoff(2, Duration.ofSeconds(1))
-                .filter(ex -&gt; ex instanceof WebClientResponseException.ServiceUnavailable))
-            .timeout(Duration.ofSeconds(10));
-    }
-}</code></pre>
+public Mono&lt;WeatherResponse&gt; getCurrentWeather(String city) {
+    return webClient.get()
+        .uri(uriBuilder -&gt; uriBuilder.path("/weather")
+            .queryParam("q", city).queryParam("appid", apiKey)
+            .queryParam("units", "metric").build())
+        .retrieve()
+        .onStatus(HttpStatusCode::is4xxClientError, response -&gt;
+            response.statusCode() == HttpStatus.NOT_FOUND
+                ? Mono.error(new CityNotFoundException("도시를 찾을 수 없습니다: " + city))
+                : response.createException())
+        .bodyToMono(WeatherResponse.class)
+        .retryWhen(Retry.backoff(2, Duration.ofSeconds(1))
+            .filter(ex -&gt; ex instanceof WebClientResponseException.ServiceUnavailable))
+        .timeout(Duration.ofSeconds(10));
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1452-api-zip">14.5.2 여러 API 동시 호출 (zip)</h3>
 <p>대시보드처럼 여러 소스의 데이터가 필요한 경우, <code>Mono.zip()</code>으로 독립적인 API 호출들을 병렬로 실행하고 결과를 한데 모을 수 있다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class DashboardService {
+public class DashboardService {</p>
+<pre><code>private final UserClientService userClient;
+private final OrderClientService orderClient;
+private final WeatherClientService weatherClient;
 
-    private final UserClientService userClient;
-    private final OrderClientService orderClient;
-    private final WeatherClientService weatherClient;
+public Mono&lt;DashboardResponse&gt; getDashboard(String userId) {
+    Mono&lt;UserProfile&gt; userMono = userClient.getProfile(userId);
+    Mono&lt;List&lt;Order&gt;&gt; ordersMono = orderClient.getRecentOrders(userId).collectList();
+    Mono&lt;WeatherResponse&gt; weatherMono = weatherClient.getCurrentWeather("Seoul");
 
-    public Mono&lt;DashboardResponse&gt; getDashboard(String userId) {
-        Mono&lt;UserProfile&gt; userMono = userClient.getProfile(userId);
-        Mono&lt;List&lt;Order&gt;&gt; ordersMono = orderClient.getRecentOrders(userId).collectList();
-        Mono&lt;WeatherResponse&gt; weatherMono = weatherClient.getCurrentWeather("Seoul");
-
-        return Mono.zip(userMono, ordersMono, weatherMono)
-            .map(tuple -&gt; DashboardResponse.builder()
-                .user(tuple.getT1())
-                .recentOrders(tuple.getT2())
-                .weather(tuple.getT3())
-                .build());
-    }
-}</code></pre>
+    return Mono.zip(userMono, ordersMono, weatherMono)
+        .map(tuple -&gt; DashboardResponse.builder()
+            .user(tuple.getT1())
+            .recentOrders(tuple.getT2())
+            .weather(tuple.getT3())
+            .build());
+}
+</code></pre>
+<p>}
+```</p>
 <p>포인트는 세 API 호출이 <strong>동시에</strong> 실행된다는 것이다. 따라서 가장 느린 호출 기준으로만 대기하면 된다. 각각을 순차로 호출하는 것보다 훨씬 빠르다.</p>
 <h3 id="1453-api-merge">14.5.3 여러 API 결과 병합 (merge)</h3>
 <p>반면 <code>Flux.merge()</code>는 여러 소스의 결과를 도착 순서대로 그냥 합친다. 상대적으로 단순한 조합이지만, 스트리밍 데이터를 다룰 때는 이게 더 편할 수 있다.</p>
-<pre class="highlight"><code class="language-java">public Flux&lt;PriceQuote&gt; getPriceQuotes(String productId) {
-    Flux&lt;PriceQuote&gt; a = webClient.get()
+<p>```java
+public Flux<PriceQuote> getPriceQuotes(String productId) {
+    Flux<PriceQuote> a = webClient.get()
         .uri("https://supplier-a.com/api/price/{id}", productId)
         .retrieve().bodyToMono(PriceQuote.class).flux();
-    Flux&lt;PriceQuote&gt; b = webClient.get()
+    Flux<PriceQuote> b = webClient.get()
         .uri("https://supplier-b.com/api/price/{id}", productId)
-        .retrieve().bodyToMono(PriceQuote.class).flux();
-
-    return Flux.merge(a, b)
-        .timeout(Duration.ofSeconds(5))
-        .onErrorResume(ex -&gt; Flux.empty());
-}</code></pre>
+        .retrieve().bodyToMono(PriceQuote.class).flux();</p>
+<pre><code>return Flux.merge(a, b)
+    .timeout(Duration.ofSeconds(5))
+    .onErrorResume(ex -&gt; Flux.empty());
+</code></pre>
+<p>}
+```</p>
 <h3 id="1454-api-flatmap">14.5.4 순차 API 호출 (flatMap 체이닝)</h3>
 <p>반대로 첫 번째 API의 결과가 두 번째 API 호출에 필요한 경우도 있다. 이럴 땐 <code>flatMap</code>으로 체이닝해서 순차적으로 실행한다.</p>
-<pre class="highlight"><code class="language-java">// 1. 사용자 조회 → 2. 주문 생성 → 3. 결제 처리
+<p><code>java
+// 1. 사용자 조회 → 2. 주문 생성 → 3. 결제 처리
 public Mono&lt;PaymentResult&gt; processOrder(String userId, OrderRequest orderRequest) {
     return webClient.get()
         .uri("/api/users/{id}", userId)
@@ -2115,126 +2225,137 @@ public Mono&lt;PaymentResult&gt; processOrder(String userId, OrderRequest orderR
             .bodyValue(new PaymentRequest(order.getId(), order.getTotalAmount()))
             .retrieve()
             .bodyToMono(PaymentResult.class));
-}</code></pre>
+}</code></p>
 <h3 id="1455-fallback">14.5.5 폴백(Fallback) 패턴</h3>
 <p>외부 API가 실패해도 서비스는 계속 돌아야 할 수 있다. 이럴 때는 캐시나 기본값 같은 대체 데이터로 폴백하는 방식이 있다.</p>
-<pre class="highlight"><code class="language-java">@Slf4j
+<p>```java
+@Slf4j
 @Service
 @RequiredArgsConstructor
-public class ProductService {
+public class ProductService {</p>
+<pre><code>private final WebClient webClient;
+private final ProductRepository productRepository;
 
-    private final WebClient webClient;
-    private final ProductRepository productRepository;
+public Mono&lt;Product&gt; getProduct(String id) {
+    return webClient.get()
+        .uri("/api/products/{id}", id)
+        .retrieve().bodyToMono(Product.class)
+        .timeout(Duration.ofSeconds(3))
+        .onErrorResume(ex -&gt; {
+            log.warn("외부 API 실패, 로컬 DB 폴백: {}", ex.getMessage());
+            return productRepository.findById(id);
+        });
+}
 
-    public Mono&lt;Product&gt; getProduct(String id) {
-        return webClient.get()
-            .uri("/api/products/{id}", id)
-            .retrieve().bodyToMono(Product.class)
-            .timeout(Duration.ofSeconds(3))
-            .onErrorResume(ex -&gt; {
-                log.warn("외부 API 실패, 로컬 DB 폴백: {}", ex.getMessage());
-                return productRepository.findById(id);
-            });
-    }
-
-    // 다단계 폴백: 캐시 → 외부 API → 기본값
-    public Mono&lt;ExchangeRate&gt; getExchangeRate(String currency) {
-        return getFromCache(currency)
-            .switchIfEmpty(getFromExternalApi(currency)
-                .doOnNext(rate -&gt; saveToCache(currency, rate)))
-            .switchIfEmpty(Mono.just(ExchangeRate.defaultRate(currency)))
-            .onErrorReturn(ExchangeRate.defaultRate(currency));
-    }
-}</code></pre>
+// 다단계 폴백: 캐시 → 외부 API → 기본값
+public Mono&lt;ExchangeRate&gt; getExchangeRate(String currency) {
+    return getFromCache(currency)
+        .switchIfEmpty(getFromExternalApi(currency)
+            .doOnNext(rate -&gt; saveToCache(currency, rate)))
+        .switchIfEmpty(Mono.just(ExchangeRate.defaultRate(currency)))
+        .onErrorReturn(ExchangeRate.defaultRate(currency));
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1456-api">14.5.6 페이지네이션 API 전체 조회</h3>
 <p>API가 페이지네이션으로 데이터를 제공하면, <code>expand()</code> 연산자로 다음 페이지를 자동으로 호출할 수 있다. 더 이상 다음 페이지가 없으면 <code>Mono.empty()</code>를 반환해서 재귀를 멈춘다.</p>
-<pre class="highlight"><code class="language-java">public Flux&lt;Product&gt; getAllProductsPaginated() {
+<p>```java
+public Flux<Product> getAllProductsPaginated() {
     return fetchPage(0)
         .expand(page -&gt; page.hasNext() ? fetchPage(page.getPage() + 1) : Mono.empty())
         .flatMapIterable(PageResponse::getContent);
-}
-
-private Mono&lt;PageResponse&lt;Product&gt;&gt; fetchPage(int page) {
+}</p>
+<p>private Mono<PageResponse\<Product>> fetchPage(int page) {
     return webClient.get()
         .uri(uriBuilder -&gt; uriBuilder.path("/api/products")
             .queryParam("page", page).queryParam("size", 100).build())
         .retrieve()
-        .bodyToMono(new ParameterizedTypeReference&lt;PageResponse&lt;Product&gt;&gt;() {});
-}</code></pre>
+        .bodyToMono(new ParameterizedTypeReference<PageResponse\<Product>>() {});
+}
+```</p>
 <hr>
 <h2 id="146-webclient">14.6 WebClient 필터와 인터셉터</h2>
 <p>대규모 애플리케이션에서는 로깅, 인증, 에러 처리 같은 공통 로직을 모든 API 호출에 적용해야 하는데, 매번 반복하는 건 비효율적이다. <code>ExchangeFilterFunction</code>으로 이런 횡단 관심사(cross-cutting concern)를 깔끔하게 처리할 수 있다.</p>
 <h3 id="1461-exchangefilterfunction">14.6.1 ExchangeFilterFunction과 로깅 필터</h3>
 <p><code>ExchangeFilterFunction</code>은 <code>WebClient</code>의 요청/응답 파이프라인에 끼워넣는 필터다. <code>WebClient.builder().filter()</code>로 등록하고, 여러 개를 등록하면 등록한 순서 그대로 체이닝된다.</p>
-<pre class="highlight"><code class="language-java">@Slf4j
-public class WebClientFilters {
+<p>```java
+@Slf4j
+public class WebClientFilters {</p>
+<pre><code>public static ExchangeFilterFunction logRequestResponse() {
+    return (request, next) -&gt; {
+        long startTime = System.currentTimeMillis();
+        log.info("&gt;&gt;&gt; {} {}", request.method(), request.url());
 
-    public static ExchangeFilterFunction logRequestResponse() {
-        return (request, next) -&gt; {
-            long startTime = System.currentTimeMillis();
-            log.info("&gt;&gt;&gt; {} {}", request.method(), request.url());
-
-            return next.exchange(request)
-                .doOnNext(response -&gt; {
-                    long duration = System.currentTimeMillis() - startTime;
-                    log.info("&lt;&lt;&lt; {} {} - {}ms",
-                        response.statusCode(), request.url(), duration);
-                });
-        };
-    }
-}</code></pre>
+        return next.exchange(request)
+            .doOnNext(response -&gt; {
+                long duration = System.currentTimeMillis() - startTime;
+                log.info("&lt;&lt;&lt; {} {} - {}ms",
+                    response.statusCode(), request.url(), duration);
+            });
+    };
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1462">14.6.2 인증 필터</h3>
 <p>외부 API 호출할 때는 당연히 인증이 필요하다. 간단한 API 키부터 복잡한 OAuth 토큰까지 여러 방식이 있다. 필터로 이걸 깔끔하게 처리해 보자.</p>
-<pre class="highlight"><code class="language-java">public static ExchangeFilterFunction apiKeyAuth(String apiKey) {
+<p><code>java
+public static ExchangeFilterFunction apiKeyAuth(String apiKey) {
     return (request, next) -&gt; {
         ClientRequest filtered = ClientRequest.from(request)
             .header("X-API-Key", apiKey).build();
         return next.exchange(filtered);
     };
-}</code></pre>
-<pre class="highlight"><code class="language-java">@Component
+}</code></p>
+<p>```java
+@Component
 @RequiredArgsConstructor
-public class DynamicAuthFilter {
+public class DynamicAuthFilter {</p>
+<pre><code>private final TokenService tokenService;
 
-    private final TokenService tokenService;
+public ExchangeFilterFunction authFilter() {
+    return (request, next) -&gt;
+        tokenService.getValidToken()
+            .flatMap(token -&gt; {
+                ClientRequest filtered = ClientRequest.from(request)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                    .build();
+                return next.exchange(filtered);
+            });
+}
+</code></pre>
+<p>}
+```</p>
+<p>```java
+@Service
+public class TokenService {</p>
+<pre><code>private final WebClient authClient;
+private final AtomicReference&lt;TokenInfo&gt; cachedToken = new AtomicReference&lt;&gt;();
 
-    public ExchangeFilterFunction authFilter() {
-        return (request, next) -&gt;
-            tokenService.getValidToken()
-                .flatMap(token -&gt; {
-                    ClientRequest filtered = ClientRequest.from(request)
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-                        .build();
-                    return next.exchange(filtered);
-                });
+public TokenService(WebClient.Builder builder) {
+    this.authClient = builder.baseUrl("https://auth.example.com").build();
+}
+
+public Mono&lt;String&gt; getValidToken() {
+    TokenInfo current = cachedToken.get();
+    if (current != null &amp;&amp; !current.isExpired()) {
+        return Mono.just(current.getAccessToken());
     }
-}</code></pre>
-<pre class="highlight"><code class="language-java">@Service
-public class TokenService {
-
-    private final WebClient authClient;
-    private final AtomicReference&lt;TokenInfo&gt; cachedToken = new AtomicReference&lt;&gt;();
-
-    public TokenService(WebClient.Builder builder) {
-        this.authClient = builder.baseUrl("https://auth.example.com").build();
-    }
-
-    public Mono&lt;String&gt; getValidToken() {
-        TokenInfo current = cachedToken.get();
-        if (current != null &amp;&amp; !current.isExpired()) {
-            return Mono.just(current.getAccessToken());
-        }
-        return authClient.post().uri("/oauth/token")
-            .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-            .body(BodyInserters.fromFormData("grant_type", "client_credentials")
-                .with("client_id", "my-client").with("client_secret", "my-secret"))
-            .retrieve().bodyToMono(TokenInfo.class)
-            .doOnNext(cachedToken::set).map(TokenInfo::getAccessToken);
-    }
-}</code></pre>
+    return authClient.post().uri("/oauth/token")
+        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+        .body(BodyInserters.fromFormData("grant_type", "client_credentials")
+            .with("client_id", "my-client").with("client_secret", "my-secret"))
+        .retrieve().bodyToMono(TokenInfo.class)
+        .doOnNext(cachedToken::set).map(TokenInfo::getAccessToken);
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1463-id">14.6.3 에러 처리 필터와 요청 ID 전파 필터</h3>
 <p>기타 유용한 필터들도 몇 가지 있다.</p>
-<pre class="highlight"><code class="language-java">public static ExchangeFilterFunction errorHandlingFilter() {
+<p>```java
+public static ExchangeFilterFunction errorHandlingFilter() {
     return (request, next) -&gt; next.exchange(request)
         .flatMap(response -&gt; {
             if (response.statusCode().is5xxServerError()) {
@@ -2244,9 +2365,8 @@ public class TokenService {
             }
             return Mono.just(response);
         });
-}
-
-public static ExchangeFilterFunction traceIdFilter() {
+}</p>
+<p>public static ExchangeFilterFunction traceIdFilter() {
     return (request, next) -&gt; {
         String traceId = Optional.ofNullable(MDC.get("traceId"))
             .orElse(UUID.randomUUID().toString().substring(0, 8));
@@ -2254,82 +2374,88 @@ public static ExchangeFilterFunction traceIdFilter() {
             .header("X-Trace-Id", traceId).build();
         return next.exchange(filtered);
     };
-}</code></pre>
+}
+```</p>
 <h3 id="1464">14.6.4 필터 조합과 적용</h3>
 <p>이제 여러 필터를 조합해서 실제로 WebClient 빈을 만드는 방법을 보자.</p>
-<pre class="highlight"><code class="language-java">@Configuration
+<p>```java
+@Configuration
 @RequiredArgsConstructor
-public class WebClientConfig {
+public class WebClientConfig {</p>
+<pre><code>private final DynamicAuthFilter dynamicAuthFilter;
+@Value("${external.api.base-url}") private String baseUrl;
 
-    private final DynamicAuthFilter dynamicAuthFilter;
-    @Value("${external.api.base-url}") private String baseUrl;
+@Bean
+public WebClient webClient() {
+    HttpClient httpClient = HttpClient.create()
+        .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
+        .responseTimeout(Duration.ofSeconds(10))
+        .doOnConnected(conn -&gt; conn
+            .addHandlerLast(new ReadTimeoutHandler(10, TimeUnit.SECONDS))
+            .addHandlerLast(new WriteTimeoutHandler(10, TimeUnit.SECONDS)));
 
-    @Bean
-    public WebClient webClient() {
-        HttpClient httpClient = HttpClient.create()
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
-            .responseTimeout(Duration.ofSeconds(10))
-            .doOnConnected(conn -&gt; conn
-                .addHandlerLast(new ReadTimeoutHandler(10, TimeUnit.SECONDS))
-                .addHandlerLast(new WriteTimeoutHandler(10, TimeUnit.SECONDS)));
-
-        return WebClient.builder()
-            .baseUrl(baseUrl)
-            .clientConnector(new ReactorClientHttpConnector(httpClient))
-            .codecs(c -&gt; c.defaultCodecs().maxInMemorySize(5 * 1024 * 1024))
-            .filter(WebClientFilters.traceIdFilter())       // 1. 추적
-            .filter(dynamicAuthFilter.authFilter())          // 2. 인증
-            .filter(WebClientFilters.logRequestResponse())   // 3. 로깅
-            .filter(WebClientFilters.errorHandlingFilter())  // 4. 에러 처리
-            .build();
-    }
-}</code></pre>
+    return WebClient.builder()
+        .baseUrl(baseUrl)
+        .clientConnector(new ReactorClientHttpConnector(httpClient))
+        .codecs(c -&gt; c.defaultCodecs().maxInMemorySize(5 * 1024 * 1024))
+        .filter(WebClientFilters.traceIdFilter())       // 1. 추적
+        .filter(dynamicAuthFilter.authFilter())          // 2. 인증
+        .filter(WebClientFilters.logRequestResponse())   // 3. 로깅
+        .filter(WebClientFilters.errorHandlingFilter())  // 4. 에러 처리
+        .build();
+}
+</code></pre>
+<p>}
+```</p>
 <p>필터는 등록 순서대로 체이닝되므로 순서가 중요하다. 필자의 경험상 추적 -&gt; 인증 -&gt; 로깅 -&gt; 에러 처리 이 순서가 가장 깔끔하다.</p>
 <h3 id="1465-webclient">14.6.5 테스트에서의 WebClient 모킹</h3>
 <p><code>WebClient</code>를 사용하는 코드를 테스트할 때는 실제 외부 API를 호출할 수 없다. <code>MockWebServer</code>라는 도구로 가짜 API를 만들어서 테스트한다.</p>
-<pre class="highlight"><code class="language-groovy">testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'</code></pre>
-<pre class="highlight"><code class="language-java">class ProductClientServiceTest {
+<p><code>groovy
+testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'</code></p>
+<p>```java
+class ProductClientServiceTest {</p>
+<pre><code>private MockWebServer mockWebServer;
+private ProductClientService service;
 
-    private MockWebServer mockWebServer;
-    private ProductClientService service;
+@BeforeEach
+void setUp() throws IOException {
+    mockWebServer = new MockWebServer();
+    mockWebServer.start();
+    service = new ProductClientService(
+        WebClient.builder().baseUrl(mockWebServer.url("/").toString()).build());
+}
 
-    @BeforeEach
-    void setUp() throws IOException {
-        mockWebServer = new MockWebServer();
-        mockWebServer.start();
-        service = new ProductClientService(
-            WebClient.builder().baseUrl(mockWebServer.url("/").toString()).build());
-    }
+@AfterEach
+void tearDown() throws IOException { mockWebServer.shutdown(); }
 
-    @AfterEach
-    void tearDown() throws IOException { mockWebServer.shutdown(); }
+@Test
+void getProduct_성공() {
+    mockWebServer.enqueue(new MockResponse()
+        .setBody("{\"id\":\"123\",\"name\":\"테스트 상품\",\"price\":10000}")
+        .addHeader("Content-Type", "application/json"));
 
-    @Test
-    void getProduct_성공() {
-        mockWebServer.enqueue(new MockResponse()
-            .setBody("{\"id\":\"123\",\"name\":\"테스트 상품\",\"price\":10000}")
-            .addHeader("Content-Type", "application/json"));
+    StepVerifier.create(service.getProduct("123"))
+        .assertNext(p -&gt; assertThat(p.getName()).isEqualTo("테스트 상품"))
+        .verifyComplete();
+}
 
-        StepVerifier.create(service.getProduct("123"))
-            .assertNext(p -&gt; assertThat(p.getName()).isEqualTo("테스트 상품"))
-            .verifyComplete();
-    }
+@Test
+void getProduct_재시도_후_성공() {
+    // 처음 두 번은 503, 세 번째는 성공
+    mockWebServer.enqueue(new MockResponse().setResponseCode(503));
+    mockWebServer.enqueue(new MockResponse().setResponseCode(503));
+    mockWebServer.enqueue(new MockResponse()
+        .setBody("{\"id\":\"123\",\"name\":\"상품\",\"price\":5000}")
+        .addHeader("Content-Type", "application/json"));
 
-    @Test
-    void getProduct_재시도_후_성공() {
-        // 처음 두 번은 503, 세 번째는 성공
-        mockWebServer.enqueue(new MockResponse().setResponseCode(503));
-        mockWebServer.enqueue(new MockResponse().setResponseCode(503));
-        mockWebServer.enqueue(new MockResponse()
-            .setBody("{\"id\":\"123\",\"name\":\"상품\",\"price\":5000}")
-            .addHeader("Content-Type", "application/json"));
-
-        StepVerifier.create(service.getProductWithBackoff("123"))
-            .assertNext(p -&gt; assertThat(p.getId()).isEqualTo("123"))
-            .verifyComplete();
-        assertThat(mockWebServer.getRequestCount()).isEqualTo(3);
-    }
-}</code></pre>
+    StepVerifier.create(service.getProductWithBackoff("123"))
+        .assertNext(p -&gt; assertThat(p.getId()).isEqualTo("123"))
+        .verifyComplete();
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(3);
+}
+</code></pre>
+<p>}
+```</p>
 <hr>
 <h2 id="_3">요약</h2>
 <table>
@@ -2451,11 +2577,12 @@ public class WebClientConfig {
 </tbody>
 </table>
 <p>필자의 경험상, JDBC 기반의 <code>JdbcTemplate</code>이나 JPA를 WebFlux와 함께 사용하면 곧바로 성능 문제가 나타납니다. 이벤트 루프 스레드가 데이터베이스 I/O를 기다리면서 블로킹되기 때문인데, 그러면 한 번에 처리할 수 있는 요청의 개수가 급격히 떨어지게 됩니다. R2DBC는 이 문제의 근본적인 해결책입니다.</p>
-<pre class="highlight"><code>[JDBC + WebFlux]
-이벤트 루프 스레드 → DB 쿼리 실행(블로킹) → 스레드 대기 → 처리량 저하
-
-[R2DBC + WebFlux]
-이벤트 루프 스레드 → DB 쿼리 요청(논블로킹) → 다른 요청 처리 → 결과 도착 시 콜백</code></pre>
+<p>```
+[JDBC + WebFlux]
+이벤트 루프 스레드 → DB 쿼리 실행(블로킹) → 스레드 대기 → 처리량 저하</p>
+<p>[R2DBC + WebFlux]
+이벤트 루프 스레드 → DB 쿼리 요청(논블로킹) → 다른 요청 처리 → 결과 도착 시 콜백
+```</p>
 <h3 id="1513">15.1.3 지원 데이터베이스와 의존성 설정</h3>
 <p>R2DBC는 SPI 명세이기 때문에 각 데이터베이스 벤더나 커뮤니티에서 드라이버를 구현합니다. 주요 데이터베이스의 상황은 다음과 같습니다.</p>
 <table>
@@ -2489,22 +2616,24 @@ public class WebClientConfig {
 </tbody>
 </table>
 <p>이 장에서는 가장 널리 사용되는 <strong>PostgreSQL</strong>을 기준으로 진행하겠습니다. 먼저 <code>build.gradle</code>에 R2DBC 관련 의존성을 추가해야 합니다.</p>
-<pre class="highlight"><code class="language-groovy">dependencies {
+<p>```groovy
+dependencies {
     // 기존 의존성
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
-    implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'
+    implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'</p>
+<pre><code>// R2DBC 의존성 추가
+implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
+implementation 'org.postgresql:r2dbc-postgresql'
 
-    // R2DBC 의존성 추가
-    implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
-    implementation 'org.postgresql:r2dbc-postgresql'
+// Flyway (스키마 마이그레이션) - R2DBC에서는 JDBC 드라이버도 필요
+implementation 'org.flywaydb:flyway-core'
+implementation 'org.flywaydb:flyway-database-postgresql'
+runtimeOnly 'org.postgresql:postgresql'
 
-    // Flyway (스키마 마이그레이션) - R2DBC에서는 JDBC 드라이버도 필요
-    implementation 'org.flywaydb:flyway-core'
-    implementation 'org.flywaydb:flyway-database-postgresql'
-    runtimeOnly 'org.postgresql:postgresql'
-
-    testImplementation 'io.r2dbc:r2dbc-h2'
-}</code></pre>
+testImplementation 'io.r2dbc:r2dbc-h2'
+</code></pre>
+<p>}
+```</p>
 <blockquote>
 <p><strong>참고</strong>: Flyway 같은 스키마 마이그레이션 도구는 아직 R2DBC를 직접 지원하지 않으므로, 마이그레이션 실행 시에만 JDBC 드라이버가 필요하다. Spring Boot는 시작 시 JDBC 드라이버로 마이그레이션을 수행한 후, 런타임에는 R2DBC 드라이버를 사용한다.</p>
 </blockquote>
@@ -2541,22 +2670,23 @@ public class WebClientConfig {
 </tbody>
 </table>
 <p>MongoDB에서 <code>ReactiveMongoRepository</code>를 써본 개발자라면 R2DBC의 리포지토리도 거의 같은 방식으로 사용할 수 있습니다.</p>
-<pre class="highlight"><code class="language-java">// MongoDB 리포지토리 (이미 익숙한 패턴)
+<p>```java
+// MongoDB 리포지토리 (이미 익숙한 패턴)
 public interface ProductRepository
-        extends ReactiveMongoRepository&lt;Product, String&gt; {
-    Flux&lt;Product&gt; findByCategory(String category);
-}
-
-// R2DBC 리포지토리 (거의 동일한 패턴)
+        extends ReactiveMongoRepository<Product, String> {
+    Flux<Product> findByCategory(String category);
+}</p>
+<p>// R2DBC 리포지토리 (거의 동일한 패턴)
 public interface PaymentRepository
-        extends ReactiveCrudRepository&lt;Payment, Long&gt; {
-    Flux&lt;Payment&gt; findByUserId(Long userId);
-}</code></pre>
+        extends ReactiveCrudRepository<Payment, Long> {
+    Flux<Payment> findByUserId(Long userId);
+}
+```</p>
 <hr>
 <h2 id="152-mongodb-r2dbc-db">15.2 MongoDB + R2DBC(관계형 DB) 멀티 데이터소스 구성</h2>
 <h3 id="1521">15.2.1 아키텍처 설계</h3>
 <p>멀티 데이터소스 환경에서 성공의 핵심은 각 데이터베이스의 역할을 처음부터 명확히 정의하는 것입니다. 아래는 전형적인 전자상거래 플랫폼의 아키텍처입니다.</p>
-<pre class="highlight"><code>┌─────────────────────────────────────────────────┐
+<p><code>┌─────────────────────────────────────────────────┐
 │                   Spring WebFlux                 │
 │                                                  │
 │  ┌──────────────┐         ┌──────────────────┐  │
@@ -2569,7 +2699,7 @@ public interface PaymentRepository
           │                          │
     ┌─────▼─────┐             ┌──────▼──────┐
     │ PostgreSQL │             │   MongoDB   │
-    └───────────┘             └─────────────┘</code></pre>
+    └───────────┘             └─────────────┘</code></p>
 <table>
 <thead>
 <tr>
@@ -2594,14 +2724,14 @@ public interface PaymentRepository
 </table>
 <h3 id="1522-applicationyml">15.2.2 application.yml에 두 데이터소스 설정</h3>
 <p>설정 파일에서 MongoDB와 PostgreSQL의 접속 정보를 분리하여 정의합니다.</p>
-<pre class="highlight"><code class="language-yaml">spring:
+<p>```yaml
+spring:
   # MongoDB 설정
   data:
     mongodb:
       uri: mongodb://localhost:27017/shopdb
-      auto-index-creation: true
-
-  # R2DBC (PostgreSQL) 설정
+      auto-index-creation: true</p>
+<p># R2DBC (PostgreSQL) 설정
   r2dbc:
     url: r2dbc:postgresql://localhost:5432/shopdb
     username: shopuser
@@ -2609,27 +2739,27 @@ public interface PaymentRepository
     pool:
       initial-size: 5
       max-size: 20
-      max-idle-time: 30m
-
-  # Flyway (JDBC 기반 마이그레이션)
+      max-idle-time: 30m</p>
+<p># Flyway (JDBC 기반 마이그레이션)
   flyway:
     enabled: true
     url: jdbc:postgresql://localhost:5432/shopdb
     user: shopuser
     password: ${DB_PASSWORD:shoppass}
-    locations: classpath:db/migration</code></pre>
+    locations: classpath:db/migration
+```</p>
 <h3 id="1523-flyway">15.2.3 Flyway 스키마 마이그레이션</h3>
 <p>관계형 데이터베이스를 사용하려면 테이블 스키마를 미리 정의해야 합니다. Flyway를 이용해 <code>src/main/resources/db/migration/V1__init.sql</code> 파일을 작성하겠습니다.</p>
-<pre class="highlight"><code class="language-sql">CREATE TABLE users (
+<p>```sql
+CREATE TABLE users (
     id          BIGSERIAL PRIMARY KEY,
     username    VARCHAR(50)  NOT NULL UNIQUE,
     email       VARCHAR(100) NOT NULL UNIQUE,
     password    VARCHAR(255) NOT NULL,
     role        VARCHAR(20)  NOT NULL DEFAULT 'USER',
     created_at  TIMESTAMP    NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE orders (
+);</p>
+<p>CREATE TABLE orders (
     id              BIGSERIAL PRIMARY KEY,
     user_id         BIGINT       NOT NULL REFERENCES users(id),
     order_number    VARCHAR(30)  NOT NULL UNIQUE,
@@ -2637,9 +2767,8 @@ CREATE TABLE orders (
     total_amount    DECIMAL(12,2) NOT NULL,
     shipping_address TEXT,
     created_at      TIMESTAMP    NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE order_items (
+);</p>
+<p>CREATE TABLE order_items (
     id          BIGSERIAL PRIMARY KEY,
     order_id    BIGINT       NOT NULL REFERENCES orders(id),
     product_id  VARCHAR(50)  NOT NULL,  -- MongoDB ObjectId 참조
@@ -2647,9 +2776,8 @@ CREATE TABLE order_items (
     quantity    INT          NOT NULL,
     unit_price  DECIMAL(10,2) NOT NULL,
     subtotal    DECIMAL(12,2) NOT NULL
-);
-
-CREATE TABLE payments (
+);</p>
+<p>CREATE TABLE payments (
     id              BIGSERIAL PRIMARY KEY,
     order_id        BIGINT       NOT NULL REFERENCES orders(id),
     payment_method  VARCHAR(30)  NOT NULL,
@@ -2657,73 +2785,77 @@ CREATE TABLE payments (
     status          VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
     transaction_id  VARCHAR(100),
     created_at      TIMESTAMP    NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_orders_user_id ON orders(user_id);
-CREATE INDEX idx_order_items_order_id ON order_items(order_id);</code></pre>
+);</p>
+<p>CREATE INDEX idx_orders_user_id ON orders(user_id);
+CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+```</p>
 <h3 id="1524-mongodbr2dbc">15.2.4 MongoDB/R2DBC 설정 클래스</h3>
 <p>두 데이터소스를 독립적으로 관리하려면 각각의 설정 클래스가 필요합니다. 리포지토리 스캔 경로를 분리하는 것이 핵심입니다.</p>
 <blockquote>
 <p><strong>참고</strong>: Spring Boot의 R2DBC 자동 설정을 비활성화(<code>@SpringBootApplication(exclude = R2dbcAutoConfiguration.class)</code>)하거나, 자동 설정을 사용하는 경우 이 설정 클래스를 제거하세요.</p>
 </blockquote>
-<pre class="highlight"><code class="language-java">@Configuration
+<p>```java
+@Configuration
 @EnableR2dbcRepositories(basePackages = "com.example.shop.repository.r2dbc")
-public class R2dbcConfig extends AbstractR2dbcConfiguration {
+public class R2dbcConfig extends AbstractR2dbcConfiguration {</p>
+<pre><code>@Value("${spring.r2dbc.url}")
+private String url;
 
-    @Value("${spring.r2dbc.url}")
-    private String url;
+@Value("${spring.r2dbc.username}")
+private String username;
 
-    @Value("${spring.r2dbc.username}")
-    private String username;
+@Value("${spring.r2dbc.password}")
+private String password;
 
-    @Value("${spring.r2dbc.password}")
-    private String password;
+@Override
+@Bean
+public ConnectionFactory connectionFactory() {
+    return ConnectionFactories.get(ConnectionFactoryOptions.builder()
+        .from(ConnectionFactoryOptions.parse(url))
+        .option(ConnectionFactoryOptions.USER, username)
+        .option(ConnectionFactoryOptions.PASSWORD, password)
+        .build());
+}
 
-    @Override
-    @Bean
-    public ConnectionFactory connectionFactory() {
-        return ConnectionFactories.get(ConnectionFactoryOptions.builder()
-            .from(ConnectionFactoryOptions.parse(url))
-            .option(ConnectionFactoryOptions.USER, username)
-            .option(ConnectionFactoryOptions.PASSWORD, password)
-            .build());
-    }
-
-    @Bean
-    public ReactiveTransactionManager transactionManager(
-            ConnectionFactory connectionFactory) {
-        return new R2dbcTransactionManager(connectionFactory);
-    }
-}</code></pre>
-<pre class="highlight"><code class="language-java">@Configuration
+@Bean
+public ReactiveTransactionManager transactionManager(
+        ConnectionFactory connectionFactory) {
+    return new R2dbcTransactionManager(connectionFactory);
+}
+</code></pre>
+<p>}
+```</p>
+<p>```java
+@Configuration
 @EnableReactiveMongoRepositories(
     basePackages = "com.example.shop.repository.mongo"
 )
-public class MongoConfig extends AbstractReactiveMongoConfiguration {
+public class MongoConfig extends AbstractReactiveMongoConfiguration {</p>
+<pre><code>@Value("${spring.data.mongodb.uri}")
+private String mongoUri;
 
-    @Value("${spring.data.mongodb.uri}")
-    private String mongoUri;
+@Override
+protected String getDatabaseName() {
+    return "shopdb";
+}
 
-    @Override
-    protected String getDatabaseName() {
-        return "shopdb";
-    }
+@Override
+@Bean
+public MongoClient reactiveMongoClient() {
+    return MongoClients.create(mongoUri);
+}
 
-    @Override
-    @Bean
-    public MongoClient reactiveMongoClient() {
-        return MongoClients.create(mongoUri);
-    }
-
-    @Bean
-    public ReactiveMongoTransactionManager mongoTransactionManager(
-            ReactiveMongoDatabaseFactory dbFactory) {
-        return new ReactiveMongoTransactionManager(dbFactory);
-    }
-}</code></pre>
+@Bean
+public ReactiveMongoTransactionManager mongoTransactionManager(
+        ReactiveMongoDatabaseFactory dbFactory) {
+    return new ReactiveMongoTransactionManager(dbFactory);
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1525">15.2.5 패키지 구조</h3>
 <p>멀티 데이터소스 환경에서 패키지를 분리하면 나중에 코드를 유지보수할 때 훨씬 수월합니다.</p>
-<pre class="highlight"><code>com.example.shop
+<p><code>com.example.shop
 ├── config
 │   ├── R2dbcConfig.java
 │   └── MongoConfig.java
@@ -2743,140 +2875,151 @@ public class MongoConfig extends AbstractReactiveMongoConfiguration {
 │       ├── ProductRepository.java
 │       └── ReviewRepository.java
 ├── service
-└── controller</code></pre>
+└── controller</code></p>
 <h3 id="1526">15.2.6 엔티티와 도큐먼트 정의</h3>
 <p>R2DBC 엔티티는 MongoDB와 다르게 <code>@Table</code>, <code>@Id</code>, <code>@Column</code> 어노테이션을 사용합니다. 다음은 주문 테이블을 매핑한 예제입니다.</p>
-<pre class="highlight"><code class="language-java">@Table("orders")
+<p>```java
+@Table("orders")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class OrderEntity {
+public class OrderEntity {</p>
+<pre><code>@Id
+private Long id;
 
-    @Id
-    private Long id;
+@Column("user_id")
+private Long userId;
 
-    @Column("user_id")
-    private Long userId;
+@Column("order_number")
+private String orderNumber;
 
-    @Column("order_number")
-    private String orderNumber;
+private String status;
 
-    private String status;
+@Column("total_amount")
+private BigDecimal totalAmount;
 
-    @Column("total_amount")
-    private BigDecimal totalAmount;
+@Column("shipping_address")
+private String shippingAddress;
 
-    @Column("shipping_address")
-    private String shippingAddress;
-
-    @Column("created_at")
-    private LocalDateTime createdAt;
-}</code></pre>
+@Column("created_at")
+private LocalDateTime createdAt;
+</code></pre>
+<p>}
+```</p>
 <p>한편 MongoDB 도큐먼트는 유연한 스키마의 장점을 충분히 활용합니다. 상품 정보처럼 다양한 속성이 필요한 경우가 좋은 예입니다.</p>
-<pre class="highlight"><code class="language-java">@Document(collection = "products")
+<p>```java
+@Document(collection = "products")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Product {
-
-    @Id
-    private String id;
-    private String name;
-    private String description;
-    private String category;
-    private BigDecimal price;
-    private int stockQuantity;
-    private List&lt;String&gt; tags;
-    private Map&lt;String, String&gt; attributes;  // 유연한 속성
-    private LocalDateTime createdAt;
-}</code></pre>
+public class Product {</p>
+<pre><code>@Id
+private String id;
+private String name;
+private String description;
+private String category;
+private BigDecimal price;
+private int stockQuantity;
+private List&lt;String&gt; tags;
+private Map&lt;String, String&gt; attributes;  // 유연한 속성
+private LocalDateTime createdAt;
+</code></pre>
+<p>}
+```</p>
 <h3 id="1527">15.2.7 각 리포지토리</h3>
 <p>두 데이터소스의 리포지토리를 패키지별로 명확히 분리하여 정의합니다.</p>
-<pre class="highlight"><code class="language-java">// R2DBC 리포지토리 (com.example.shop.repository.r2dbc)
-public interface OrderRepository extends ReactiveCrudRepository&lt;OrderEntity, Long&gt; {
-    Flux&lt;OrderEntity&gt; findByUserIdOrderByCreatedAtDesc(Long userId);
-    Mono&lt;OrderEntity&gt; findByOrderNumber(String orderNumber);
+<p>```java
+// R2DBC 리포지토리 (com.example.shop.repository.r2dbc)
+public interface OrderRepository extends ReactiveCrudRepository<OrderEntity, Long> {
+    Flux<OrderEntity> findByUserIdOrderByCreatedAtDesc(Long userId);
+    Mono<OrderEntity> findByOrderNumber(String orderNumber);
+}</p>
+<p>public interface OrderItemRepository
+        extends ReactiveCrudRepository<OrderItemEntity, Long> {
+    Flux<OrderItemEntity> findByOrderId(Long orderId);
 }
-
-public interface OrderItemRepository
-        extends ReactiveCrudRepository&lt;OrderItemEntity, Long&gt; {
-    Flux&lt;OrderItemEntity&gt; findByOrderId(Long orderId);
-}</code></pre>
-<pre class="highlight"><code class="language-java">// MongoDB 리포지토리 (com.example.shop.repository.mongo)
+```</p>
+<p>```java
+// MongoDB 리포지토리 (com.example.shop.repository.mongo)
 public interface ProductRepository
-        extends ReactiveMongoRepository&lt;Product, String&gt; {
-    Flux&lt;Product&gt; findByCategory(String category);
-
-    @Query("{ 'price': { '$gte': ?0, '$lte': ?1 } }")
-    Flux&lt;Product&gt; findByPriceRange(BigDecimal minPrice, BigDecimal maxPrice);
+        extends ReactiveMongoRepository<Product, String> {
+    Flux<Product> findByCategory(String category);</p>
+<pre><code>@Query("{ 'price': { '$gte': ?0, '$lte': ?1 } }")
+Flux&lt;Product&gt; findByPriceRange(BigDecimal minPrice, BigDecimal maxPrice);
+</code></pre>
+<p>}</p>
+<p>public interface ReviewRepository
+        extends ReactiveMongoRepository<Review, String> {
+    Flux<Review> findByProductIdOrderByCreatedAtDesc(String productId);
+    Mono<Long> countByProductId(String productId);
 }
-
-public interface ReviewRepository
-        extends ReactiveMongoRepository&lt;Review, String&gt; {
-    Flux&lt;Review&gt; findByProductIdOrderByCreatedAtDesc(String productId);
-    Mono&lt;Long&gt; countByProductId(String productId);
-}</code></pre>
+```</p>
 <hr>
 <h2 id="153">15.3 리액티브 환경에서 여러 데이터소스 조합하기</h2>
 <h3 id="1531">15.3.1 데이터 조합 패턴</h3>
 <p>멀티 데이터소스 환경에서 실제 가치를 발휘하려면 두 데이터베이스의 결과를 효과적으로 조합해야 합니다. Reactor의 연산자들이 이 부분에서 핵심 역할을 합니다.</p>
 <p><strong>패턴 1: 순차 조합 (flatMap)</strong> -- 한쪽 결과를 기반으로 다른 데이터소스를 조회한다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class OrderQueryService {
+public class OrderQueryService {</p>
+<pre><code>private final OrderRepository orderRepository;         // R2DBC
+private final OrderItemRepository orderItemRepository; // R2DBC
+private final ProductRepository productRepository;     // MongoDB
 
-    private final OrderRepository orderRepository;         // R2DBC
-    private final OrderItemRepository orderItemRepository; // R2DBC
-    private final ProductRepository productRepository;     // MongoDB
-
-    public Mono&lt;OrderDetailResponse&gt; getOrderDetail(Long orderId) {
-        return orderRepository.findById(orderId)
-            .switchIfEmpty(Mono.error(
-                new NotFoundException("주문을 찾을 수 없습니다: " + orderId)))
-            .flatMap(order -&gt; orderItemRepository.findByOrderId(orderId)
-                .flatMap(item -&gt; productRepository.findById(item.getProductId())
-                    .map(product -&gt; OrderItemDetail.builder()
-                        .productName(product.getName())
-                        .category(product.getCategory())
-                        .quantity(item.getQuantity())
-                        .unitPrice(item.getUnitPrice())
-                        .build()))
-                .collectList()
-                .map(items -&gt; OrderDetailResponse.builder()
-                    .orderId(order.getId())
-                    .orderNumber(order.getOrderNumber())
-                    .status(order.getStatus())
-                    .totalAmount(order.getTotalAmount())
-                    .items(items)
-                    .createdAt(order.getCreatedAt())
-                    .build()));
-    }
-}</code></pre>
-<p><strong>패턴 2: 병렬 조합 (zip)</strong> -- 서로 독립적인 데이터를 병렬로 조회하여 조합한다.</p>
-<pre class="highlight"><code class="language-java">public Mono&lt;ProductPageResponse&gt; getProductPage(String productId) {
-    Mono&lt;Product&gt; productMono = productRepository.findById(productId)
+public Mono&lt;OrderDetailResponse&gt; getOrderDetail(Long orderId) {
+    return orderRepository.findById(orderId)
         .switchIfEmpty(Mono.error(
-            new NotFoundException("상품을 찾을 수 없습니다: " + productId)));
+            new NotFoundException("주문을 찾을 수 없습니다: " + orderId)))
+        .flatMap(order -&gt; orderItemRepository.findByOrderId(orderId)
+            .flatMap(item -&gt; productRepository.findById(item.getProductId())
+                .map(product -&gt; OrderItemDetail.builder()
+                    .productName(product.getName())
+                    .category(product.getCategory())
+                    .quantity(item.getQuantity())
+                    .unitPrice(item.getUnitPrice())
+                    .build()))
+            .collectList()
+            .map(items -&gt; OrderDetailResponse.builder()
+                .orderId(order.getId())
+                .orderNumber(order.getOrderNumber())
+                .status(order.getStatus())
+                .totalAmount(order.getTotalAmount())
+                .items(items)
+                .createdAt(order.getCreatedAt())
+                .build()));
+}
+</code></pre>
+<p>}
+```</p>
+<p><strong>패턴 2: 병렬 조합 (zip)</strong> -- 서로 독립적인 데이터를 병렬로 조회하여 조합한다.</p>
+<p>```java
+public Mono<ProductPageResponse> getProductPage(String productId) {
+    Mono<Product> productMono = productRepository.findById(productId)
+        .switchIfEmpty(Mono.error(
+            new NotFoundException("상품을 찾을 수 없습니다: " + productId)));</p>
+<pre><code>Mono&lt;List&lt;Review&gt;&gt; reviewsMono = reviewRepository
+    .findByProductIdOrderByCreatedAtDesc(productId)
+    .collectList();
 
-    Mono&lt;List&lt;Review&gt;&gt; reviewsMono = reviewRepository
-        .findByProductIdOrderByCreatedAtDesc(productId)
-        .collectList();
+Mono&lt;Long&gt; reviewCountMono = reviewRepository.countByProductId(productId);
 
-    Mono&lt;Long&gt; reviewCountMono = reviewRepository.countByProductId(productId);
-
-    return Mono.zip(productMono, reviewsMono, reviewCountMono)
-        .map(tuple -&gt; ProductPageResponse.builder()
-            .product(tuple.getT1())
-            .reviews(tuple.getT2())
-            .totalReviews(tuple.getT3())
-            .build());
-}</code></pre>
+return Mono.zip(productMono, reviewsMono, reviewCountMono)
+    .map(tuple -&gt; ProductPageResponse.builder()
+        .product(tuple.getT1())
+        .reviews(tuple.getT2())
+        .totalReviews(tuple.getT3())
+        .build());
+</code></pre>
+<p>}
+```</p>
 <h3 id="1532">15.3.2 트랜잭션 주의사항</h3>
 <p>멀티 데이터소스 환경에서 트랜잭션은 가장 까다로운 부분입니다. 필자의 경험상 여기서 실수하면 데이터 불일치 문제가 프로덕션까지 고스란히 들어갑니다.</p>
 <p><strong>원칙 1: 각 데이터소스의 트랜잭션은 독립적이다</strong></p>
-<pre class="highlight"><code class="language-java">// 이 코드는 PostgreSQL 트랜잭션만 보장한다.
+<p><code>java
+// 이 코드는 PostgreSQL 트랜잭션만 보장한다.
 // MongoDB 저장이 실패해도 PostgreSQL 변경은 롤백되지 않는다!
 @Transactional  // R2dbcTransactionManager가 기본으로 동작
 public Mono&lt;Order&gt; createOrder(OrderRequest request) {
@@ -2884,307 +3027,321 @@ public Mono&lt;Order&gt; createOrder(OrderRequest request) {
         .flatMap(order -&gt;
             productRepository.save(updatedProduct)     // MongoDB - 트랜잭션 X
                 .thenReturn(order));
-}</code></pre>
+}</code></p>
 <p><strong>원칙 2: 트랜잭션 매니저를 명시적으로 지정한다</strong></p>
-<pre class="highlight"><code class="language-java">// PostgreSQL 트랜잭션 사용
+<p>```java
+// PostgreSQL 트랜잭션 사용
 @Transactional("transactionManager")
-public Mono&lt;OrderEntity&gt; saveOrder(OrderEntity order) {
+public Mono<OrderEntity> saveOrder(OrderEntity order) {
     return orderRepository.save(order);
-}
-
-// MongoDB 트랜잭션 사용
+}</p>
+<p>// MongoDB 트랜잭션 사용
 @Transactional("mongoTransactionManager")
-public Mono&lt;Product&gt; updateProduct(Product product) {
+public Mono<Product> updateProduct(Product product) {
     return productRepository.save(product);
-}</code></pre>
+}
+```</p>
 <p><strong>원칙 3: 보상 트랜잭션(Saga) 패턴을 활용한다</strong></p>
 <p>분산 환경에서 일관성을 보장하는 가장 실용적인 방법은 Saga 패턴입니다. 한쪽이 실패하면 이미 성공한 다른 쪽의 변경을 의도적으로 되돌리는 방식인데, 이를 보상(compensation)이라고 부릅니다.</p>
 <h3 id="1533-saga">15.3.3 실전 예제: 주문 시스템 (Saga 패턴)</h3>
 <p>이제 실제 온라인 쇼핑 플랫폼에서 사용할 수 있는 주문 서비스를 구현해봅시다. 재고 차감(MongoDB) -&gt; 주문 생성(PostgreSQL) -&gt; 결제 처리(PostgreSQL) 순서로 진행하는데, 각 단계가 실패하면 이전 단계들을 순차적으로 보상합니다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>```java
+@Service
 @RequiredArgsConstructor
 @Slf4j
-public class OrderSagaService {
+public class OrderSagaService {</p>
+<pre><code>private final OrderRepository orderRepository;
+private final OrderItemRepository orderItemRepository;
+private final ProductRepository productRepository;
+private final PaymentRepository paymentRepository;
 
-    private final OrderRepository orderRepository;
-    private final OrderItemRepository orderItemRepository;
-    private final ProductRepository productRepository;
-    private final PaymentRepository paymentRepository;
-
-    /**
-     * 보상 트랜잭션 패턴:
-     * 1. 재고 차감 (MongoDB) -&gt; 실패 시 즉시 에러
-     * 2. 주문 생성 (PostgreSQL) -&gt; 실패 시 재고 복원
-     * 3. 결제 처리 (PostgreSQL) -&gt; 실패 시 주문 취소 + 재고 복원
-     */
-    public Mono&lt;OrderResult&gt; placeOrder(Long userId, OrderRequest request) {
-        return decreaseStock(request.getItems())
-            .then(createOrderInDb(userId, request))
-            .flatMap(order -&gt; processPayment(order, request)
-                .thenReturn(order)
-                .onErrorResume(paymentError -&gt; {
-                    log.error("결제 실패, 보상 시작", paymentError);
-                    return cancelOrder(order)
-                        .then(restoreStock(request.getItems()))
-                        .then(Mono.error(new PaymentException(
-                            "결제 처리에 실패했습니다.", paymentError)));
-                }))
-            .onErrorResume(orderError -&gt; {
-                if (!(orderError instanceof PaymentException)) {
-                    log.error("주문 생성 실패, 재고 복원", orderError);
-                    return restoreStock(request.getItems())
-                        .then(Mono.error(new OrderException(
-                            "주문 생성에 실패했습니다.", orderError)));
-                }
-                return Mono.error(orderError);
-            })
-            .map(order -&gt; OrderResult.builder()
-                .orderId(order.getId())
-                .orderNumber(order.getOrderNumber())
-                .status("COMPLETED")
-                .build());
-    }
-
-    private Mono&lt;Void&gt; decreaseStock(List&lt;OrderItemRequest&gt; items) {
-        return Flux.fromIterable(items)
-            .flatMap(item -&gt; productRepository.findById(item.getProductId())
-                .switchIfEmpty(Mono.error(new NotFoundException(
-                    "상품을 찾을 수 없습니다: " + item.getProductId())))
-                .flatMap(product -&gt; {
-                    if (product.getStockQuantity() &lt; item.getQuantity()) {
-                        return Mono.error(new InsufficientStockException(
-                            product.getName() + " 재고가 부족합니다."));
-                    }
-                    product.setStockQuantity(
-                        product.getStockQuantity() - item.getQuantity());
-                    return productRepository.save(product);
-                }))
-            .then();
-    }
-
-    private Mono&lt;Void&gt; restoreStock(List&lt;OrderItemRequest&gt; items) {
-        return Flux.fromIterable(items)
-            .flatMap(item -&gt; productRepository.findById(item.getProductId())
-                .flatMap(product -&gt; {
-                    product.setStockQuantity(
-                        product.getStockQuantity() + item.getQuantity());
-                    return productRepository.save(product);
-                }))
-            .then();
-    }
-
-    private Mono&lt;OrderEntity&gt; createOrderInDb(Long userId, OrderRequest request) {
-        OrderEntity order = OrderEntity.builder()
-            .userId(userId)
-            .orderNumber("ORD-" + System.currentTimeMillis())
-            .status("PENDING")
-            .totalAmount(request.calculateTotalAmount())
-            .shippingAddress(request.getShippingAddress())
-            .createdAt(LocalDateTime.now())
-            .build();
-
-        return orderRepository.save(order)
-            .flatMap(savedOrder -&gt; {
-                List&lt;OrderItemEntity&gt; orderItems = request.getItems().stream()
-                    .map(item -&gt; OrderItemEntity.builder()
-                        .orderId(savedOrder.getId())
-                        .productId(item.getProductId())
-                        .productName(item.getProductName())
-                        .quantity(item.getQuantity())
-                        .unitPrice(item.getUnitPrice())
-                        .subtotal(item.getUnitPrice()
-                            .multiply(BigDecimal.valueOf(item.getQuantity())))
-                        .build())
-                    .toList();
-                return orderItemRepository.saveAll(orderItems)
-                    .then(Mono.just(savedOrder));
-            });
-    }
-
-    private Mono&lt;Void&gt; processPayment(OrderEntity order, OrderRequest request) {
-        Payment payment = Payment.builder()
+/**
+ * 보상 트랜잭션 패턴:
+ * 1. 재고 차감 (MongoDB) -&gt; 실패 시 즉시 에러
+ * 2. 주문 생성 (PostgreSQL) -&gt; 실패 시 재고 복원
+ * 3. 결제 처리 (PostgreSQL) -&gt; 실패 시 주문 취소 + 재고 복원
+ */
+public Mono&lt;OrderResult&gt; placeOrder(Long userId, OrderRequest request) {
+    return decreaseStock(request.getItems())
+        .then(createOrderInDb(userId, request))
+        .flatMap(order -&gt; processPayment(order, request)
+            .thenReturn(order)
+            .onErrorResume(paymentError -&gt; {
+                log.error("결제 실패, 보상 시작", paymentError);
+                return cancelOrder(order)
+                    .then(restoreStock(request.getItems()))
+                    .then(Mono.error(new PaymentException(
+                        "결제 처리에 실패했습니다.", paymentError)));
+            }))
+        .onErrorResume(orderError -&gt; {
+            if (!(orderError instanceof PaymentException)) {
+                log.error("주문 생성 실패, 재고 복원", orderError);
+                return restoreStock(request.getItems())
+                    .then(Mono.error(new OrderException(
+                        "주문 생성에 실패했습니다.", orderError)));
+            }
+            return Mono.error(orderError);
+        })
+        .map(order -&gt; OrderResult.builder()
             .orderId(order.getId())
-            .paymentMethod(request.getPaymentMethod())
-            .amount(order.getTotalAmount())
+            .orderNumber(order.getOrderNumber())
             .status("COMPLETED")
-            .transactionId("TXN-" + UUID.randomUUID())
-            .createdAt(LocalDateTime.now())
-            .build();
-        return paymentRepository.save(payment).then();
-    }
+            .build());
+}
 
-    private Mono&lt;Void&gt; cancelOrder(OrderEntity order) {
-        order.setStatus("CANCELLED");
-        return orderRepository.save(order).then();
-    }
-}</code></pre>
+private Mono&lt;Void&gt; decreaseStock(List&lt;OrderItemRequest&gt; items) {
+    return Flux.fromIterable(items)
+        .flatMap(item -&gt; productRepository.findById(item.getProductId())
+            .switchIfEmpty(Mono.error(new NotFoundException(
+                "상품을 찾을 수 없습니다: " + item.getProductId())))
+            .flatMap(product -&gt; {
+                if (product.getStockQuantity() &lt; item.getQuantity()) {
+                    return Mono.error(new InsufficientStockException(
+                        product.getName() + " 재고가 부족합니다."));
+                }
+                product.setStockQuantity(
+                    product.getStockQuantity() - item.getQuantity());
+                return productRepository.save(product);
+            }))
+        .then();
+}
+
+private Mono&lt;Void&gt; restoreStock(List&lt;OrderItemRequest&gt; items) {
+    return Flux.fromIterable(items)
+        .flatMap(item -&gt; productRepository.findById(item.getProductId())
+            .flatMap(product -&gt; {
+                product.setStockQuantity(
+                    product.getStockQuantity() + item.getQuantity());
+                return productRepository.save(product);
+            }))
+        .then();
+}
+
+private Mono&lt;OrderEntity&gt; createOrderInDb(Long userId, OrderRequest request) {
+    OrderEntity order = OrderEntity.builder()
+        .userId(userId)
+        .orderNumber("ORD-" + System.currentTimeMillis())
+        .status("PENDING")
+        .totalAmount(request.calculateTotalAmount())
+        .shippingAddress(request.getShippingAddress())
+        .createdAt(LocalDateTime.now())
+        .build();
+
+    return orderRepository.save(order)
+        .flatMap(savedOrder -&gt; {
+            List&lt;OrderItemEntity&gt; orderItems = request.getItems().stream()
+                .map(item -&gt; OrderItemEntity.builder()
+                    .orderId(savedOrder.getId())
+                    .productId(item.getProductId())
+                    .productName(item.getProductName())
+                    .quantity(item.getQuantity())
+                    .unitPrice(item.getUnitPrice())
+                    .subtotal(item.getUnitPrice()
+                        .multiply(BigDecimal.valueOf(item.getQuantity())))
+                    .build())
+                .toList();
+            return orderItemRepository.saveAll(orderItems)
+                .then(Mono.just(savedOrder));
+        });
+}
+
+private Mono&lt;Void&gt; processPayment(OrderEntity order, OrderRequest request) {
+    Payment payment = Payment.builder()
+        .orderId(order.getId())
+        .paymentMethod(request.getPaymentMethod())
+        .amount(order.getTotalAmount())
+        .status("COMPLETED")
+        .transactionId("TXN-" + UUID.randomUUID())
+        .createdAt(LocalDateTime.now())
+        .build();
+    return paymentRepository.save(payment).then();
+}
+
+private Mono&lt;Void&gt; cancelOrder(OrderEntity order) {
+    order.setStatus("CANCELLED");
+    return orderRepository.save(order).then();
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1534">15.3.4 컨트롤러 구현</h3>
 <p>이제 클라이언트 요청을 받아서 주문 서비스와 조회 서비스를 호출하는 컨트롤러를 만듭니다.</p>
-<pre class="highlight"><code class="language-java">@RestController
+<p>```java
+@RestController
 @RequestMapping("/api/orders")
 @RequiredArgsConstructor
-public class OrderController {
+public class OrderController {</p>
+<pre><code>private final OrderSagaService orderSagaService;
+private final OrderQueryService orderQueryService;
 
-    private final OrderSagaService orderSagaService;
-    private final OrderQueryService orderQueryService;
+@PostMapping
+@ResponseStatus(HttpStatus.CREATED)
+public Mono&lt;OrderResult&gt; placeOrder(
+        @AuthenticationPrincipal Mono&lt;UserDetails&gt; principal,
+        @Valid @RequestBody OrderRequest request) {
+    return principal.flatMap(user -&gt; {
+        Long userId = Long.parseLong(user.getUsername());
+        return orderSagaService.placeOrder(userId, request);
+    });
+}
 
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Mono&lt;OrderResult&gt; placeOrder(
-            @AuthenticationPrincipal Mono&lt;UserDetails&gt; principal,
-            @Valid @RequestBody OrderRequest request) {
-        return principal.flatMap(user -&gt; {
-            Long userId = Long.parseLong(user.getUsername());
-            return orderSagaService.placeOrder(userId, request);
-        });
-    }
+@GetMapping("/{orderId}")
+public Mono&lt;OrderDetailResponse&gt; getOrderDetail(@PathVariable Long orderId) {
+    return orderQueryService.getOrderDetail(orderId);
+}
 
-    @GetMapping("/{orderId}")
-    public Mono&lt;OrderDetailResponse&gt; getOrderDetail(@PathVariable Long orderId) {
-        return orderQueryService.getOrderDetail(orderId);
-    }
-
-    @GetMapping("/my")
-    public Flux&lt;OrderSummaryResponse&gt; getMyOrders(
-            @AuthenticationPrincipal Mono&lt;UserDetails&gt; principal) {
-        return principal.flatMapMany(user -&gt; {
-            Long userId = Long.parseLong(user.getUsername());
-            return orderQueryService.getUserOrders(userId);
-        });
-    }
-}</code></pre>
+@GetMapping("/my")
+public Flux&lt;OrderSummaryResponse&gt; getMyOrders(
+        @AuthenticationPrincipal Mono&lt;UserDetails&gt; principal) {
+    return principal.flatMapMany(user -&gt; {
+        Long userId = Long.parseLong(user.getUsername());
+        return orderQueryService.getUserOrders(userId);
+    });
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1535-databaseclient">15.3.5 DatabaseClient를 활용한 복잡한 쿼리</h3>
 <p>Spring Data R2DBC의 자동 쿼리 생성만으로는 부족한 경우도 있습니다. 그럴 때는 <code>DatabaseClient</code>를 사용해 SQL을 직접 작성할 수 있습니다. 예를 들어 판매 통계 같은 복잡한 집계 쿼리를 실행할 때 유용합니다.</p>
-<pre class="highlight"><code class="language-java">@Repository
+<p>```java
+@Repository
 @RequiredArgsConstructor
-public class OrderCustomRepository {
+public class OrderCustomRepository {</p>
+<pre><code>private final DatabaseClient databaseClient;
 
-    private final DatabaseClient databaseClient;
+public Flux&lt;SalesStatistics&gt; getSalesStatistics(
+        LocalDateTime from, LocalDateTime to) {
+    String sql = """
+        SELECT DATE(o.created_at) AS sale_date,
+               COUNT(o.id) AS order_count,
+               SUM(o.total_amount) AS total_sales
+        FROM orders o
+        WHERE o.status = 'COMPLETED'
+          AND o.created_at BETWEEN :from AND :to
+        GROUP BY DATE(o.created_at)
+        ORDER BY sale_date DESC
+        """;
 
-    public Flux&lt;SalesStatistics&gt; getSalesStatistics(
-            LocalDateTime from, LocalDateTime to) {
-        String sql = """
-            SELECT DATE(o.created_at) AS sale_date,
-                   COUNT(o.id) AS order_count,
-                   SUM(o.total_amount) AS total_sales
-            FROM orders o
-            WHERE o.status = 'COMPLETED'
-              AND o.created_at BETWEEN :from AND :to
-            GROUP BY DATE(o.created_at)
-            ORDER BY sale_date DESC
-            """;
-
-        return databaseClient.sql(sql)
-            .bind("from", from)
-            .bind("to", to)
-            .map((row, metadata) -&gt; SalesStatistics.builder()
-                .saleDate(row.get("sale_date", LocalDate.class))
-                .orderCount(row.get("order_count", Long.class))
-                .totalSales(row.get("total_sales", BigDecimal.class))
-                .build())
-            .all();
-    }
-}</code></pre>
+    return databaseClient.sql(sql)
+        .bind("from", from)
+        .bind("to", to)
+        .map((row, metadata) -&gt; SalesStatistics.builder()
+            .saleDate(row.get("sale_date", LocalDate.class))
+            .orderCount(row.get("order_count", Long.class))
+            .totalSales(row.get("total_sales", BigDecimal.class))
+            .build())
+        .all();
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1536">15.3.6 두 데이터소스 통계 조합</h3>
 <p>이제 실무에서 자주 만나는 시나리오를 다루겠습니다. PostgreSQL의 주문 집계 데이터와 MongoDB의 상품 상세 정보, 리뷰 정보를 조합해 대시보드를 구성하는 예제입니다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class DashboardService {
+public class DashboardService {</p>
+<pre><code>private final OrderCustomRepository orderCustomRepository;
+private final ProductRepository productRepository;
+private final ReviewRepository reviewRepository;
 
-    private final OrderCustomRepository orderCustomRepository;
-    private final ProductRepository productRepository;
-    private final ReviewRepository reviewRepository;
+public Flux&lt;PopularProductDashboard&gt; getPopularProductDashboard(int limit) {
+    return orderCustomRepository.getPopularProducts(limit)
+        .flatMap(stats -&gt; {
+            Mono&lt;Product&gt; productMono = productRepository
+                .findById(stats.getProductId())
+                .defaultIfEmpty(Product.builder()
+                    .id(stats.getProductId())
+                    .name(stats.getProductName())
+                    .category("UNKNOWN").build());
 
-    public Flux&lt;PopularProductDashboard&gt; getPopularProductDashboard(int limit) {
-        return orderCustomRepository.getPopularProducts(limit)
-            .flatMap(stats -&gt; {
-                Mono&lt;Product&gt; productMono = productRepository
-                    .findById(stats.getProductId())
-                    .defaultIfEmpty(Product.builder()
-                        .id(stats.getProductId())
-                        .name(stats.getProductName())
-                        .category("UNKNOWN").build());
+            Mono&lt;Double&gt; avgRatingMono = reviewRepository
+                .findByProductIdOrderByCreatedAtDesc(stats.getProductId())
+                .map(Review::getRating)
+                .collectList()
+                .map(ratings -&gt; ratings.stream()
+                    .mapToInt(Integer::intValue).average().orElse(0.0));
 
-                Mono&lt;Double&gt; avgRatingMono = reviewRepository
-                    .findByProductIdOrderByCreatedAtDesc(stats.getProductId())
-                    .map(Review::getRating)
-                    .collectList()
-                    .map(ratings -&gt; ratings.stream()
-                        .mapToInt(Integer::intValue).average().orElse(0.0));
-
-                return Mono.zip(productMono, avgRatingMono)
-                    .map(tuple -&gt; PopularProductDashboard.builder()
-                        .productId(stats.getProductId())
-                        .productName(stats.getProductName())
-                        .category(tuple.getT1().getCategory())
-                        .totalQuantitySold(stats.getTotalQuantity())
-                        .averageRating(tuple.getT2())
-                        .build());
-            });
-    }
-}</code></pre>
+            return Mono.zip(productMono, avgRatingMono)
+                .map(tuple -&gt; PopularProductDashboard.builder()
+                    .productId(stats.getProductId())
+                    .productName(stats.getProductName())
+                    .category(tuple.getT1().getCategory())
+                    .totalQuantitySold(stats.getTotalQuantity())
+                    .averageRating(tuple.getT2())
+                    .build());
+        });
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1537">15.3.7 멀티 데이터소스 환경의 베스트 프랙티스</h3>
 <p>멀티 데이터소스를 성공적으로 운영하려면 몇 가지 중요한 원칙들이 있습니다. 필자가 실제 프로젝트에서 배운 내용을 정리해봤습니다.</p>
 <p><strong>1. 데이터 비정규화로 정합성 관리</strong></p>
-<pre class="highlight"><code class="language-java">// 올바른 패턴: 주문 시점의 상품 정보를 비정규화하여 저장
+<p><code>java
+// 올바른 패턴: 주문 시점의 상품 정보를 비정규화하여 저장
 @Table("order_items")
 public class OrderItemEntity {
     private String productId;     // MongoDB ObjectId 참조
     private String productName;   // 비정규화 (주문 시점 상품명)
     private BigDecimal unitPrice; // 비정규화 (주문 시점 가격)
-}</code></pre>
+}</code></p>
 <p><strong>2. 에러 처리 통합</strong></p>
-<pre class="highlight"><code class="language-java">@RestControllerAdvice
-public class GlobalExceptionHandler {
+<p>```java
+@RestControllerAdvice
+public class GlobalExceptionHandler {</p>
+<pre><code>@ExceptionHandler(DataIntegrityViolationException.class)
+@ResponseStatus(HttpStatus.CONFLICT)
+public Mono&lt;ErrorResponse&gt; handleDataIntegrity(
+        DataIntegrityViolationException ex) {
+    return Mono.just(ErrorResponse.of("DATA_CONFLICT",
+        "데이터 무결성 위반이 발생했습니다."));
+}
 
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    @ResponseStatus(HttpStatus.CONFLICT)
-    public Mono&lt;ErrorResponse&gt; handleDataIntegrity(
-            DataIntegrityViolationException ex) {
-        return Mono.just(ErrorResponse.of("DATA_CONFLICT",
-            "데이터 무결성 위반이 발생했습니다."));
-    }
-
-    @ExceptionHandler(DuplicateKeyException.class)
-    @ResponseStatus(HttpStatus.CONFLICT)
-    public Mono&lt;ErrorResponse&gt; handleDuplicateKey(DuplicateKeyException ex) {
-        return Mono.just(ErrorResponse.of("DUPLICATE_KEY",
-            "중복된 데이터가 존재합니다."));
-    }
-}</code></pre>
+@ExceptionHandler(DuplicateKeyException.class)
+@ResponseStatus(HttpStatus.CONFLICT)
+public Mono&lt;ErrorResponse&gt; handleDuplicateKey(DuplicateKeyException ex) {
+    return Mono.just(ErrorResponse.of("DUPLICATE_KEY",
+        "중복된 데이터가 존재합니다."));
+}
+</code></pre>
+<p>}
+```</p>
 <p><strong>3. 헬스 체크 통합</strong></p>
-<pre class="highlight"><code class="language-java">@Component
+<p>```java
+@Component
 @RequiredArgsConstructor
 public class MultiDataSourceHealthIndicator
-        implements ReactiveHealthIndicator {
+        implements ReactiveHealthIndicator {</p>
+<pre><code>private final ConnectionFactory connectionFactory;
+private final ReactiveMongoTemplate mongoTemplate;
 
-    private final ConnectionFactory connectionFactory;
-    private final ReactiveMongoTemplate mongoTemplate;
+@Override
+public Mono&lt;Health&gt; health() {
+    Mono&lt;String&gt; r2dbcHealth = Mono.from(connectionFactory.create())
+        .flatMap(conn -&gt; Mono.from(conn.createStatement("SELECT 1")
+            .execute())
+            .flatMap(result -&gt; Mono.from(result.map((row, meta) -&gt; "UP")))
+            .doFinally(signal -&gt; Mono.from(conn.close()).subscribe()))
+        .onErrorReturn("DOWN");
 
-    @Override
-    public Mono&lt;Health&gt; health() {
-        Mono&lt;String&gt; r2dbcHealth = Mono.from(connectionFactory.create())
-            .flatMap(conn -&gt; Mono.from(conn.createStatement("SELECT 1")
-                .execute())
-                .flatMap(result -&gt; Mono.from(result.map((row, meta) -&gt; "UP")))
-                .doFinally(signal -&gt; Mono.from(conn.close()).subscribe()))
-            .onErrorReturn("DOWN");
+    Mono&lt;String&gt; mongoHealth = mongoTemplate.executeCommand("{ ping: 1 }")
+        .map(doc -&gt; "UP")
+        .onErrorReturn("DOWN");
 
-        Mono&lt;String&gt; mongoHealth = mongoTemplate.executeCommand("{ ping: 1 }")
-            .map(doc -&gt; "UP")
-            .onErrorReturn("DOWN");
-
-        return Mono.zip(r2dbcHealth, mongoHealth)
-            .map(tuple -&gt; {
-                boolean allUp = "UP".equals(tuple.getT1())
-                             &amp;&amp; "UP".equals(tuple.getT2());
-                return (allUp ? Health.up() : Health.down())
-                    .withDetail("postgresql", tuple.getT1())
-                    .withDetail("mongodb", tuple.getT2())
-                    .build();
-            });
-    }
-}</code></pre>
+    return Mono.zip(r2dbcHealth, mongoHealth)
+        .map(tuple -&gt; {
+            boolean allUp = "UP".equals(tuple.getT1())
+                         &amp;&amp; "UP".equals(tuple.getT2());
+            return (allUp ? Health.up() : Health.down())
+                .withDetail("postgresql", tuple.getT1())
+                .withDetail("mongodb", tuple.getT2())
+                .build();
+        });
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1538">15.3.8 주의사항 정리</h3>
 <p>마지막으로 멀티 데이터소스 환경에서 흔히 빠지는 함정들과 대응 방법을 정리했습니다. 이 부분을 꼼꼼히 읽어두면 나중에 많은 디버깅 시간을 절약할 수 있습니다.</p>
 <table>

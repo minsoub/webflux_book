@@ -25,79 +25,74 @@
 <h2 id="31-mono-flux">3.1 Mono와 Flux 이해하기</h2>
 <h3 id="311-mono-01">3.1.1 Mono: 0..1개의 요소</h3>
 <p><code>Mono&lt;T&gt;</code>는 <strong>최대 1개의 요소</strong>를 발행하는 Publisher다. 데이터베이스에서 단일 레코드를 조회하거나 HTTP 요청의 응답을 처리할 때 사용하게 되는 기본적인 타입이다.</p>
-<pre class="highlight"><code class="language-java">// 값이 있는 Mono
-Mono&lt;String&gt; mono = Mono.just("Hello Reactor");
-
-// 빈 Mono (값 없이 완료)
-Mono&lt;String&gt; empty = Mono.empty();
-
-// 에러를 발행하는 Mono
-Mono&lt;String&gt; error = Mono.error(new RuntimeException("오류 발생"));</code></pre>
+<p>```java
+// 값이 있는 Mono
+Mono<String> mono = Mono.just("Hello Reactor");</p>
+<p>// 빈 Mono (값 없이 완료)
+Mono<String> empty = Mono.empty();</p>
+<p>// 에러를 발행하는 Mono
+Mono<String> error = Mono.error(new RuntimeException("오류 발생"));
+```</p>
 <h3 id="312-flux-0n">3.1.2 Flux: 0..N개의 요소</h3>
 <p>이제 <code>Flux&lt;T&gt;</code>는 <strong>0개에서 N개까지의 요소</strong>를 발행할 수 있는 Publisher다. 컬렉션의 데이터를 스트리밍하거나 실시간 이벤트를 계속 흘려 보내야 할 때 자연스럽게 선택하게 되는 타입이기도 하다.</p>
-<pre class="highlight"><code class="language-java">// 여러 값을 가진 Flux
-Flux&lt;String&gt; flux = Flux.just("Spring", "WebFlux", "Reactor");
-
-// 리스트에서 Flux 생성
-List&lt;Integer&gt; numbers = Arrays.asList(1, 2, 3, 4, 5);
-Flux&lt;Integer&gt; fromList = Flux.fromIterable(numbers);
-
-// 범위로 생성
-Flux&lt;Integer&gt; range = Flux.range(1, 10); // 1부터 10까지</code></pre>
+<p>```java
+// 여러 값을 가진 Flux
+Flux<String> flux = Flux.just("Spring", "WebFlux", "Reactor");</p>
+<p>// 리스트에서 Flux 생성
+List<Integer> numbers = Arrays.asList(1, 2, 3, 4, 5);
+Flux<Integer> fromList = Flux.fromIterable(numbers);</p>
+<p>// 범위로 생성
+Flux<Integer> range = Flux.range(1, 10); // 1부터 10까지
+```</p>
 <h3 id="313">3.1.3 다양한 생성 방법</h3>
 <p>실제로 Mono와 Flux를 만드는 방법은 상황에 따라 달라진다. 단순한 값부터 복잡한 비동기 작업까지, 다양한 시나리오에 맞게 여러 팩토리 메서드를 활용할 수 있다.</p>
-<pre class="highlight"><code class="language-java">// defer: 구독 시점에 Mono/Flux를 생성 (Lazy 평가)
-Mono&lt;Long&gt; deferred = Mono.defer(() -&gt; Mono.just(System.currentTimeMillis()));
-
-// fromCallable: Callable로부터 Mono 생성
-Mono&lt;String&gt; fromCallable = Mono.fromCallable(() -&gt; {
+<p>```java
+// defer: 구독 시점에 Mono/Flux를 생성 (Lazy 평가)
+Mono<Long> deferred = Mono.defer(() -&gt; Mono.just(System.currentTimeMillis()));</p>
+<p>// fromCallable: Callable로부터 Mono 생성
+Mono<String> fromCallable = Mono.fromCallable(() -&gt; {
     // 블로킹 작업도 래핑 가능
     return someBlockingMethod();
-});
-
-// create: 프로그래밍 방식으로 Flux 생성 (비동기 브릿지)
-Flux&lt;String&gt; created = Flux.create(sink -&gt; {
+});</p>
+<p>// create: 프로그래밍 방식으로 Flux 생성 (비동기 브릿지)
+Flux<String> created = Flux.create(sink -&gt; {
     sink.next("첫 번째");
     sink.next("두 번째");
     sink.next("세 번째");
     sink.complete();
-});
-
-// generate: 동기적으로 하나씩 값을 생성
-Flux&lt;Integer&gt; generated = Flux.generate(
+});</p>
+<p>// generate: 동기적으로 하나씩 값을 생성
+Flux<Integer> generated = Flux.generate(
     () -&gt; 0,                        // 초기 상태
     (state, sink) -&gt; {
         sink.next(state);
         if (state == 9) sink.complete();
         return state + 1;           // 다음 상태
     }
-);
-
-// interval: 일정 간격으로 값 발행 (0부터 증가하는 Long)
-Flux&lt;Long&gt; interval = Flux.interval(Duration.ofSeconds(1));</code></pre>
+);</p>
+<p>// interval: 일정 간격으로 값 발행 (0부터 증가하는 Long)
+Flux<Long> interval = Flux.interval(Duration.ofSeconds(1));
+```</p>
 <h3 id="314-subscribe">3.1.4 구독(subscribe)의 의미와 동작</h3>
 <p>Reactor를 다루면서 가장 먼저 깨닫게 되는 핵심 원칙이 있다. 바로 <strong>"구독이 없으면 아무것도 실행되지 않는다"</strong> 는 점이다. 아무리 화려한 <code>Mono</code>와 <code>Flux</code> 파이프라인을 구성했어도, <code>subscribe()</code>를 명시적으로 호출하기 전까지는 정말 아무 일도 벌어지지 않기 때문이다.</p>
-<pre class="highlight"><code class="language-java">Flux&lt;Integer&gt; pipeline = Flux.range(1, 5)
+<p>```java
+Flux<Integer> pipeline = Flux.range(1, 5)
     .map(i -&gt; i * 2)
-    .filter(i -&gt; i &gt; 4);
-
-// subscribe()를 호출하지 않으면 위 코드는 아무 것도 실행하지 않는다.
-
-// 기본 구독
-pipeline.subscribe();
-
-// 값 소비자 지정
+    .filter(i -&gt; i &gt; 4);</p>
+<p>// subscribe()를 호출하지 않으면 위 코드는 아무 것도 실행하지 않는다.</p>
+<p>// 기본 구독
+pipeline.subscribe();</p>
+<p>// 값 소비자 지정
 pipeline.subscribe(
     value -&gt; System.out.println("값: " + value)
-);
-
-// 값, 에러, 완료 핸들러 지정
+);</p>
+<p>// 값, 에러, 완료 핸들러 지정
 pipeline.subscribe(
     value -&gt; System.out.println("값: " + value),
     error -&gt; System.err.println("에러: " + error.getMessage()),
     () -&gt; System.out.println("완료!")
-);
-</code></pre>
+);</p>
+<p>```</p>
 <blockquote>
 <p><strong>주의</strong>: Spring WebFlux에서는 프레임워크가 자동으로 구독을 처리한다. 컨트롤러에서 <code>Mono</code>나 <code>Flux</code>를 반환하면 WebFlux가 내부적으로 <code>subscribe()</code>를 호출하므로, 직접 <code>subscribe()</code>를 호출할 필요가 없다. 오히려 직접 호출하면 예기치 않은 동작이 발생할 수 있다.</p>
 </blockquote>
@@ -107,24 +102,28 @@ pipeline.subscribe(
 <h3 id="321">3.2.1 변환 연산자</h3>
 <h4 id="map">map: 동기 변환</h4>
 <p>가장 기본적인 변환 연산자다. 각 요소를 동기적으로 1:1로 변환한다.</p>
-<pre class="highlight"><code class="language-java">Flux&lt;String&gt; upperCase = Flux.just("spring", "webflux", "reactor")
+<p><code>java
+Flux&lt;String&gt; upperCase = Flux.just("spring", "webflux", "reactor")
     .map(String::toUpperCase);
-// 결과: "SPRING", "WEBFLUX", "REACTOR"</code></pre>
+// 결과: "SPRING", "WEBFLUX", "REACTOR"</code></p>
 <h4 id="flatmap-x">flatMap: 비동기 변환 (순서 보장 X)</h4>
 <p>필자의 경험상, 리액티브 코드에서 가장 자주 사용되는 연산자 중 하나가 바로 이것이다. 각 요소를 <code>Publisher</code>로 변환하고 결과들을 병합해주는데, <strong>순서는 보장하지 않는 대신</strong> 동시에 여러 내부 Publisher를 구독하기 때문에 처리량이 우수하다.</p>
-<pre class="highlight"><code class="language-java">Flux&lt;User&gt; users = Flux.just(1L, 2L, 3L)
+<p><code>java
+Flux&lt;User&gt; users = Flux.just(1L, 2L, 3L)
     .flatMap(id -&gt; userRepository.findById(id));
-// 결과 순서: id=2 응답이 먼저 올 수 있음</code></pre>
+// 결과 순서: id=2 응답이 먼저 올 수 있음</code></p>
 <h4 id="flatmapsequential">flatMapSequential: 비동기 변환 (순서 보장)</h4>
 <p><code>flatMap</code>과 동일하게 동시 실행하되, <strong>원래 순서를 보장</strong>한다.</p>
-<pre class="highlight"><code class="language-java">Flux&lt;User&gt; users = Flux.just(1L, 2L, 3L)
+<p><code>java
+Flux&lt;User&gt; users = Flux.just(1L, 2L, 3L)
     .flatMapSequential(id -&gt; userRepository.findById(id));
-// 결과 순서: id=1, id=2, id=3 순서 보장</code></pre>
+// 결과 순서: id=1, id=2, id=3 순서 보장</code></p>
 <h4 id="concatmap">concatMap: 순차 비동기 변환</h4>
 <p>각 요소를 순차적으로 처리하기 때문에 <strong>순서가 보장</strong>된다는 점이 매력이다. 다만 이전 요소의 처리가 완료되어야 다음 요소를 처리할 수 있으므로, 처리량이 필요한 경우라면 <code>flatMapSequential</code>보다는 떨어질 수 밖에 없다.</p>
-<pre class="highlight"><code class="language-java">Flux&lt;User&gt; users = Flux.just(1L, 2L, 3L)
+<p><code>java
+Flux&lt;User&gt; users = Flux.just(1L, 2L, 3L)
     .concatMap(id -&gt; userRepository.findById(id));
-// id=1 조회 완료 -&gt; id=2 조회 시작 -&gt; id=2 완료 -&gt; id=3 조회 시작</code></pre>
+// id=1 조회 완료 -&gt; id=2 조회 시작 -&gt; id=2 완료 -&gt; id=3 조회 시작</code></p>
 <h4 id="flatmap-vs-flatmapsequential-vs-concatmap">flatMap vs flatMapSequential vs concatMap 비교</h4>
 <table>
 <thead>
@@ -158,163 +157,163 @@ pipeline.subscribe(
 </table>
 <h3 id="322">3.2.2 필터링 연산자</h3>
 <p>스트림에서 일부 요소를 걸러내거나, 특정 개수만 취하는 작업들은 매우 일반적이다. 이를 위한 필터링 연산자들을 살펴보자.</p>
-<pre class="highlight"><code class="language-java">Flux&lt;Integer&gt; numbers = Flux.range(1, 20);
-
-// filter: 조건에 맞는 요소만 통과
-Flux&lt;Integer&gt; evenNumbers = numbers.filter(n -&gt; n % 2 == 0);
-// 결과: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20
-
-// take: 처음 N개만 가져오기
-Flux&lt;Integer&gt; firstThree = numbers.take(3);
-// 결과: 1, 2, 3
-
-// skip: 처음 N개 건너뛰기
-Flux&lt;Integer&gt; skipped = numbers.skip(17);
-// 결과: 18, 19, 20
-
-// distinct: 중복 제거
-Flux&lt;String&gt; unique = Flux.just("A", "B", "A", "C", "B")
+<p>```java
+Flux<Integer> numbers = Flux.range(1, 20);</p>
+<p>// filter: 조건에 맞는 요소만 통과
+Flux<Integer> evenNumbers = numbers.filter(n -&gt; n % 2 == 0);
+// 결과: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20</p>
+<p>// take: 처음 N개만 가져오기
+Flux<Integer> firstThree = numbers.take(3);
+// 결과: 1, 2, 3</p>
+<p>// skip: 처음 N개 건너뛰기
+Flux<Integer> skipped = numbers.skip(17);
+// 결과: 18, 19, 20</p>
+<p>// distinct: 중복 제거
+Flux<String> unique = Flux.just("A", "B", "A", "C", "B")
     .distinct();
-// 결과: "A", "B", "C"
-
-// distinctUntilChanged: 연속 중복 제거
-Flux&lt;String&gt; changed = Flux.just("A", "A", "B", "B", "A")
+// 결과: "A", "B", "C"</p>
+<p>// distinctUntilChanged: 연속 중복 제거
+Flux<String> changed = Flux.just("A", "A", "B", "B", "A")
     .distinctUntilChanged();
-// 결과: "A", "B", "A"</code></pre>
+// 결과: "A", "B", "A"
+```</p>
 <h3 id="323">3.2.3 결합 연산자</h3>
 <p>여러 개의 Publisher를 하나로 조합해야 할 때가 있다. 상황에 따라 어떤 방식으로 결합할지 선택하는 것이 중요하다.</p>
 <h4 id="zip-publisher">zip: 각 Publisher의 요소를 쌍으로 결합</h4>
-<pre class="highlight"><code class="language-java">Mono&lt;String&gt; name = Mono.just("홍길동");
-Mono&lt;Integer&gt; age = Mono.just(30);
-
-Mono&lt;String&gt; combined = Mono.zip(name, age)
+<p>```java
+Mono<String> name = Mono.just("홍길동");
+Mono<Integer> age = Mono.just(30);</p>
+<p>Mono<String> combined = Mono.zip(name, age)
     .map(tuple -&gt; tuple.getT1() + "님은 " + tuple.getT2() + "세입니다.");
-// 결과: "홍길동님은 30세입니다."
-
-// Flux에서의 zip
-Flux&lt;String&gt; names = Flux.just("Alice", "Bob", "Charlie");
-Flux&lt;Integer&gt; scores = Flux.just(95, 87, 92);
-
-Flux&lt;String&gt; results = Flux.zip(names, scores)
+// 결과: "홍길동님은 30세입니다."</p>
+<p>// Flux에서의 zip
+Flux<String> names = Flux.just("Alice", "Bob", "Charlie");
+Flux<Integer> scores = Flux.just(95, 87, 92);</p>
+<p>Flux<String> results = Flux.zip(names, scores)
     .map(tuple -&gt; tuple.getT1() + ": " + tuple.getT2() + "점");
-// 결과: "Alice: 95점", "Bob: 87점", "Charlie: 92점"</code></pre>
+// 결과: "Alice: 95점", "Bob: 87점", "Charlie: 92점"
+```</p>
 <h4 id="merge-publisher">merge: 여러 Publisher를 인터리빙 방식으로 병합</h4>
 <p>여러 Publisher의 데이터가 뒤섞여서 흐르도록 만든다. 요소가 발행되는 즉시 하류로 전달되므로, 순서는 결국 도착 순이 된다.</p>
-<pre class="highlight"><code class="language-java">Flux&lt;String&gt; fast = Flux.interval(Duration.ofMillis(100))
+<p>```java
+Flux<String> fast = Flux.interval(Duration.ofMillis(100))
     .map(i -&gt; "FAST-" + i).take(3);
-Flux&lt;String&gt; slow = Flux.interval(Duration.ofMillis(200))
-    .map(i -&gt; "SLOW-" + i).take(3);
-
-Flux&lt;String&gt; merged = Flux.merge(fast, slow);
-// 도착 순서대로 병합: FAST-0, FAST-1, SLOW-0, FAST-2, SLOW-1, SLOW-2</code></pre>
+Flux<String> slow = Flux.interval(Duration.ofMillis(200))
+    .map(i -&gt; "SLOW-" + i).take(3);</p>
+<p>Flux<String> merged = Flux.merge(fast, slow);
+// 도착 순서대로 병합: FAST-0, FAST-1, SLOW-0, FAST-2, SLOW-1, SLOW-2
+```</p>
 <h4 id="concat">concat: 순서를 유지하며 병합</h4>
 <p>merge와 달리, concat은 엄격하게 순서를 유지한다. 첫 번째 Publisher가 완료될 때까지 두 번째 Publisher는 구독하지 않기 때문이다.</p>
-<pre class="highlight"><code class="language-java">Flux&lt;String&gt; first = Flux.just("1", "2", "3");
-Flux&lt;String&gt; second = Flux.just("A", "B", "C");
-
-Flux&lt;String&gt; concatenated = Flux.concat(first, second);
-// 결과: "1", "2", "3", "A", "B", "C" (항상 이 순서)</code></pre>
+<p>```java
+Flux<String> first = Flux.just("1", "2", "3");
+Flux<String> second = Flux.just("A", "B", "C");</p>
+<p>Flux<String> concatenated = Flux.concat(first, second);
+// 결과: "1", "2", "3", "A", "B", "C" (항상 이 순서)
+```</p>
 <h4 id="combinelatest-publisher">combineLatest: 각 Publisher의 최신 값 결합</h4>
 <p>어느 한 Publisher에서 새로운 값이 나타나면, 다른 Publisher들의 최신 값과 함께 결합해서 내보낸다. 시시각각 변하는 여러 스트림을 조합해야 할 때 매우 유용하다.</p>
-<pre class="highlight"><code class="language-java">Flux&lt;String&gt; letters = Flux.just("A", "B", "C")
+<p>```java
+Flux<String> letters = Flux.just("A", "B", "C")
     .delayElements(Duration.ofMillis(100));
-Flux&lt;Integer&gt; numbers = Flux.just(1, 2, 3)
-    .delayElements(Duration.ofMillis(150));
-
-Flux&lt;String&gt; combined = Flux.combineLatest(
+Flux<Integer> numbers = Flux.just(1, 2, 3)
+    .delayElements(Duration.ofMillis(150));</p>
+<p>Flux<String> combined = Flux.combineLatest(
     letters, numbers,
     (letter, number) -&gt; letter + number
 );
-// 최신 값끼리 결합: A1, B1, B2, C2, C3 (타이밍에 따라 다를 수 있음)</code></pre>
+// 최신 값끼리 결합: A1, B1, B2, C2, C3 (타이밍에 따라 다를 수 있음)
+```</p>
 <h3 id="324">3.2.4 집계 연산자</h3>
 <p>스트림의 모든 요소를 모아서 하나의 값으로 축약하거나, 컬렉션으로 수집해야 할 때가 있다. 이런 종료 연산자(terminal operator)들을 알아보자.</p>
-<pre class="highlight"><code class="language-java">Flux&lt;Integer&gt; numbers = Flux.just(3, 1, 4, 1, 5, 9, 2, 6);
-
-// reduce: 모든 요소를 하나로 축약
-Mono&lt;Integer&gt; sum = numbers.reduce(0, Integer::sum);
-// 결과: 31
-
-// count: 요소 개수
-Mono&lt;Long&gt; count = numbers.count();
-// 결과: 8
-
-// collectList: 모든 요소를 List로 수집
-Mono&lt;List&lt;Integer&gt;&gt; list = numbers.collectList();
-// 결과: [3, 1, 4, 1, 5, 9, 2, 6]
-
-// collectMap: 요소를 Map으로 수집
-Flux&lt;User&gt; users = userRepository.findAll();
-Mono&lt;Map&lt;String, User&gt;&gt; userMap = users
-    .collectMap(User::getId, user -&gt; user);
-</code></pre>
+<p>```java
+Flux<Integer> numbers = Flux.just(3, 1, 4, 1, 5, 9, 2, 6);</p>
+<p>// reduce: 모든 요소를 하나로 축약
+Mono<Integer> sum = numbers.reduce(0, Integer::sum);
+// 결과: 31</p>
+<p>// count: 요소 개수
+Mono<Long> count = numbers.count();
+// 결과: 8</p>
+<p>// collectList: 모든 요소를 List로 수집
+Mono<List\<Integer>> list = numbers.collectList();
+// 결과: [3, 1, 4, 1, 5, 9, 2, 6]</p>
+<p>// collectMap: 요소를 Map으로 수집
+Flux<User> users = userRepository.findAll();
+Mono<Map\<String, User>> userMap = users
+    .collectMap(User::getId, user -&gt; user);</p>
+<p>```</p>
 <h3 id="325">3.2.5 유용한 유틸리티 연산자</h3>
 <p>실제 개발에서 자주 만나는 상황들을 다루기 위한 편의 연산자들이 있다. 에러 처리와 부수 효과, 타임아웃 설정 등을 간편하게 처리할 수 있다.</p>
-<pre class="highlight"><code class="language-java">// switchIfEmpty: 빈 결과일 때 대체 Publisher 사용
-Mono&lt;User&gt; user = userRepository.findById(id)
+<p>```java
+// switchIfEmpty: 빈 결과일 때 대체 Publisher 사용
+Mono<User> user = userRepository.findById(id)
     .switchIfEmpty(Mono.error(
         new NotFoundException("사용자를 찾을 수 없습니다: " + id)
-    ));
-
-// defaultIfEmpty: 빈 결과일 때 기본값 사용
-Mono&lt;String&gt; config = configRepository.findByKey("timeout")
-    .defaultIfEmpty("30");
-
-// doOnNext, doOnError, doOnComplete: 부수 효과 (사이드 이펙트)
-Flux&lt;User&gt; usersWithLog = userRepository.findAll()
+    ));</p>
+<p>// defaultIfEmpty: 빈 결과일 때 기본값 사용
+Mono<String> config = configRepository.findByKey("timeout")
+    .defaultIfEmpty("30");</p>
+<p>// doOnNext, doOnError, doOnComplete: 부수 효과 (사이드 이펙트)
+Flux<User> usersWithLog = userRepository.findAll()
     .doOnNext(u -&gt; log.info("조회된 사용자: {}", u.getName()))
     .doOnError(e -&gt; log.error("조회 실패", e))
-    .doOnComplete(() -&gt; log.info("전체 사용자 조회 완료"));
-
-// timeout: 지정 시간 내에 값이 없으면 에러
-Mono&lt;User&gt; userWithTimeout = userRepository.findById(id)
-    .timeout(Duration.ofSeconds(5));</code></pre>
+    .doOnComplete(() -&gt; log.info("전체 사용자 조회 완료"));</p>
+<p>// timeout: 지정 시간 내에 값이 없으면 에러
+Mono<User> userWithTimeout = userRepository.findById(id)
+    .timeout(Duration.ofSeconds(5));
+```</p>
 <hr>
 <h2 id="33">3.3 에러 처리 전략</h2>
 <p>리액티브 스트림 세상에서는 에러 발생 시 즉시 스트림이 종료되어 버린다. 따라서 에러를 어떻게 다룰지를 미리 설계하는 것이 매우 중요하다. 다행히 Reactor는 다양한 전략을 구현할 수 있도록 풍부한 에러 처리 연산자들을 제공한다.</p>
 <h3 id="331-onerrorreturn">3.3.1 onErrorReturn: 기본값으로 대체</h3>
 <p>가장 간단한 에러 처리 방식이다. 에러가 터지면 그냥 정해진 기본값을 반환하고 스트림을 정상적으로 완료해버린다.</p>
-<pre class="highlight"><code class="language-java">Mono&lt;String&gt; result = externalApi.getData()
-    .onErrorReturn("기본값");
-
-// 특정 예외 타입에만 적용
-Mono&lt;String&gt; result2 = externalApi.getData()
-    .onErrorReturn(TimeoutException.class, "시간 초과 - 기본값 사용");</code></pre>
+<p>```java
+Mono<String> result = externalApi.getData()
+    .onErrorReturn("기본값");</p>
+<p>// 특정 예외 타입에만 적용
+Mono<String> result2 = externalApi.getData()
+    .onErrorReturn(TimeoutException.class, "시간 초과 - 기본값 사용");
+```</p>
 <h3 id="332-onerrorresume-publisher">3.3.2 onErrorResume: 대체 Publisher로 전환</h3>
 <p>단순한 기본값이 아니라, 복잡한 폴백(fallback) 로직이 필요할 때 사용한다. 에러가 나면 다른 Publisher로 전환해서 재시도하는 식의 고급 처리가 가능하다.</p>
-<pre class="highlight"><code class="language-java">Mono&lt;User&gt; user = primaryDb.findById(id)
+<p>```java
+Mono<User> user = primaryDb.findById(id)
     .onErrorResume(e -&gt; {
         log.warn("Primary DB 실패, Secondary DB로 전환", e);
         return secondaryDb.findById(id);
-    });
-
-// 에러 타입별 분기 처리
-Mono&lt;String&gt; data = externalService.call()
+    });</p>
+<p>// 에러 타입별 분기 처리
+Mono<String> data = externalService.call()
     .onErrorResume(TimeoutException.class, e -&gt; cachedService.getCached())
-    .onErrorResume(ServiceUnavailableException.class, e -&gt; Mono.just("서비스 점검 중"));</code></pre>
+    .onErrorResume(ServiceUnavailableException.class, e -&gt; Mono.just("서비스 점검 중"));
+```</p>
 <h3 id="333-onerrormap">3.3.3 onErrorMap: 에러를 다른 에러로 변환</h3>
 <p>하위 계층에서 발생한 저수준의 예외를 비즈니스 계층에 맞는 고수준의 예외로 변환하는 데 쓰인다.</p>
-<pre class="highlight"><code class="language-java">Mono&lt;User&gt; user = userRepository.findById(id)
+<p><code>java
+Mono&lt;User&gt; user = userRepository.findById(id)
     .switchIfEmpty(Mono.error(new UserNotFoundException(id)))
     .onErrorMap(DataAccessException.class, e -&gt;
         new ServiceException("데이터 접근 오류", e)
-    );</code></pre>
+    );</code></p>
 <h3 id="334-doonerror">3.3.4 doOnError: 에러 발생 시 부수 효과</h3>
 <p>스트림의 흐름 자체는 변경하지 않되, 에러가 발생했을 때 로깅이나 메트릭 수집 같은 부가 작업을 덧붙일 때 사용한다.</p>
-<pre class="highlight"><code class="language-java">Mono&lt;User&gt; user = userRepository.findById(id)
+<p><code>java
+Mono&lt;User&gt; user = userRepository.findById(id)
     .doOnError(e -&gt; {
         log.error("사용자 조회 중 에러 발생. id={}", id, e);
         metrics.incrementErrorCount("user.findById");
     })
-    .onErrorResume(e -&gt; Mono.empty());</code></pre>
+    .onErrorResume(e -&gt; Mono.empty());</code></p>
 <h3 id="335-retry">3.3.5 retry: 단순 재시도</h3>
 <p>에러가 나면 그냥 정해진 횟수만큼 다시 구독을 시도한다. 간단하지만, 많은 경우 이것만으로도 충분하다.</p>
-<pre class="highlight"><code class="language-java">Mono&lt;String&gt; result = externalApi.call()
-    .retry(3); // 최대 3회 재시도</code></pre>
+<p><code>java
+Mono&lt;String&gt; result = externalApi.call()
+    .retry(3); // 최대 3회 재시도</code></p>
 <h3 id="336-retrywhen">3.3.6 retryWhen: 고급 재시도 전략</h3>
 <p>단순 재시도로는 부족할 때, <code>Retry</code> 스펙을 활용하면 백오프(backoff) 전략이나 조건부 재시도 같은 정교한 정책을 구현할 수 있다.</p>
-<pre class="highlight"><code class="language-java">import reactor.util.retry.Retry;
-
-Mono&lt;String&gt; result = externalApi.call()
+<p>```java
+import reactor.util.retry.Retry;</p>
+<p>Mono<String> result = externalApi.call()
     .retryWhen(Retry.backoff(3, Duration.ofSeconds(1))
         .maxBackoff(Duration.ofSeconds(10))
         .jitter(0.5)
@@ -325,53 +324,56 @@ Mono&lt;String&gt; result = externalApi.call()
                 retrySignal.failure()
             )
         )
-    );</code></pre>
+    );
+```</p>
 <h3 id="337">3.3.7 실전 에러 처리 패턴</h3>
 <p>이제까지 배운 기법들을 모두 조합하면, 실제 서비스 계층에서 견고한 에러 처리를 만들 수 있다. 다음 코드는 캐시 조회, DB 폴백, 타임아웃, 재시도를 모두 포함한 현실적인 예제다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class UserService {
+public class UserService {</p>
+<pre><code>private final ReactiveMongoTemplate mongoTemplate;
+private final UserCacheService cacheService;
+private static final Logger log = LoggerFactory.getLogger(UserService.class);
 
-    private final ReactiveMongoTemplate mongoTemplate;
-    private final UserCacheService cacheService;
-    private static final Logger log = LoggerFactory.getLogger(UserService.class);
-
-    public Mono&lt;User&gt; findUserById(String id) {
-        return cacheService.getCachedUser(id)            // 1. 캐시 조회
-            .switchIfEmpty(
-                mongoTemplate.findById(id, User.class)   // 2. DB 조회
-                    .doOnNext(user -&gt;
-                        cacheService.cacheUser(user)      // 3. 캐시 저장 (fire-and-forget 패턴으로,
-                            .subscribe()                  //    캐시 실패가 메인 흐름에 영향을 주지 않도록 의도적으로 사용)
-                    )
-            )
-            .switchIfEmpty(
-                Mono.error(new UserNotFoundException(id)) // 4. 없으면 예외
-            )
-            .timeout(Duration.ofSeconds(5))               // 5. 타임아웃
-            .doOnError(TimeoutException.class, e -&gt;
-                log.warn("사용자 조회 타임아웃. id={}", id)
-            )
-            .onErrorMap(TimeoutException.class, e -&gt;
-                new ServiceException("사용자 조회 시간 초과", e)
-            )
-            .retryWhen(Retry.backoff(2, Duration.ofMillis(500))
-                .filter(e -&gt; e instanceof DataAccessException)
-            );
-    }
-
-    public Flux&lt;User&gt; searchUsers(String keyword) {
-        Query query = new Query(
-            Criteria.where("name").regex(keyword, "i")
+public Mono&lt;User&gt; findUserById(String id) {
+    return cacheService.getCachedUser(id)            // 1. 캐시 조회
+        .switchIfEmpty(
+            mongoTemplate.findById(id, User.class)   // 2. DB 조회
+                .doOnNext(user -&gt;
+                    cacheService.cacheUser(user)      // 3. 캐시 저장 (fire-and-forget 패턴으로,
+                        .subscribe()                  //    캐시 실패가 메인 흐름에 영향을 주지 않도록 의도적으로 사용)
+                )
+        )
+        .switchIfEmpty(
+            Mono.error(new UserNotFoundException(id)) // 4. 없으면 예외
+        )
+        .timeout(Duration.ofSeconds(5))               // 5. 타임아웃
+        .doOnError(TimeoutException.class, e -&gt;
+            log.warn("사용자 조회 타임아웃. id={}", id)
+        )
+        .onErrorMap(TimeoutException.class, e -&gt;
+            new ServiceException("사용자 조회 시간 초과", e)
+        )
+        .retryWhen(Retry.backoff(2, Duration.ofMillis(500))
+            .filter(e -&gt; e instanceof DataAccessException)
         );
+}
 
-        return mongoTemplate.find(query, User.class)
-            .onErrorResume(e -&gt; {
-                log.error("사용자 검색 실패. keyword={}", keyword, e);
-                return Flux.empty();
-            });
-    }
-}</code></pre>
+public Flux&lt;User&gt; searchUsers(String keyword) {
+    Query query = new Query(
+        Criteria.where("name").regex(keyword, "i")
+    );
+
+    return mongoTemplate.find(query, User.class)
+        .onErrorResume(e -&gt; {
+            log.error("사용자 검색 실패. keyword={}", keyword, e);
+            return Flux.empty();
+        });
+}
+</code></pre>
+<p>}
+```</p>
 <hr>
 <h2 id="34-scheduler">3.4 스케줄러(Scheduler)와 스레드 모델</h2>
 <p>기본적으로 Reactor는 <strong>호출자 스레드</strong>(caller's thread)에서 동작한다는 점을 먼저 이해해야 한다. 이를 원하지 않는다면, 스케줄러를 통해 작업을 다른 스레드로 옮길 수 있다.</p>
@@ -422,7 +424,8 @@ public class UserService {
 <p>이 둘은 이름이 비슷해서 자주 헷갈리지만, 실제로는 전혀 다른 동작을 한다. 정확히 이해하는 것이 리액티브 프로그래밍의 핵심이다.</p>
 <h4 id="publishon">publishOn: 하류 연산자의 실행 스레드를 변경</h4>
 <p><code>publishOn</code>을 삽입한 지점 이후의 연산자들이 지정한 스케줄러에서 실행되도록 만든다. 파이프라인 중간에 갑자기 스레드를 바꿔야 할 때 딱 맞다.</p>
-<pre class="highlight"><code class="language-java">Flux.range(1, 5)
+<p>```java
+Flux.range(1, 5)
     .map(i -&gt; {
         log.info("[map1] {} - {}", i, Thread.currentThread().getName());
         return i * 10;
@@ -434,21 +437,23 @@ public class UserService {
     })
     .subscribe(i -&gt;
         log.info("[subscribe] {} - {}", i, Thread.currentThread().getName())
-    );
-
-// map1은 main 스레드, publishOn 이후 map2와 subscribe는 parallel-1 스레드에서 실행</code></pre>
+    );</p>
+<p>// map1은 main 스레드, publishOn 이후 map2와 subscribe는 parallel-1 스레드에서 실행
+```</p>
 <h4 id="subscribeon">subscribeOn: 전체 구독 체인의 실행 스레드를 변경</h4>
 <p>이것은 소스의 구독 시점부터 시작되는 스레드를 변경한다. 파이프라인의 어디에 놓든 <strong>소스 발행 부분의 스레드에만 영향</strong>을 미친다는 점이 핵심이다.</p>
-<pre class="highlight"><code class="language-java">Mono.fromCallable(() -&gt; {
+<p><code>java
+Mono.fromCallable(() -&gt; {
         log.info("[callable] {}", Thread.currentThread().getName());
         return blockingIoOperation();
     })
     .subscribeOn(Schedulers.boundedElastic())  // 소스가 boundedElastic에서 실행
     .map(result -&gt; processResult(result))
     .subscribe();
-// callable, map, subscribe 모두 boundedElastic-1 스레드에서 실행</code></pre>
+// callable, map, subscribe 모두 boundedElastic-1 스레드에서 실행</code></p>
 <h4 id="publishon-subscribeon">publishOn과 subscribeOn 함께 사용</h4>
-<pre class="highlight"><code class="language-java">Flux.range(1, 3)
+<p><code>java
+Flux.range(1, 3)
     .subscribeOn(Schedulers.single())          // 소스: single 스레드
     .map(i -&gt; {
         log.info("[map1] {}", Thread.currentThread().getName()); // single-1
@@ -459,37 +464,39 @@ public class UserService {
         log.info("[map2] {}", Thread.currentThread().getName()); // parallel-1
         return s.toUpperCase();
     })
-    .subscribe();</code></pre>
+    .subscribe();</code></p>
 <h3 id="343">3.4.3 블로킹 코드를 감싸는 방법</h3>
 <p>리액티브 파이프라인 안에서 블로킹 코드를 부주의하게 호출하면 시스템 전체의 처리량이 참담해진다. 이벤트 루프 스레드 자체가 블로킹되기 때문이다. 불가피하게 레거시 블로킹 코드를 다뤄야 한다면, 반드시 <code>boundedElastic</code> 스케줄러로 격리해서 실행해야 한다.</p>
-<pre class="highlight"><code class="language-java">@Service
-public class LegacyIntegrationService {
+<p>```java
+@Service
+public class LegacyIntegrationService {</p>
+<pre><code>private final LegacyBlockingClient legacyClient;
 
-    private final LegacyBlockingClient legacyClient;
+// 잘못된 방법 - 이벤트 루프 스레드를 블로킹
+public Mono&lt;String&gt; wrongWay() {
+    return Mono.just(legacyClient.blockingCall()); // 절대 이렇게 하지 말 것!
+}
 
-    // 잘못된 방법 - 이벤트 루프 스레드를 블로킹
-    public Mono&lt;String&gt; wrongWay() {
-        return Mono.just(legacyClient.blockingCall()); // 절대 이렇게 하지 말 것!
-    }
+// 올바른 방법 - boundedElastic에서 블로킹 실행
+public Mono&lt;String&gt; correctWay() {
+    return Mono.fromCallable(() -&gt; legacyClient.blockingCall())
+        .subscribeOn(Schedulers.boundedElastic());
+}
 
-    // 올바른 방법 - boundedElastic에서 블로킹 실행
-    public Mono&lt;String&gt; correctWay() {
-        return Mono.fromCallable(() -&gt; legacyClient.blockingCall())
-            .subscribeOn(Schedulers.boundedElastic());
-    }
+// 여러 블로킹 호출을 병렬로 실행
+public Mono&lt;AggregatedResult&gt; parallelBlockingCalls() {
+    Mono&lt;String&gt; call1 = Mono.fromCallable(() -&gt; legacyClient.callServiceA())
+        .subscribeOn(Schedulers.boundedElastic());
 
-    // 여러 블로킹 호출을 병렬로 실행
-    public Mono&lt;AggregatedResult&gt; parallelBlockingCalls() {
-        Mono&lt;String&gt; call1 = Mono.fromCallable(() -&gt; legacyClient.callServiceA())
-            .subscribeOn(Schedulers.boundedElastic());
+    Mono&lt;String&gt; call2 = Mono.fromCallable(() -&gt; legacyClient.callServiceB())
+        .subscribeOn(Schedulers.boundedElastic());
 
-        Mono&lt;String&gt; call2 = Mono.fromCallable(() -&gt; legacyClient.callServiceB())
-            .subscribeOn(Schedulers.boundedElastic());
-
-        return Mono.zip(call1, call2)
-            .map(tuple -&gt; new AggregatedResult(tuple.getT1(), tuple.getT2()));
-    }
-}</code></pre>
+    return Mono.zip(call1, call2)
+        .map(tuple -&gt; new AggregatedResult(tuple.getT1(), tuple.getT2()));
+}
+</code></pre>
+<p>}
+```</p>
 <blockquote>
 <p><strong>Tip</strong>: 프로젝트에 <code>BlockHound</code> 라이브러리를 추가하면 이벤트 루프 스레드에서 블로킹 호출이 발생할 때 즉시 탐지할 수 있다. 19장에서 자세히 다룬다.</p>
 </blockquote>
@@ -498,170 +505,172 @@ public class LegacyIntegrationService {
 <p>실무에서 자주 보는 패턴인데, Mono와 Flux가 모두 같은 식으로 동작하는 것은 아니다. 언제 데이터를 발행하기 시작하고, 구독자들이 어떻게 그 데이터를 받는지에 따라 두 가지로 나뉜다.</p>
 <h3 id="351-cold-publisher">3.5.1 Cold Publisher</h3>
 <p>Cold Publisher는 <strong>구독이 들어올 때마다 데이터를 처음부터 새로 발행</strong>한다. 대부분의 Reactor 연산자가 기본적으로 이런 식으로 작동한다.</p>
-<pre class="highlight"><code class="language-java">Flux&lt;Long&gt; coldFlux = Flux.defer(() -&gt; {
+<p>```java
+Flux<Long> coldFlux = Flux.defer(() -&gt; {
     log.info("새로운 데이터 소스 생성");
     return Flux.just(System.currentTimeMillis());
-});
-
-// 구독자 1: 자신만의 데이터를 받음
-coldFlux.subscribe(v -&gt; log.info("구독자1: {}", v));
-
-Thread.sleep(100);
-
-// 구독자 2: 별도의 새로운 데이터를 받음 (다른 타임스탬프)
-coldFlux.subscribe(v -&gt; log.info("구독자2: {}", v));
-
-// 각 구독자가 서로 다른 타임스탬프를 받음 (매번 새로 생성)</code></pre>
+});</p>
+<p>// 구독자 1: 자신만의 데이터를 받음
+coldFlux.subscribe(v -&gt; log.info("구독자1: {}", v));</p>
+<p>Thread.sleep(100);</p>
+<p>// 구독자 2: 별도의 새로운 데이터를 받음 (다른 타임스탬프)
+coldFlux.subscribe(v -&gt; log.info("구독자2: {}", v));</p>
+<p>// 각 구독자가 서로 다른 타임스탬프를 받음 (매번 새로 생성)
+```</p>
 <h3 id="352-hot-publisher">3.5.2 Hot Publisher</h3>
 <p>Hot Publisher는 정반대다. <strong>구독 여부와 상관없이 계속 데이터를 발행</strong>하며, 구독자들은 자신이 구독한 시점 이후의 데이터만 수신한다.</p>
-<pre class="highlight"><code class="language-java">// ConnectableFlux로 Hot Publisher 만들기
-Flux&lt;Long&gt; hotFlux = Flux.interval(Duration.ofSeconds(1))
+<p>```java
+// ConnectableFlux로 Hot Publisher 만들기
+Flux<Long> hotFlux = Flux.interval(Duration.ofSeconds(1))
     .publish()
-    .autoConnect(2); // 2명이 구독하면 자동 시작
-
-// 구독자 1
-hotFlux.subscribe(v -&gt; log.info("구독자1: {}", v));
-
-Thread.sleep(1500);
-
-// 구독자 2가 연결되면 발행 시작, 구독자2는 중간부터 수신
-hotFlux.subscribe(v -&gt; log.info("구독자2: {}", v));</code></pre>
+    .autoConnect(2); // 2명이 구독하면 자동 시작</p>
+<p>// 구독자 1
+hotFlux.subscribe(v -&gt; log.info("구독자1: {}", v));</p>
+<p>Thread.sleep(1500);</p>
+<p>// 구독자 2가 연결되면 발행 시작, 구독자2는 중간부터 수신
+hotFlux.subscribe(v -&gt; log.info("구독자2: {}", v));
+```</p>
 <h3 id="353-sinks-hot-publisher">3.5.3 Sinks를 활용한 Hot Publisher 생성</h3>
 <p>Hot Publisher를 명시적으로 만들기 위해서는 <code>Sinks</code>를 사용한다. Reactor 3.4부터 도입된 이것은 기존의 <code>Processor</code>를 현대적으로 개선한 버전으로, 스레드 안전성을 내장하고 있다.</p>
-<pre class="highlight"><code class="language-java">// Sinks.Many: 여러 값을 여러 구독자에게 발행
-Sinks.Many&lt;String&gt; sink = Sinks.many().multicast().onBackpressureBuffer();
-
-Flux&lt;String&gt; hotFlux = sink.asFlux();
-
-// 구독자 등록
+<p>```java
+// Sinks.Many: 여러 값을 여러 구독자에게 발행
+Sinks.Many<String> sink = Sinks.many().multicast().onBackpressureBuffer();</p>
+<p>Flux<String> hotFlux = sink.asFlux();</p>
+<p>// 구독자 등록
 hotFlux.subscribe(v -&gt; log.info("구독자1: {}", v));
-hotFlux.subscribe(v -&gt; log.info("구독자2: {}", v));
-
-// 값 발행
+hotFlux.subscribe(v -&gt; log.info("구독자2: {}", v));</p>
+<p>// 값 발행
 sink.tryEmitNext("메시지 1");
 sink.tryEmitNext("메시지 2");
-sink.tryEmitComplete();
-
-// 두 구독자 모두 "메시지 1", "메시지 2"를 수신</code></pre>
-<pre class="highlight"><code class="language-java">// Sinks.Many의 다양한 스펙
+sink.tryEmitComplete();</p>
+<p>// 두 구독자 모두 "메시지 1", "메시지 2"를 수신
+```</p>
+<p><code>java
+// Sinks.Many의 다양한 스펙
 Sinks.Many&lt;String&gt; unicast   = Sinks.many().unicast().onBackpressureBuffer();   // 구독자 1명
 Sinks.Many&lt;String&gt; multicast = Sinks.many().multicast().onBackpressureBuffer(); // 여러 구독자
-Sinks.Many&lt;String&gt; replay    = Sinks.many().replay().limit(5); // 최근 5개 재생</code></pre>
+Sinks.Many&lt;String&gt; replay    = Sinks.many().replay().limit(5); // 최근 5개 재생</code></p>
 <p><strong>실전 예제 - 이벤트 버스 구현</strong>:</p>
-<pre class="highlight"><code class="language-java">@Component
-public class EventBus {
+<p>```java
+@Component
+public class EventBus {</p>
+<pre><code>private final Sinks.Many&lt;DomainEvent&gt; sink =
+    Sinks.many().multicast().onBackpressureBuffer();
 
-    private final Sinks.Many&lt;DomainEvent&gt; sink =
-        Sinks.many().multicast().onBackpressureBuffer();
+public void publish(DomainEvent event) {
+    sink.tryEmitNext(event);
+}
 
-    public void publish(DomainEvent event) {
-        sink.tryEmitNext(event);
-    }
+public Flux&lt;DomainEvent&gt; subscribe() {
+    return sink.asFlux();
+}
 
-    public Flux&lt;DomainEvent&gt; subscribe() {
-        return sink.asFlux();
-    }
-
-    public &lt;T extends DomainEvent&gt; Flux&lt;T&gt; subscribe(Class&lt;T&gt; eventType) {
-        return sink.asFlux()
-            .filter(eventType::isInstance)
-            .cast(eventType);
-    }
-}</code></pre>
+public &lt;T extends DomainEvent&gt; Flux&lt;T&gt; subscribe(Class&lt;T&gt; eventType) {
+    return sink.asFlux()
+        .filter(eventType::isInstance)
+        .cast(eventType);
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="354-share-cache">3.5.4 share()와 cache()</h3>
 <p>Cold Publisher와 Hot Publisher의 특성을 상황에 맞게 조절할 수 있는 유틸리티 메서드들이 있다.</p>
 <h4 id="share-cold-publisher-hot-publisher">share(): Cold Publisher를 Hot Publisher로 변환</h4>
-<pre class="highlight"><code class="language-java">Flux&lt;Long&gt; shared = Flux.interval(Duration.ofSeconds(1))
+<p>```java
+Flux<Long> shared = Flux.interval(Duration.ofSeconds(1))
     .doOnSubscribe(s -&gt; log.info("구독 시작"))
-    .share(); // 첫 구독자가 구독할 때 시작, 모든 구독자가 해제되면 중지
-
-shared.subscribe(v -&gt; log.info("구독자1: {}", v));
-
-Thread.sleep(2500);
-
-// 구독자2는 중간부터 받음
-shared.subscribe(v -&gt; log.info("구독자2: {}", v));</code></pre>
+    .share(); // 첫 구독자가 구독할 때 시작, 모든 구독자가 해제되면 중지</p>
+<p>shared.subscribe(v -&gt; log.info("구독자1: {}", v));</p>
+<p>Thread.sleep(2500);</p>
+<p>// 구독자2는 중간부터 받음
+shared.subscribe(v -&gt; log.info("구독자2: {}", v));
+```</p>
 <h4 id="cache">cache(): 결과를 캐싱</h4>
 <p>한 번 실행된 결과를 메모리에 보관했다가 이후 구독자들에게 재사용시킬 수 있다.</p>
-<pre class="highlight"><code class="language-java">// 한 번 실행된 결과를 캐싱하여 이후 구독자에게 재사용
-Mono&lt;Config&gt; config = loadConfigFromDb()
-    .cache(Duration.ofMinutes(10)); // 10분간 캐시
-
-// 첫 번째 호출: DB 조회 실행
-config.subscribe(c -&gt; log.info("설정1: {}", c));
-
-// 두 번째 호출: 캐시된 값 반환 (DB 조회 없음)
-config.subscribe(c -&gt; log.info("설정2: {}", c));
-
-// Flux에서도 사용 가능
-Flux&lt;Product&gt; products = productRepository.findAll()
-    .cache(Duration.ofMinutes(5)); // 전체 시퀀스를 캐시</code></pre>
+<p>```java
+// 한 번 실행된 결과를 캐싱하여 이후 구독자에게 재사용
+Mono<Config> config = loadConfigFromDb()
+    .cache(Duration.ofMinutes(10)); // 10분간 캐시</p>
+<p>// 첫 번째 호출: DB 조회 실행
+config.subscribe(c -&gt; log.info("설정1: {}", c));</p>
+<p>// 두 번째 호출: 캐시된 값 반환 (DB 조회 없음)
+config.subscribe(c -&gt; log.info("설정2: {}", c));</p>
+<p>// Flux에서도 사용 가능
+Flux<Product> products = productRepository.findAll()
+    .cache(Duration.ofMinutes(5)); // 전체 시퀀스를 캐시
+```</p>
 <hr>
 <h2 id="36-reactor">3.6 Reactor 디버깅 기법</h2>
 <p>리액티브 코드를 디버깅하는 일은 명령형 코드보다 훨씬 까다롭다. 스택 트레이스가 비동기 실행 때문에 원래 코드의 위치를 정확히 가리키지 못하는 까닭이다. 다행히 Reactor가 이 문제를 푸는 여러 도구를 제공한다.</p>
 <h3 id="361-log">3.6.1 log(): 리액티브 신호 로깅</h3>
 <p>구독부터 완료까지, 리액티브 파이프라인을 흐르는 모든 신호를 로깅할 수 있다. <code>log()</code> 연산자를 체인에 끼워넣으면 그 지점의 모든 이벤트를 볼 수 있다.</p>
-<pre class="highlight"><code class="language-java">Flux.range(1, 5)
+<p>```java
+Flux.range(1, 5)
     .log("NumberFlux")    // 카테고리 이름 지정 가능
     .map(i -&gt; i * 2)
     .log("DoubledFlux")
-    .subscribe();
-
-// 출력: onSubscribe, request, onNext, onComplete 등 모든 신호 로깅
-
-// 특정 신호만 로깅
+    .subscribe();</p>
+<p>// 출력: onSubscribe, request, onNext, onComplete 등 모든 신호 로깅</p>
+<p>// 특정 신호만 로깅
 Flux.range(1, 5)
     .log("MyFlux", Level.INFO, SignalType.ON_NEXT, SignalType.ON_ERROR)
-    .subscribe();</code></pre>
+    .subscribe();
+```</p>
 <h3 id="362-checkpoint">3.6.2 checkpoint(): 에러 추적 지점 설정</h3>
 <p>에러가 터졌을 때 정확히 어느 연산자에서 문제가 났는지 찾기는 어렵다. <code>checkpoint()</code>로 마킹해두면 에러 메시지에 그 정보를 포함시켜 추적을 한결 쉽게 만든다.</p>
-<pre class="highlight"><code class="language-java">Flux&lt;Integer&gt; flux = Flux.just(1, 2, 0, 4)
+<p>```java
+Flux<Integer> flux = Flux.just(1, 2, 0, 4)
     .map(i -&gt; 100 / i)
     .checkpoint("나눗셈 연산 후")        // 이 지점에 체크포인트 설정
     .map(i -&gt; i + 10)
-    .checkpoint("덧셈 연산 후");
-
-flux.subscribe(
+    .checkpoint("덧셈 연산 후");</p>
+<p>flux.subscribe(
     v -&gt; log.info("값: {}", v),
     e -&gt; log.error("에러 발생", e)
-);
-
-// 에러 메시지에 체크포인트 정보 포함:
+);</p>
+<p>// 에러 메시지에 체크포인트 정보 포함:
 // Assembly trace from producer [reactor.core.publisher.FluxMap],
-// described as [나눗셈 연산 후]</code></pre>
-<pre class="highlight"><code class="language-java">// 상세 스택 트레이스 포함 (비용이 더 들지만 디버깅에 유용)
-.checkpoint("상세 체크포인트", true)</code></pre>
+// described as [나눗셈 연산 후]
+```</p>
+<p><code>java
+// 상세 스택 트레이스 포함 (비용이 더 들지만 디버깅에 유용)
+.checkpoint("상세 체크포인트", true)</code></p>
 <h3 id="363-hooksonoperatordebug">3.6.3 Hooks.onOperatorDebug(): 글로벌 디버그 모드</h3>
 <p>모든 연산자에 대해 생성 시점의 스택 트레이스를 자동 캡처하는 강력한 도구다. 다만 <strong>성능 오버헤드가 크기 때문에</strong> 개발 환경에서만 켜야 한다.</p>
-<pre class="highlight"><code class="language-java">@SpringBootApplication
-public class Application {
-
-    public static void main(String[] args) {
-        // 개발 환경에서만 활성화
-        if (isDevProfile()) {
-            Hooks.onOperatorDebug();
-        }
-        SpringApplication.run(Application.class, args);
+<p>```java
+@SpringBootApplication
+public class Application {</p>
+<pre><code>public static void main(String[] args) {
+    // 개발 환경에서만 활성화
+    if (isDevProfile()) {
+        Hooks.onOperatorDebug();
     }
-}</code></pre>
+    SpringApplication.run(Application.class, args);
+}
+</code></pre>
+<p>}
+```</p>
 <p>활성화되면 에러 발생 시 스택 트레이스에 연산자가 정의된 정확한 소스 위치(클래스명, 줄 번호)를 포함시키므로, 원인 파악이 훨씬 빨라진다.</p>
 <h3 id="364-reactordebugagent">3.6.4 ReactorDebugAgent: 프로덕션 친화적 디버깅</h3>
 <p><code>Hooks.onOperatorDebug()</code>의 성능 문제를 극복한 고급 옵션이다. Java Agent가 바이트코드 수준에서 변환을 하므로, 런타임 오버헤드 없이도 상세한 디버그 정보를 얻을 수 있다.</p>
 <p><strong>의존성 추가</strong>:</p>
-<pre class="highlight"><code class="language-xml">&lt;dependency&gt;
+<p><code>xml
+&lt;dependency&gt;
     &lt;groupId&gt;io.projectreactor&lt;/groupId&gt;
     &lt;artifactId&gt;reactor-tools&lt;/artifactId&gt;
-&lt;/dependency&gt;</code></pre>
+&lt;/dependency&gt;</code></p>
 <p><strong>활성화</strong>:</p>
-<pre class="highlight"><code class="language-java">@SpringBootApplication
-public class Application {
-
-    public static void main(String[] args) {
-        ReactorDebugAgent.init();               // JVM 시작 시 한 번 호출
-        ReactorDebugAgent.processExistingClasses(); // 이미 로드된 클래스 처리
-        SpringApplication.run(Application.class, args);
-    }
-}</code></pre>
+<p>```java
+@SpringBootApplication
+public class Application {</p>
+<pre><code>public static void main(String[] args) {
+    ReactorDebugAgent.init();               // JVM 시작 시 한 번 호출
+    ReactorDebugAgent.processExistingClasses(); // 이미 로드된 클래스 처리
+    SpringApplication.run(Application.class, args);
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="365">3.6.5 디버깅 실전 전략 정리</h3>
 <table>
 <thead>
@@ -701,21 +710,21 @@ public class Application {
 </table>
 <p><strong>권장 디버깅 워크플로우</strong>:</p>
 <p>차근차근 이 순서로 접근하면 대부분의 문제를 찾을 수 있다.</p>
-<pre class="highlight"><code class="language-java">// 1단계: log()로 신호 흐름 확인
+<p>```java
+// 1단계: log()로 신호 흐름 확인
 userRepository.findById(id)
     .log("findById")
     .flatMap(user -&gt; orderRepository.findByUserId(user.getId()))
     .log("findOrders")
-    .subscribe();
-
-// 2단계: 문제 지점에 checkpoint() 추가
+    .subscribe();</p>
+<p>// 2단계: 문제 지점에 checkpoint() 추가
 userRepository.findById(id)
     .checkpoint("사용자 조회")
     .flatMap(user -&gt; orderRepository.findByUserId(user.getId()))
     .checkpoint("주문 목록 조회")
-    .subscribe();
-
-// 3단계: 그래도 찾기 어려우면 ReactorDebugAgent 활성화</code></pre>
+    .subscribe();</p>
+<p>// 3단계: 그래도 찾기 어려우면 ReactorDebugAgent 활성화
+```</p>
 <hr>
 <h2 id="_1">요약</h2>
 <p>이 장에서 배운 Project Reactor의 핵심 개념을 한번 정리해보자.</p>
