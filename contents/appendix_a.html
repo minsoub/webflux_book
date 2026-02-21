@@ -85,43 +85,38 @@
 </table>
 <h3 id="just-empty-error">just / empty / error</h3>
 <p>가장 단순한 경우부터 생각해 보자. <code>just</code>는 주어진 값을 바로 흘려보내고, <code>empty</code>는 아무것도 하지 않고 끝내며, <code>error</code>는 즉각 예외를 던진다.</p>
-<p><code>java
-Mono&lt;String&gt; mono = Mono.just("Hello");
+<pre class="highlight"><code class="language-java">Mono&lt;String&gt; mono = Mono.just("Hello");
 Flux&lt;Integer&gt; flux = Flux.just(1, 2, 3);
 Mono&lt;String&gt; empty = Mono.empty();
-Mono&lt;String&gt; error = Mono.error(new IllegalArgumentException("잘못된 인자"));</code></p>
-<p><code>just:   ──(Hello)──|──&gt;
+Mono&lt;String&gt; error = Mono.error(new IllegalArgumentException("잘못된 인자"));</code></pre>
+<pre class="highlight"><code>just:   ──(Hello)──|──&gt;
 empty:  ──|──&gt;
-error:  ──X──&gt;</code></p>
+error:  ──X──&gt;</code></pre>
 <h3 id="fromiterable-fromstream-range">fromIterable / fromStream / range</h3>
 <p>이미 있는 컬렉션이나 스트림, 또는 간단한 정수 범위를 리액티브 형태로 바꾸고 싶을 때 쓴다.</p>
-<p><code>java
-Flux&lt;String&gt; fromList = Flux.fromIterable(List.of("A", "B", "C"));
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; fromList = Flux.fromIterable(List.of("A", "B", "C"));
 Flux&lt;String&gt; fromStream = Flux.fromStream(List.of("A", "B").stream()); // 일회성
-Flux&lt;Integer&gt; range = Flux.range(1, 5); // 1, 2, 3, 4, 5</code></p>
-<p><code>range:  ──(1)──(2)──(3)──(4)──(5)──|──&gt;</code></p>
+Flux&lt;Integer&gt; range = Flux.range(1, 5); // 1, 2, 3, 4, 5</code></pre>
+<pre class="highlight"><code>range:  ──(1)──(2)──(3)──(4)──(5)──|──&gt;</code></pre>
 <h3 id="interval">interval</h3>
 <p>주기적으로 계속 신호를 보내는 상황이라면 <code>interval</code>을 쓰면 된다. 0부터 1, 2, 3... 하는 식으로 증가하는 숫자를 일정 간격으로 무한히 내보낸다. 기본적으로 <code>Schedulers.parallel()</code> 스레드에서 동작한다.</p>
-<p><code>java
-Flux&lt;Long&gt; tick = Flux.interval(Duration.ofSeconds(1));       // 0, 1, 2, ...
-Flux&lt;Long&gt; delayed = Flux.interval(Duration.ofSeconds(5), Duration.ofSeconds(1));</code></p>
-<p><code>시간:  0s     1s     2s     3s
-소스: ──(0)──(1)──(2)──(3)──...──&gt;</code></p>
+<pre class="highlight"><code class="language-java">Flux&lt;Long&gt; tick = Flux.interval(Duration.ofSeconds(1));       // 0, 1, 2, ...
+Flux&lt;Long&gt; delayed = Flux.interval(Duration.ofSeconds(5), Duration.ofSeconds(1));</code></pre>
+<pre class="highlight"><code>시간:  0s     1s     2s     3s
+소스: ──(0)──(1)──(2)──(3)──...──&gt;</code></pre>
 <h3 id="defer">defer</h3>
 <p>필자의 경험상, <code>defer</code>는 '뭔가 늦게 결정하고 싶을 때'의 해답이다. 구독되는 순간에 Publisher를 만들도록 미루는 것인데, 그 시점의 상태를 반영할 수 있어서 동적 로직에 매우 유용하다.</p>
-<p><code>java
-Mono&lt;Long&gt; deferred = Mono.defer(() -&gt; Mono.just(System.currentTimeMillis()));
-// 구독할 때마다 다른 타임스탬프가 발행된다</code></p>
+<pre class="highlight"><code class="language-java">Mono&lt;Long&gt; deferred = Mono.defer(() -&gt; Mono.just(System.currentTimeMillis()));
+// 구독할 때마다 다른 타임스탬프가 발행된다</code></pre>
 <h3 id="create">create</h3>
 <p>콜백 중심의 레거시 API를 리액티브 세계로 끌어들일 때 <code>create</code>를 쓰면 된다. <code>FluxSink</code>를 통해 프로그래밍 방식으로 원하는 시점에 요소를 발행할 수 있다.</p>
-<p><code>java
-Flux&lt;String&gt; bridge = Flux.create(sink -&gt; {
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; bridge = Flux.create(sink -&gt; {
     myListener.register(
         data -&gt; sink.next(data),
         err  -&gt; sink.error(err),
         ()   -&gt; sink.complete()
     );
-}, FluxSink.OverflowStrategy.BUFFER);</code></p>
+}, FluxSink.OverflowStrategy.BUFFER);</code></pre>
 <hr>
 <h2 id="a2-transformation-operators">A.2 변환 연산자 (Transformation Operators)</h2>
 <p>이제 흘러오는 데이터를 가공하는 차례다. 각 요소를 다른 형태로 바꾸거나 스트림 전체의 구조를 뜯어고칠 수 있다.</p>
@@ -183,45 +178,40 @@ Flux&lt;String&gt; bridge = Flux.create(sink -&gt; {
 </table>
 <h3 id="map">map</h3>
 <p>가장 단순한 변환. 각 요소에 함수를 먹이면 1:1로 매핑되어 나온다. 동기적으로만 작동하니 주의하자.</p>
-<p><code>java
-Flux&lt;String&gt; upper = Flux.just("a", "b", "c").map(String::toUpperCase);
-// 결과: "A", "B", "C"</code></p>
-<p><code>소스:   ──(a)──(b)──(c)──|──&gt;        결과:   ──(A)──(B)──(C)──|──&gt;</code></p>
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; upper = Flux.just("a", "b", "c").map(String::toUpperCase);
+// 결과: "A", "B", "C"</code></pre>
+<pre class="highlight"><code>소스:   ──(a)──(b)──(c)──|──&gt;        결과:   ──(A)──(B)──(C)──|──&gt;</code></pre>
 <h3 id="flatmap">flatMap</h3>
 <p>복잡한 변환이 필요하면 flatMap으로 간다. 각 요소를 Publisher로 바꾼 뒤 펼쳐서 섞는다. 다만 <strong>순서가 섞일 수 있으니</strong> 주의—가장 빨리 도착하는 결과부터 나간다.</p>
-<p><code>java
-Flux&lt;String&gt; result = Flux.just(1, 2, 3)
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; result = Flux.just(1, 2, 3)
     .flatMap(id -&gt; webClient.get().uri("/users/{id}", id)
-        .retrieve().bodyToMono(String.class));</code></p>
-<p><code>소스:    ──(1)────(2)────(3)──|──&gt;
+        .retrieve().bodyToMono(String.class));</code></pre>
+<pre class="highlight"><code>소스:    ──(1)────(2)────(3)──|──&gt;
 내부1:   ──────(R1)──&gt;          내부2:   ────(R2)──&gt;
-결과:    ──(R2)──(R1)──(R3)──|──&gt;   (순서 비결정적)</code></p>
+결과:    ──(R2)──(R1)──(R3)──|──&gt;   (순서 비결정적)</code></pre>
 <h3 id="flatmapsequential-concatmap">flatMapSequential / concatMap</h3>
 <p>이 두 연산자는 flatMap의 순서 문제를 해결해 준다. <code>flatMapSequential</code>은 여러 개를 동시에 돌리되 결과는 원래 순서를 지킨다. 반면 <code>concatMap</code>은 하나씩 꼬박꼬박 기다렸다가 다음 것을 시작한다(순서는 당연히 보장).</p>
-<p><code>java
-Flux.just(1, 2, 3).flatMapSequential(id -&gt; fetchUser(id)); // 병렬 실행, 순서 보장
-Flux.just(1, 2, 3).concatMap(id -&gt; fetchUser(id));          // 직렬 실행, 순서 보장</code></p>
-<p><code>concatMap:
+<pre class="highlight"><code class="language-java">Flux.just(1, 2, 3).flatMapSequential(id -&gt; fetchUser(id)); // 병렬 실행, 순서 보장
+Flux.just(1, 2, 3).concatMap(id -&gt; fetchUser(id));          // 직렬 실행, 순서 보장</code></pre>
+<pre class="highlight"><code>concatMap:
 내부1:   ──(R1)──|
 내부2:           ──(R2)──|
 내부3:                   ──(R3)──|
-결과:    ──(R1)──(R2)──(R3)──|──&gt;</code></p>
+결과:    ──(R1)──(R2)──(R3)──|──&gt;</code></pre>
 <h3 id="switchmap">switchMap</h3>
 <p>사용자가 검색어를 계속 바꾼다면? 매번 새로운 검색을 시작할 때 이전 것을 버려야 한다. <code>switchMap</code>이 바로 그 역할—새 요소가 들어오는 순간 기존 작업을 <strong>싹 날린다</strong>.</p>
-<p><code>java
-Flux&lt;String&gt; results = userInput.switchMap(query -&gt; searchService.search(query));</code></p>
-<p><code>소스:    ──(A)────(AB)────(ABC)──|──&gt;
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; results = userInput.switchMap(query -&gt; searchService.search(query));</code></pre>
+<pre class="highlight"><code>소스:    ──(A)────(AB)────(ABC)──|──&gt;
 내부1:   ──...X (취소)   내부2: ──...X (취소)   내부3: ──(결과)──|
-결과:    ────────────────(결과)──|──&gt;</code></p>
+결과:    ────────────────(결과)──|──&gt;</code></pre>
 <h3 id="collectlist-collectmap-reduce-scan">collectList / collectMap / reduce / scan</h3>
 <p>한곳으로 모아서 처리해야 할 때가 있다. 아래 예제를 보면 차이를 알 수 있다:</p>
-<p><code>java
-Mono&lt;List&lt;String&gt;&gt; list = Flux.just("A", "B", "C").collectList();       // ["A","B","C"]
+<pre class="highlight"><code class="language-java">Mono&lt;List&lt;String&gt;&gt; list = Flux.just("A", "B", "C").collectList();       // ["A","B","C"]
 Mono&lt;Map&lt;Long, User&gt;&gt; map = userFlux.collectMap(User::getId);            // {1:User1, ...}
 Mono&lt;Integer&gt; sum = Flux.range(1, 5).reduce(0, Integer::sum);           // 15
-Flux&lt;Integer&gt; running = Flux.range(1, 5).scan(0, Integer::sum);         // 0,1,3,6,10,15</code></p>
-<p><code>scan:   소스 ──(1)──(2)──(3)──(4)──(5)──|──&gt;
-        결과 ──(0)──(1)──(3)──(6)──(10)──(15)──|──&gt;</code></p>
+Flux&lt;Integer&gt; running = Flux.range(1, 5).scan(0, Integer::sum);         // 0,1,3,6,10,15</code></pre>
+<pre class="highlight"><code>scan:   소스 ──(1)──(2)──(3)──(4)──(5)──|──&gt;
+        결과 ──(0)──(1)──(3)──(6)──(10)──(15)──|──&gt;</code></pre>
 <hr>
 <h2 id="a3-filtering-operators">A.3 필터링 연산자 (Filtering Operators)</h2>
 <p>들어오는 데이터 중에 필요한 것만 고르거나, 앞에서 몇 개만 따내는 식의 선별 작업들이다.</p>
@@ -269,29 +259,25 @@ Flux&lt;Integer&gt; running = Flux.range(1, 5).scan(0, Integer::sum);         //
 </table>
 <h3 id="filter-filterwhen">filter / filterWhen</h3>
 <p>단순히 불(Boolean)로 판단하면 되면 <code>filter</code>를 쓴다. 조건 검사 자체가 비동기(DB 조회 같은)라면 <code>filterWhen</code>을 써야 한다.</p>
-<p><code>java
-Flux&lt;Integer&gt; even = Flux.range(1, 10).filter(n -&gt; n % 2 == 0);   // 2,4,6,8,10
-Flux&lt;User&gt; active = userFlux.filterWhen(u -&gt; userRepo.isActive(u.getId()));</code></p>
-<p><code>소스:   ──(1)──(2)──(3)──(4)──(5)──|──&gt;
-결과:   ──(2)──(4)──|──&gt;</code></p>
+<pre class="highlight"><code class="language-java">Flux&lt;Integer&gt; even = Flux.range(1, 10).filter(n -&gt; n % 2 == 0);   // 2,4,6,8,10
+Flux&lt;User&gt; active = userFlux.filterWhen(u -&gt; userRepo.isActive(u.getId()));</code></pre>
+<pre class="highlight"><code>소스:   ──(1)──(2)──(3)──(4)──(5)──|──&gt;
+결과:   ──(2)──(4)──|──&gt;</code></pre>
 <h3 id="distinct">distinct</h3>
 <p>중복을 없애고 싶다면 이걸 쓴다. 특정 필드 기준으로 중복을 판단하도록 함수를 따로 줄 수도 있다.</p>
-<p><code>java
-Flux.just("A", "B", "A", "C", "B").distinct();            // "A", "B", "C"
-userFlux.distinct(User::getName);                           // 이름 기준 중복 제거</code></p>
+<pre class="highlight"><code class="language-java">Flux.just("A", "B", "A", "C", "B").distinct();            // "A", "B", "C"
+userFlux.distinct(User::getName);                           // 이름 기준 중복 제거</code></pre>
 <h3 id="take-skip">take / skip</h3>
 <p>처음 n개만 원하면 <code>take</code>, 처음 n개를 버리려면 <code>skip</code>을 쓰면 된다. 시간 기반으로도 가능하다.</p>
-<p><code>java
-Flux.range(1, 10).take(3);    // 1, 2, 3
+<pre class="highlight"><code class="language-java">Flux.range(1, 10).take(3);    // 1, 2, 3
 Flux.range(1, 10).skip(3);    // 4, 5, 6, 7, 8, 9, 10
-Flux.interval(Duration.ofSeconds(1)).take(Duration.ofSeconds(5));</code></p>
-<p><code>take(3): ──(1)──(2)──(3)──|──&gt;   (이후 상류 취소)</code></p>
+Flux.interval(Duration.ofSeconds(1)).take(Duration.ofSeconds(5));</code></pre>
+<pre class="highlight"><code>take(3): ──(1)──(2)──(3)──|──&gt;   (이후 상류 취소)</code></pre>
 <h3 id="next-last-elementat">next / last / elementAt</h3>
 <p>단일 요소만 뽑아내는 방법들:</p>
-<p><code>java
-Flux.just("A", "B", "C").next();         // Mono&lt;"A"&gt;
+<pre class="highlight"><code class="language-java">Flux.just("A", "B", "C").next();         // Mono&lt;"A"&gt;
 Flux.just("A", "B", "C").last();         // Mono&lt;"C"&gt;
-Flux.just("A", "B", "C").elementAt(1);   // Mono&lt;"B"&gt;</code></p>
+Flux.just("A", "B", "C").elementAt(1);   // Mono&lt;"B"&gt;</code></pre>
 <hr>
 <h2 id="a4-combining-operators">A.4 결합 연산자 (Combining Operators)</h2>
 <p>여러 스트림을 한데 모으는 방법들이다. 어떻게 합치느냐에 따라 완전히 달라진다.</p>
@@ -333,42 +319,38 @@ Flux.just("A", "B", "C").elementAt(1);   // Mono&lt;"B"&gt;</code></p>
 </table>
 <h3 id="zip-zipwith">zip / zipWith</h3>
 <p>위치 기반으로 맞춰서 짝을 만든다. 첫 번째끼리, 두 번째끼리 묶는 식이다. 가장 짧은 쪽이 끝나면 전체가 끝난다.</p>
-<p><code>java
-Flux&lt;String&gt; names = Flux.just("Alice", "Bob");
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; names = Flux.just("Alice", "Bob");
 Flux&lt;Integer&gt; ages = Flux.just(30, 25);
 Flux&lt;String&gt; result = Flux.zip(names, ages, (n, a) -&gt; n + " is " + a);
-// "Alice is 30", "Bob is 25"</code></p>
-<p><code>소스1:  ──(Alice)──(Bob)──|──&gt;
+// "Alice is 30", "Bob is 25"</code></pre>
+<pre class="highlight"><code>소스1:  ──(Alice)──(Bob)──|──&gt;
 소스2:  ──(30)──(25)──|──&gt;
-결과:   ──(Alice 30)──(Bob 25)──|──&gt;</code></p>
+결과:   ──(Alice 30)──(Bob 25)──|──&gt;</code></pre>
 <h3 id="merge-mergewith">merge / mergeWith</h3>
 <p>여러 개를 동시에 받아놓고, 빨리 도착하는 순서대로 내보낸다. 순서는 무시한다.</p>
-<p><code>java
-Flux&lt;String&gt; merged = Flux.merge(
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; merged = Flux.merge(
     Flux.just("A", "B").delayElements(Duration.ofMillis(100)),
     Flux.just("1", "2").delayElements(Duration.ofMillis(150)));
-// 가능한 결과: "A", "1", "B", "2"</code></p>
-<p><code>소스1:  ──(A)────(B)──|──&gt;
+// 가능한 결과: "A", "1", "B", "2"</code></pre>
+<pre class="highlight"><code>소스1:  ──(A)────(B)──|──&gt;
 소스2:  ────(1)────(2)──|──&gt;
-결과:   ──(A)──(1)──(B)──(2)──|──&gt;</code></p>
+결과:   ──(A)──(1)──(B)──(2)──|──&gt;</code></pre>
 <h3 id="concat-concatwith">concat / concatWith</h3>
 <p>하나가 다 끝난 뒤에 다음을 시작한다. 순서는 절대 섞이지 않는다.</p>
-<p><code>java
-Flux&lt;String&gt; concat = Flux.concat(Flux.just("A", "B"), Flux.just("C", "D"));
-// 결과: "A", "B", "C", "D" (항상 이 순서)</code></p>
-<p><code>소스1:  ──(A)──(B)──|
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; concat = Flux.concat(Flux.just("A", "B"), Flux.just("C", "D"));
+// 결과: "A", "B", "C", "D" (항상 이 순서)</code></pre>
+<pre class="highlight"><code>소스1:  ──(A)──(B)──|
 소스2:              ──(C)──(D)──|──&gt;
-결과:   ──(A)──(B)──(C)──(D)──|──&gt;</code></p>
+결과:   ──(A)──(B)──(C)──(D)──|──&gt;</code></pre>
 <h3 id="combinelatest">combineLatest</h3>
 <p>어느 한쪽에서 새 값이 나올 때마다 반대쪽의 최신 값과 짝을 만든다. 두 스트림의 최신 상태를 항상 조합하고 싶을 때 유용하다.</p>
-<p><code>java
-Flux&lt;String&gt; combined = Flux.combineLatest(
+<pre class="highlight"><code class="language-java">Flux&lt;String&gt; combined = Flux.combineLatest(
     Flux.just("A", "B").delayElements(Duration.ofMillis(100)),
     Flux.just(1, 2).delayElements(Duration.ofMillis(150)),
-    (l, n) -&gt; l + n);</code></p>
-<p><code>소스1:  ──(A)────(B)────(C)──|──&gt;
+    (l, n) -&gt; l + n);</code></pre>
+<pre class="highlight"><code>소스1:  ──(A)────(B)────(C)──|──&gt;
 소스2:  ────(1)──────(2)──|──&gt;
-결과:   ────(A1)──(B1)──(B2)──(C2)──|──&gt;</code></p>
+결과:   ────(A1)──(B1)──(B2)──(C2)──|──&gt;</code></pre>
 <hr>
 <h2 id="a5-error-handling-operators">A.5 에러 처리 연산자 (Error Handling Operators)</h2>
 <p>뭔가 잘못되었을 때 어떻게 대응할지를 정하는 연산자들이다. 복구하기도, 재시도하기도, 때론 포기하기도 한다.</p>
@@ -408,38 +390,36 @@ Flux&lt;String&gt; combined = Flux.combineLatest(
 </table>
 <h3 id="onerrorreturn-onerrorresume-onerrormap">onErrorReturn / onErrorResume / onErrorMap</h3>
 <p>에러가 나면 어떻게 할지에 따라 고르면 된다:</p>
-<p>```java
-// onErrorReturn: 정적 대체 값
-Mono<String> safe = callApi().onErrorReturn("기본값");
-Mono<String> safe2 = callApi().onErrorReturn(TimeoutException.class, "시간 초과");</p>
-<p>// onErrorResume: 대체 Publisher (가장 유연)
-Mono<User> user = primaryDb.findUser(id)
-    .onErrorResume(e -&gt; cacheService.findUser(id));</p>
-<p>// onErrorMap: 예외 변환
-Mono<User> mapped = repository.findById(id)
+<pre class="highlight"><code class="language-java">// onErrorReturn: 정적 대체 값
+Mono&lt;String&gt; safe = callApi().onErrorReturn("기본값");
+Mono&lt;String&gt; safe2 = callApi().onErrorReturn(TimeoutException.class, "시간 초과");
+
+// onErrorResume: 대체 Publisher (가장 유연)
+Mono&lt;User&gt; user = primaryDb.findUser(id)
+    .onErrorResume(e -&gt; cacheService.findUser(id));
+
+// onErrorMap: 예외 변환
+Mono&lt;User&gt; mapped = repository.findById(id)
     .onErrorMap(DataAccessException.class,
-        e -&gt; new UserNotFoundException("사용자 없음: " + id, e));
-```</p>
-<p><code>onErrorReturn:  소스 ──(데이터)──X    결과 ──(데이터)──(기본값)──|──&gt;
-onErrorResume:  소스 ──(데이터)──X    결과 ──(데이터)──(복구1)──(복구2)──|──&gt;</code></p>
+        e -&gt; new UserNotFoundException("사용자 없음: " + id, e));</code></pre>
+<pre class="highlight"><code>onErrorReturn:  소스 ──(데이터)──X    결과 ──(데이터)──(기본값)──|──&gt;
+onErrorResume:  소스 ──(데이터)──X    결과 ──(데이터)──(복구1)──(복구2)──|──&gt;</code></pre>
 <h3 id="retry-retrywhen">retry / retryWhen</h3>
 <p>단순히 다시 시도만 하면 되면 <code>retry(n)</code>을 쓴다. 지수 백오프나 특정 에러만 재시도하는 식의 세밀한 제어가 필요하면 <code>retryWhen</code>으로 전략을 짠다.</p>
-<p>```java
-Mono<String> result = callApi().retry(3);</p>
-<p>Mono<String> robust = callApi()
+<pre class="highlight"><code class="language-java">Mono&lt;String&gt; result = callApi().retry(3);
+
+Mono&lt;String&gt; robust = callApi()
     .retryWhen(Retry.backoff(3, Duration.ofSeconds(1))
         .maxBackoff(Duration.ofSeconds(10))
         .filter(e -&gt; e instanceof TransientException)
         .onRetryExhaustedThrow((spec, signal) -&gt;
-            new ServiceUnavailableException("재시도 한도 초과")));
-```</p>
-<p><code>시도1: ──X    시도2: ──X    시도3: ──(결과)──|──&gt;</code></p>
+            new ServiceUnavailableException("재시도 한도 초과")));</code></pre>
+<pre class="highlight"><code>시도1: ──X    시도2: ──X    시도3: ──(결과)──|──&gt;</code></pre>
 <h3 id="timeout">timeout</h3>
 <p>어떤 작업이 너무 오래 걸리면? 시간을 초과하면 에러를 던진다. 아니면 대신 기본값을 건네줄 수도 있다.</p>
-<p><code>java
-Mono&lt;String&gt; result = callSlowApi().timeout(Duration.ofSeconds(5));
+<pre class="highlight"><code class="language-java">Mono&lt;String&gt; result = callSlowApi().timeout(Duration.ofSeconds(5));
 Mono&lt;String&gt; withFallback = callSlowApi()
-    .timeout(Duration.ofSeconds(5), Mono.just("타임아웃 대체 응답"));</code></p>
+    .timeout(Duration.ofSeconds(5), Mono.just("타임아웃 대체 응답"));</code></pre>
 <hr>
 <h2 id="a6-utility-operators">A.6 유틸리티 연산자 (Utility Operators)</h2>
 <p>데이터 자체는 건드리지 않으면서 옆에서 뭔가 일을 하거나, 흐름을 들여다보거나, 여러 곳에 공유한다.</p>
@@ -495,39 +475,34 @@ Mono&lt;String&gt; withFallback = callSlowApi()
 </table>
 <h3 id="doon">doOn* 시리즈</h3>
 <p>스트림이 흘러가는 걸 봐야 할 때가 있다. 로깅, 메트릭 수집, 부수 효과 같은 것들에 쓴다. 데이터는 그대로 통과한다.</p>
-<p><code>java
-Flux&lt;User&gt; pipeline = userService.findAll()
+<pre class="highlight"><code class="language-java">Flux&lt;User&gt; pipeline = userService.findAll()
     .doOnSubscribe(sub -&gt; log.info("사용자 조회 시작"))
     .doOnNext(user -&gt; log.debug("사용자 발행: {}", user.getName()))
     .doOnError(e -&gt; log.error("사용자 조회 실패", e))
-    .doOnComplete(() -&gt; log.info("사용자 조회 완료"));</code></p>
+    .doOnComplete(() -&gt; log.info("사용자 조회 완료"));</code></pre>
 <h3 id="dofinally">doFinally</h3>
 <p>스트림이 어떻게 끝나든(성공, 실패, 취소) 반드시 실행된다. 리소스 정리가 필요할 때 딱이다.</p>
-<p><code>java
-Flux&lt;Data&gt; stream = dataSource.stream()
+<pre class="highlight"><code class="language-java">Flux&lt;Data&gt; stream = dataSource.stream()
     .doFinally(signalType -&gt; {
         log.info("종료 원인: {}", signalType); // ON_COMPLETE, ON_ERROR, CANCEL
         resourceCleanup();
-    });</code></p>
+    });</code></pre>
 <h3 id="log">log</h3>
 <p>파이프라인을 추적하고 싶을 땐 이걸 끼워넣으면 SLF4J로 모든 신호가 로깅된다. 디버깅할 때 매우 유용하다.</p>
-<p><code>java
-Flux&lt;Integer&gt; traced = Flux.range(1, 3).log("my.category").map(i -&gt; i * 10);
-// [my.category] onNext(1) -&gt; [after.map] onNext(10) -&gt; ...</code></p>
+<pre class="highlight"><code class="language-java">Flux&lt;Integer&gt; traced = Flux.range(1, 3).log("my.category").map(i -&gt; i * 10);
+// [my.category] onNext(1) -&gt; [after.map] onNext(10) -&gt; ...</code></pre>
 <h3 id="delayelements-cache">delayElements / cache</h3>
 <p>발행을 의도적으로 늦추거나, 계산 결과를 임시 저장하고 싶을 때:</p>
-<p><code>java
-Flux.just("A", "B", "C").delayElements(Duration.ofMillis(500));  // 500ms 간격 발행
-Mono&lt;Config&gt; config = configService.load().cache(Duration.ofMinutes(5)); // 5분 캐싱</code></p>
+<pre class="highlight"><code class="language-java">Flux.just("A", "B", "C").delayElements(Duration.ofMillis(500));  // 500ms 간격 발행
+Mono&lt;Config&gt; config = configService.load().cache(Duration.ofMinutes(5)); // 5분 캐싱</code></pre>
 <h3 id="share-replay">share / replay</h3>
 <p>여러 곳에서 같은 스트림을 구독할 때, <code>share</code>면 하나의 구독을 나눠 쓴다. <code>replay</code>를 쓰면 예전 값들을 새 구독자에게도 줄 수 있다.</p>
-<p>```java
-Flux<Long> shared = Flux.interval(Duration.ofSeconds(1)).share();
-// 이후 구독자는 진행 중인 스트림에 합류 (과거 요소 유실)</p>
-<p>Flux<Long> replayed = Flux.interval(Duration.ofSeconds(1))
+<pre class="highlight"><code class="language-java">Flux&lt;Long&gt; shared = Flux.interval(Duration.ofSeconds(1)).share();
+// 이후 구독자는 진행 중인 스트림에 합류 (과거 요소 유실)
+
+Flux&lt;Long&gt; replayed = Flux.interval(Duration.ofSeconds(1))
     .replay(3).autoConnect();
-// 새 구독자에게 최근 3개 요소를 재생 후 실시간 합류
-```</p>
+// 새 구독자에게 최근 3개 요소를 재생 후 실시간 합류</code></pre>
 <hr>
 <h2 id="a7-backpressure-operators">A.7 배압 연산자 (Backpressure Operators)</h2>
 <p>생산자가 너무 빨리 내보내는데 소비자가 못 따라가면? 그럴 때 초과분을 어떻게 처리할지 정한다.</p>
@@ -559,24 +534,23 @@ Flux<Long> shared = Flux.interval(Duration.ofSeconds(1)).share();
 </table>
 <h3 id="onbackpressurebuffer-onbackpressuredrop-onbackpressurelatest">onBackpressureBuffer / onBackpressureDrop / onBackpressureLatest</h3>
 <p>초과분을 어떻게 처리할지:</p>
-<p>```java
-// 버퍼: 최대 1000개 저장
-Flux<Integer> buffered = fastProducer.onBackpressureBuffer(1000);</p>
-<p>// 드롭: 초과분 즉시 폐기
-Flux<SensorData> dropped = sensorFlux
-    .onBackpressureDrop(d -&gt; metrics.increment("sensor.dropped"));</p>
-<p>// 최신: 최신 1개만 유지 (센서/주가 데이터에 적합)
-Flux<StockPrice> latest = priceStream.onBackpressureLatest();
-```</p>
-<p><code>onBackpressureLatest:
+<pre class="highlight"><code class="language-java">// 버퍼: 최대 1000개 저장
+Flux&lt;Integer&gt; buffered = fastProducer.onBackpressureBuffer(1000);
+
+// 드롭: 초과분 즉시 폐기
+Flux&lt;SensorData&gt; dropped = sensorFlux
+    .onBackpressureDrop(d -&gt; metrics.increment("sensor.dropped"));
+
+// 최신: 최신 1개만 유지 (센서/주가 데이터에 적합)
+Flux&lt;StockPrice&gt; latest = priceStream.onBackpressureLatest();</code></pre>
+<pre class="highlight"><code>onBackpressureLatest:
 생산자: ──(1)(2)(3)(4)(5)────(6)──&gt;
 소비자:    request(1)      request(1)
-결과:   ──(1)────────────(5)──(6)──&gt;   (2,3,4 폐기)</code></p>
+결과:   ──(1)────────────(5)──(6)──&gt;   (2,3,4 폐기)</code></pre>
 <h3 id="limitrate">limitRate</h3>
 <p>상류에 요청하는 양을 조절한다. 한 번에 얼마나 가져올지, 언제 다시 채울지를 정할 수 있다.</p>
-<p><code>java
-Flux&lt;Data&gt; controlled = dataFlux.limitRate(100);          // 100개씩 요청
-Flux&lt;Data&gt; precise = dataFlux.limitRate(100, 50);         // prefetch 100, lowTide 50</code></p>
+<pre class="highlight"><code class="language-java">Flux&lt;Data&gt; controlled = dataFlux.limitRate(100);          // 100개씩 요청
+Flux&lt;Data&gt; precise = dataFlux.limitRate(100, 50);         // prefetch 100, lowTide 50</code></pre>
 <hr>
 <h2 id="a8">A.8 연산자 선택 가이드</h2>
 <p>뭔가 하려고 할 때 어떤 연산자를 써야 할지 모르겠다면 이 표를 보면 된다.</p>
@@ -662,36 +636,32 @@ Flux&lt;Data&gt; precise = dataFlux.limitRate(100, 50);         // prefetch 100,
 <h2 id="a9">A.9 자주 사용하는 연산자 조합 패턴</h2>
 <p>실제 코드에서 자주 보는 패턴들을 모아봤다. 이런 식으로 여러 연산자를 조합하면 견고한 리액티브 파이프라인을 만들 수 있다.</p>
 <h3 id="1-api">패턴 1: 안전한 외부 API 호출</h3>
-<p><code>java
-Mono&lt;Response&gt; safeCall = webClient.get()
+<pre class="highlight"><code class="language-java">Mono&lt;Response&gt; safeCall = webClient.get()
     .uri("/api/data").retrieve().bodyToMono(Response.class)
     .timeout(Duration.ofSeconds(5))
     .retryWhen(Retry.backoff(3, Duration.ofSeconds(1)))
-    .onErrorResume(e -&gt; Mono.just(Response.fallback()))
-    .doOnError(e -&gt; log.error("API 호출 최종 실패", e));</code></p>
+    .doOnError(e -&gt; log.error("API 호출 최종 실패", e))
+    .onErrorResume(e -&gt; Mono.just(Response.fallback()));</code></pre>
 <h3 id="2">패턴 2: 병렬 호출 후 결합</h3>
 <p>여러 작업을 동시에 실행하되 결과를 합쳐야 할 때:</p>
-<p><code>java
-Mono&lt;Dashboard&gt; dashboard = Mono.zip(
+<pre class="highlight"><code class="language-java">Mono&lt;Dashboard&gt; dashboard = Mono.zip(
     userService.getProfile(userId),
     orderService.getRecentOrders(userId),
     notificationService.getUnread(userId)
-).map(t -&gt; new Dashboard(t.getT1(), t.getT2(), t.getT3()));</code></p>
+).map(t -&gt; new Dashboard(t.getT1(), t.getT2(), t.getT3()));</code></pre>
 <h3 id="3">패턴 3: 조건부 스트림 처리</h3>
-<p><code>java
-Flux&lt;ProcessedItem&gt; pipeline = itemFlux
+<pre class="highlight"><code class="language-java">Flux&lt;ProcessedItem&gt; pipeline = itemFlux
     .filterWhen(item -&gt; validationService.isValid(item))
     .flatMap(item -&gt; enrichService.enrich(item))
     .onErrorContinue((e, item) -&gt; log.warn("항목 처리 실패: {}", item))
     .collectList()
-    .flatMapMany(items -&gt; saveAll(items));</code></p>
+    .flatMapMany(items -&gt; saveAll(items));</code></pre>
 <h3 id="4">패턴 4: 캐싱과 공유</h3>
 <p>필자의 경험상, 자주 접근하는 데이터는 캐싱해서 반복 호출을 줄이는 게 좋다:</p>
-<p><code>java
-Mono&lt;Config&gt; sharedConfig = configService.load()
+<pre class="highlight"><code class="language-java">Mono&lt;Config&gt; sharedConfig = configService.load()
     .cache(Duration.ofMinutes(10))
     .doOnSubscribe(s -&gt; log.debug("설정 조회"));
-// 여러 곳에서 구독해도 10분간 한 번만 로딩</code></p>
+// 여러 곳에서 구독해도 10분간 한 번만 로딩</code></pre>
 <hr>
 <blockquote>
 <p><strong>참고</strong>: 이 부록은 Reactor 3.x 기준으로 작성했다. 각 연산자의 세부 사항과 여러 오버로드는 <a href="https://projectreactor.io/docs/core/release/api/">Project Reactor 공식 문서</a>를 참고하면 된다.</p>

@@ -58,31 +58,28 @@
 </table>
 <h3 id="1412-webclient">14.1.2 WebClient 생성과 빈 설정</h3>
 <p><code>WebClient</code>를 생성하는 방법은 몇 가지가 있다. <code>create()</code>, <code>create(baseUrl)</code>, <code>builder()</code>인데, 필자의 경험상 실전에서는 <code>builder()</code>로 설정하고 빈으로 등록하는 것이 가장 깔끔하다. 여러 외부 서비스를 호출해야 한다면, 각 서비스마다 별도 빈을 만드는 게 나중에 유지보수하기 좋다.</p>
-<p>```java
-@Configuration
-public class WebClientConfig {</p>
-<pre><code>@Bean("userServiceClient")
-public WebClient userServiceClient() {
-    return WebClient.builder()
-        .baseUrl("https://user-service.example.com")
-        .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-        .build();
-}
+<pre class="highlight"><code class="language-java">@Configuration
+public class WebClientConfig {
 
-@Bean("orderServiceClient")
-public WebClient orderServiceClient() {
-    return WebClient.builder()
-        .baseUrl("https://order-service.example.com")
-        .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-        .build();
-}
-</code></pre>
-<p>}
-```</p>
+    @Bean("userServiceClient")
+    public WebClient userServiceClient() {
+        return WebClient.builder()
+            .baseUrl("https://user-service.example.com")
+            .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+            .build();
+    }
+
+    @Bean("orderServiceClient")
+    public WebClient orderServiceClient() {
+        return WebClient.builder()
+            .baseUrl("https://order-service.example.com")
+            .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+            .build();
+    }
+}</code></pre>
 <h3 id="1413">14.1.3 커넥션 풀 설정</h3>
 <p>운영 환경이라면 Reactor Netty 커넥션 풀을 꼭 설정해줘야 한다. 기본값으로 두면 의외로 성능이 떨어질 수 있다.</p>
-<p>```java
-@Bean
+<pre class="highlight"><code class="language-java">@Bean
 public WebClient webClient() {
     ConnectionProvider provider = ConnectionProvider.builder("custom-pool")
         .maxConnections(500)                           // 최대 커넥션 수
@@ -90,120 +87,113 @@ public WebClient webClient() {
         .maxLifeTime(Duration.ofSeconds(60))            // 커넥션 최대 수명
         .pendingAcquireTimeout(Duration.ofSeconds(60))  // 커넥션 대기 타임아웃
         .evictInBackground(Duration.ofSeconds(120))     // 백그라운드 정리 주기
-        .build();</p>
-<pre><code>HttpClient httpClient = HttpClient.create(provider)
-    .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
-    .compress(true);
+        .build();
 
-return WebClient.builder()
-    .baseUrl("https://api.example.com")
-    .clientConnector(new ReactorClientHttpConnector(httpClient))
-    .build();
-</code></pre>
-<p>}
-```</p>
+    HttpClient httpClient = HttpClient.create(provider)
+        .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
+        .compress(true);
+
+    return WebClient.builder()
+        .baseUrl("https://api.example.com")
+        .clientConnector(new ReactorClientHttpConnector(httpClient))
+        .build();
+}</code></pre>
 <h3 id="1414-codec">14.1.4 코덱(Codec) 설정</h3>
 <p>대용량 응답을 다루거나 커스텀 직렬화가 필요하면 코덱을 설정해야 한다. <code>maxInMemorySize</code>는 응답 본문을 메모리에 버퍼링할 때 최대 크기인데, 기본값이 256KB이다. 실무에서 큰 JSON 파일을 받다 보면 <code>DataBufferLimitException</code>이 터질 수 있으니, 그럴 땐 이 값을 올려야 한다.</p>
-<p>```java
-@Bean
+<pre class="highlight"><code class="language-java">@Bean
 public WebClient webClient() {
     return WebClient.builder()
         .codecs(configurer -&gt; {
-            configurer.defaultCodecs().maxInMemorySize(10 * 1024 * 1024); // 10MB</p>
-<pre><code>        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new JavaTimeModule());
-        mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
-        configurer.defaultCodecs().jackson2JsonEncoder(
-            new Jackson2JsonEncoder(mapper, MediaType.APPLICATION_JSON));
-        configurer.defaultCodecs().jackson2JsonDecoder(
-            new Jackson2JsonDecoder(mapper, MediaType.APPLICATION_JSON));
-    })
-    .build();
-</code></pre>
-<p>}
-```</p>
+            configurer.defaultCodecs().maxInMemorySize(10 * 1024 * 1024); // 10MB
+
+            ObjectMapper mapper = new ObjectMapper();
+            mapper.registerModule(new JavaTimeModule());
+            mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+            configurer.defaultCodecs().jackson2JsonEncoder(
+                new Jackson2JsonEncoder(mapper, MediaType.APPLICATION_JSON));
+            configurer.defaultCodecs().jackson2JsonDecoder(
+                new Jackson2JsonDecoder(mapper, MediaType.APPLICATION_JSON));
+        })
+        .build();
+}</code></pre>
 <hr>
 <h2 id="142-get-post-put-delete">14.2 요청/응답 처리 (GET, POST, PUT, DELETE)</h2>
 <p>GET, POST, PUT, DELETE 각각을 어떻게 처리하는지 하나씩 살펴보자.</p>
 <h3 id="1421-get">14.2.1 GET 요청</h3>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
-public class ProductClientService {</p>
-<pre><code>private final WebClient webClient;
+public class ProductClientService {
 
-// 단일 객체 조회
-public Mono&lt;Product&gt; getProduct(String id) {
-    return webClient.get()
-        .uri("/api/products/{id}", id)
-        .retrieve()
-        .bodyToMono(Product.class);
-}
+    private final WebClient webClient;
 
-// 목록 조회
-public Flux&lt;Product&gt; getAllProducts() {
-    return webClient.get()
-        .uri("/api/products")
-        .retrieve()
-        .bodyToFlux(Product.class);
-}
+    // 단일 객체 조회
+    public Mono&lt;Product&gt; getProduct(String id) {
+        return webClient.get()
+            .uri("/api/products/{id}", id)
+            .retrieve()
+            .bodyToMono(Product.class);
+    }
 
-// 쿼리 파라미터 사용
-public Flux&lt;Product&gt; searchProducts(String keyword, int page, int size) {
-    return webClient.get()
-        .uri(uriBuilder -&gt; uriBuilder
-            .path("/api/products/search")
-            .queryParam("keyword", keyword)
-            .queryParam("page", page)
-            .queryParam("size", size)
-            .build())
-        .retrieve()
-        .bodyToFlux(Product.class);
-}
-</code></pre>
-<p>}
-```</p>
+    // 목록 조회
+    public Flux&lt;Product&gt; getAllProducts() {
+        return webClient.get()
+            .uri("/api/products")
+            .retrieve()
+            .bodyToFlux(Product.class);
+    }
+
+    // 쿼리 파라미터 사용
+    public Flux&lt;Product&gt; searchProducts(String keyword, int page, int size) {
+        return webClient.get()
+            .uri(uriBuilder -&gt; uriBuilder
+                .path("/api/products/search")
+                .queryParam("keyword", keyword)
+                .queryParam("page", page)
+                .queryParam("size", size)
+                .build())
+            .retrieve()
+            .bodyToFlux(Product.class);
+    }
+}</code></pre>
 <h3 id="1422-post">14.2.2 POST 요청</h3>
-<p>```java
-// JSON 본문 전송 (bodyValue: 준비된 객체)
-public Mono<Product> createProduct(ProductRequest request) {
+<pre class="highlight"><code class="language-java">// JSON 본문 전송 (bodyValue: 준비된 객체)
+public Mono&lt;Product&gt; createProduct(ProductRequest request) {
     return webClient.post().uri("/api/products")
         .bodyValue(request).retrieve().bodyToMono(Product.class);
-}</p>
-<p>// Mono 본문 전송 (body: Publisher 타입)
-public Mono<Product> createProductReactive(Mono<ProductRequest> request) {
+}
+
+// Mono 본문 전송 (body: Publisher 타입)
+public Mono&lt;Product&gt; createProductReactive(Mono&lt;ProductRequest&gt; request) {
     return webClient.post().uri("/api/products")
         .body(request, ProductRequest.class).retrieve().bodyToMono(Product.class);
-}</p>
-<p>// 폼 데이터 전송
-public Mono<String> submitForm(String username, String password) {
+}
+
+// 폼 데이터 전송
+public Mono&lt;String&gt; submitForm(String username, String password) {
     return webClient.post().uri("/api/auth/login")
         .contentType(MediaType.APPLICATION_FORM_URLENCODED)
         .body(BodyInserters.fromFormData("username", username)
             .with("password", password))
         .retrieve().bodyToMono(String.class);
-}
-```</p>
+}</code></pre>
 <h3 id="1423-put-delete">14.2.3 PUT과 DELETE 요청</h3>
-<p>```java
-public Mono<Product> updateProduct(String id, ProductRequest request) {
+<pre class="highlight"><code class="language-java">public Mono&lt;Product&gt; updateProduct(String id, ProductRequest request) {
     return webClient.put()
         .uri("/api/products/{id}", id)
         .bodyValue(request)
         .retrieve()
         .bodyToMono(Product.class);
-}</p>
-<p>public Mono<Void> deleteProduct(String id) {
+}
+
+public Mono&lt;Void&gt; deleteProduct(String id) {
     return webClient.delete()
         .uri("/api/products/{id}", id)
         .retrieve()
         .bodyToMono(Void.class);
-}
-```</p>
+}</code></pre>
 <h3 id="1424-retrieve-vs-exchangetomono">14.2.4 retrieve() vs exchangeToMono()</h3>
 <p>두 가지 방식이 있고 상황에 따라 쓰임이 다르다. <code>retrieve()</code>는 응답 본문만 간단하게 뽑아내주고 4xx/5xx 에러는 자동으로 예외를 던진다. 반면 <code>exchangeToMono()</code>를 쓰면 상태 코드나 헤더 같은 전체 응답 정보에 접근할 수 있어서 더 세밀한 제어가 가능하다.</p>
-<p><code>java
-public Mono&lt;Product&gt; getProductWithStatus(String id) {
+<pre class="highlight"><code class="language-java">public Mono&lt;Product&gt; getProductWithStatus(String id) {
     return webClient.get()
         .uri("/api/products/{id}", id)
         .exchangeToMono(response -&gt; {
@@ -215,41 +205,38 @@ public Mono&lt;Product&gt; getProductWithStatus(String id) {
                 return response.createError();
             }
         });
-}</code></p>
+}</code></pre>
 <blockquote>
 <p><strong>주의</strong>: 이전 버전의 <code>exchange()</code> 메서드는 deprecated되었다. 리소스 누수 위험이 있으므로, 반드시 <code>exchangeToMono()</code> 또는 <code>exchangeToFlux()</code>를 사용한다.</p>
 </blockquote>
 <p>응답 헤더와 상태 코드가 모두 필요하면 <code>toEntity()</code>를 사용한다.</p>
-<p><code>java
-public Mono&lt;ResponseEntity&lt;Product&gt;&gt; getProductWithHeaders(String id) {
+<pre class="highlight"><code class="language-java">public Mono&lt;ResponseEntity&lt;Product&gt;&gt; getProductWithHeaders(String id) {
     return webClient.get()
         .uri("/api/products/{id}", id)
         .retrieve()
         .toEntity(Product.class);
-}</code></p>
+}</code></pre>
 <h3 id="1425">14.2.5 스트리밍 응답 처리</h3>
 <p>음, SSE나 NDJSON 같은 스트리밍 응답도 당연히 처리할 수 있다.</p>
-<p>```java
-// SSE 스트림
-public Flux<ServerSentEvent\<String>> subscribeToEvents() {
+<pre class="highlight"><code class="language-java">// SSE 스트림
+public Flux&lt;ServerSentEvent&lt;String&gt;&gt; subscribeToEvents() {
     return webClient.get().uri("/api/events/stream")
         .accept(MediaType.TEXT_EVENT_STREAM).retrieve()
-        .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent\<String>>() {});
-}</p>
-<p>// NDJSON 스트림
-public Flux<Product> streamProducts() {
+        .bodyToFlux(new ParameterizedTypeReference&lt;ServerSentEvent&lt;String&gt;&gt;() {});
+}
+
+// NDJSON 스트림
+public Flux&lt;Product&gt; streamProducts() {
     return webClient.get().uri("/api/products/stream")
         .accept(MediaType.APPLICATION_NDJSON).retrieve()
         .bodyToFlux(Product.class);
-}
-```</p>
+}</code></pre>
 <hr>
 <h2 id="143">14.3 에러 핸들링과 재시도 전략</h2>
 <p>외부 API를 호출하면 당연히 에러가 날 수 있다. 네트워크 문제, 서버 다운, 타임아웃... 이런 것들을 어떻게 처리할지가 중요하다.</p>
 <h3 id="1431-onstatus">14.3.1 onStatus()를 활용한 상태 코드별 처리</h3>
 <p><code>retrieve()</code>는 기본적으로 4xx/5xx 응답에 <code>WebClientResponseException</code>을 자동으로 던진다. 하지만 <code>onStatus()</code>를 사용하면 각 상태 코드별로 맞춤 처리를 정의할 수 있다.</p>
-<p><code>java
-public Mono&lt;Product&gt; getProduct(String id) {
+<pre class="highlight"><code class="language-java">public Mono&lt;Product&gt; getProduct(String id) {
     return webClient.get()
         .uri("/api/products/{id}", id)
         .retrieve()
@@ -268,11 +255,10 @@ public Mono&lt;Product&gt; getProduct(String id) {
                     new ExternalServiceException("서버 에러: " + body)))
         )
         .bodyToMono(Product.class);
-}</code></p>
+}</code></pre>
 <h3 id="1432-retrywhen-retrybackoff">14.3.2 retryWhen()과 Retry.backoff()</h3>
 <p>단순 <code>retry(n)</code>은 실패하면 바로 재시도하는데, 이건 외부 서비스에 부하를 받게 만들 수 있다. 운영 환경에서는 반드시 <code>Retry.backoff()</code>로 지수 백오프(exponential backoff)를 적용해야 한다. 처음엔 짧게 기다렸다가 점점 더 길게 기다리는 방식이다.</p>
-<p><code>java
-public Mono&lt;Product&gt; getProductWithBackoff(String id) {
+<pre class="highlight"><code class="language-java">public Mono&lt;Product&gt; getProductWithBackoff(String id) {
     return webClient.get()
         .uri("/api/products/{id}", id)
         .retrieve()
@@ -291,7 +277,7 @@ public Mono&lt;Product&gt; getProductWithBackoff(String id) {
                     "재시도 횟수 초과: " + signal.failure().getMessage(),
                     signal.failure()))
         );
-}</code></p>
+}</code></pre>
 <table>
 <thead>
 <tr>
@@ -321,45 +307,41 @@ public Mono&lt;Product&gt; getProductWithBackoff(String id) {
 <p><code>jitter</code>는 여러 클라이언트가 동시에 재시도하여 부하가 집중되는 "thundering herd" 문제를 방지한다.</p>
 <h3 id="1433">14.3.3 서킷 브레이커 패턴</h3>
 <p>외부 서비스가 계속 장애 상태라면 재시도만 해서는 소용없다. 이럴 땐 요청 자체를 차단하고 빨리 실패하는 게 낫다. Resilience4j라는 라이브러리로 서킷 브레이커 패턴을 구현하면 된다.</p>
-<p><code>groovy
-dependencies {
+<pre class="highlight"><code class="language-groovy">dependencies {
     implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
     implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0'
-}</code></p>
-<p><code>yaml
-resilience4j:
+}</code></pre>
+<pre class="highlight"><code class="language-yaml">resilience4j:
   circuitbreaker:
     instances:
       productService:
         sliding-window-size: 10
         failure-rate-threshold: 50
         wait-duration-in-open-state: 30s
-        permitted-number-of-calls-in-half-open-state: 3</code></p>
-<p>```java
-@Service
+        permitted-number-of-calls-in-half-open-state: 3</code></pre>
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
-public class ProductClientService {</p>
-<pre><code>private final WebClient webClient;
-private final CircuitBreakerRegistry circuitBreakerRegistry;
+public class ProductClientService {
 
-public Mono&lt;Product&gt; getProduct(String id) {
-    CircuitBreaker cb = circuitBreakerRegistry.circuitBreaker("productService");
+    private final WebClient webClient;
+    private final CircuitBreakerRegistry circuitBreakerRegistry;
 
-    return webClient.get()
-        .uri("/api/products/{id}", id)
-        .retrieve()
-        .bodyToMono(Product.class)
-        .transformDeferred(CircuitBreakerOperator.of(cb))
-        .onErrorResume(CallNotPermittedException.class, ex -&gt; {
-            log.warn("서킷 브레이커 OPEN - 폴백 실행");
-            return Mono.just(Product.fallback(id));
-        })
-        .retryWhen(Retry.backoff(2, Duration.ofMillis(500))
-            .filter(ex -&gt; !(ex instanceof CallNotPermittedException)));
-}
-</code></pre>
-<p>}
-```</p>
+    public Mono&lt;Product&gt; getProduct(String id) {
+        CircuitBreaker cb = circuitBreakerRegistry.circuitBreaker("productService");
+
+        return webClient.get()
+            .uri("/api/products/{id}", id)
+            .retrieve()
+            .bodyToMono(Product.class)
+            .transformDeferred(CircuitBreakerOperator.of(cb))
+            .onErrorResume(CallNotPermittedException.class, ex -&gt; {
+                log.warn("서킷 브레이커 OPEN - 폴백 실행");
+                return Mono.just(Product.fallback(id));
+            })
+            .retryWhen(Retry.backoff(2, Duration.ofMillis(500))
+                .filter(ex -&gt; !(ex instanceof CallNotPermittedException)));
+    }
+}</code></pre>
 <table>
 <thead>
 <tr>
@@ -387,8 +369,7 @@ public Mono&lt;Product&gt; getProduct(String id) {
 <p>타임아웃은 정말 중요하다. 만약 타임아웃이 없다면 외부 서비스의 장애가 자신의 서버까지 파급되어 버린다. 클라이언트가 계속 응답을 기다리다 보니 스레드 또는 리소스가 고갈되는 거다.</p>
 <h3 id="1441">14.4.1 계층별 타임아웃</h3>
 <p>네트워크 요청은 여러 단계로 이루어져 있는데, 각 단계마다 타임아웃을 설정할 수 있다.</p>
-<p>```java
-HttpClient httpClient = HttpClient.create()
+<pre class="highlight"><code class="language-java">HttpClient httpClient = HttpClient.create()
     // 1. 커넥션 타임아웃: TCP 연결 수립
     .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 3000)
     // 2. 응답 타임아웃: 첫 응답 바이트 수신까지
@@ -396,15 +377,14 @@ HttpClient httpClient = HttpClient.create()
     // 3. 읽기/쓰기 타임아웃: 데이터 전송 중 무응답
     .doOnConnected(conn -&gt; conn
         .addHandlerLast(new ReadTimeoutHandler(10, TimeUnit.SECONDS))
-        .addHandlerLast(new WriteTimeoutHandler(10, TimeUnit.SECONDS)));</p>
-<p>WebClient webClient = WebClient.builder()
+        .addHandlerLast(new WriteTimeoutHandler(10, TimeUnit.SECONDS)));
+
+WebClient webClient = WebClient.builder()
     .clientConnector(new ReactorClientHttpConnector(httpClient))
-    .build();
-```</p>
+    .build();</code></pre>
 <h3 id="1442-reactor-timeout">14.4.2 Reactor timeout() 연산자</h3>
 <p>Reactor 레벨에서 제공하는 <code>timeout()</code> 연산자로 전체 리액티브 체인, 재시도를 포함한 최종 시간을 제한할 수 있다.</p>
-<p><code>java
-public Mono&lt;Product&gt; getProduct(String id) {
+<pre class="highlight"><code class="language-java">public Mono&lt;Product&gt; getProduct(String id) {
     return webClient.get()
         .uri("/api/products/{id}", id)
         .retrieve()
@@ -413,7 +393,7 @@ public Mono&lt;Product&gt; getProduct(String id) {
         .timeout(Duration.ofSeconds(15))
         .onErrorResume(TimeoutException.class, ex -&gt;
             Mono.error(new ExternalServiceException("응답 시간 초과")));
-}</code></p>
+}</code></pre>
 <h3 id="1443">14.4.3 타임아웃 종합 정리</h3>
 <table>
 <thead>
@@ -456,83 +436,76 @@ public Mono&lt;Product&gt; getProduct(String id) {
 <p>지금까지 배운 기법들을 실제 프로젝트에서 어떻게 조합해서 쓰는지 보자.</p>
 <h3 id="1451-rest-api">14.5.1 REST API 호출 서비스</h3>
 <p>외부 날씨 API를 호출하는 예제를 만들어 보자. 에러 처리, 재시도, 타임아웃까지 모두 함께 적용해야 한다.</p>
-<p>```java
-@Slf4j
+<pre class="highlight"><code class="language-java">@Slf4j
 @Service
-public class WeatherClientService {</p>
-<pre><code>private final WebClient webClient;
+public class WeatherClientService {
 
-public WeatherClientService(WebClient.Builder builder,
-                            @Value("${weather.api.key}") String apiKey) {
-    this.webClient = builder
-        .baseUrl("https://api.openweathermap.org/data/2.5")
-        .defaultUriVariables(Map.of("appid", apiKey)).build();
-}
+    private final WebClient webClient;
 
-public Mono&lt;WeatherResponse&gt; getCurrentWeather(String city) {
-    return webClient.get()
-        .uri(uriBuilder -&gt; uriBuilder.path("/weather")
-            .queryParam("q", city).queryParam("appid", "{appid}")
-            .queryParam("units", "metric").build())
-        .retrieve()
-        .onStatus(HttpStatusCode::is4xxClientError, response -&gt;
-            response.statusCode() == HttpStatus.NOT_FOUND
-                ? Mono.error(new CityNotFoundException("도시를 찾을 수 없습니다: " + city))
-                : response.createException())
-        .bodyToMono(WeatherResponse.class)
-        .retryWhen(Retry.backoff(2, Duration.ofSeconds(1))
-            .filter(ex -&gt; ex instanceof WebClientResponseException.ServiceUnavailable))
-        .timeout(Duration.ofSeconds(10));
-}
-</code></pre>
-<p>}
-```</p>
+    public WeatherClientService(WebClient.Builder builder,
+                                @Value("${weather.api.key}") String apiKey) {
+        this.webClient = builder
+            .baseUrl("https://api.openweathermap.org/data/2.5")
+            .build();
+    }
+
+    public Mono&lt;WeatherResponse&gt; getCurrentWeather(String city) {
+        return webClient.get()
+            .uri(uriBuilder -&gt; uriBuilder.path("/weather")
+                .queryParam("q", city).queryParam("appid", apiKey)
+                .queryParam("units", "metric").build())
+            .retrieve()
+            .onStatus(HttpStatusCode::is4xxClientError, response -&gt;
+                response.statusCode() == HttpStatus.NOT_FOUND
+                    ? Mono.error(new CityNotFoundException("도시를 찾을 수 없습니다: " + city))
+                    : response.createException())
+            .bodyToMono(WeatherResponse.class)
+            .retryWhen(Retry.backoff(2, Duration.ofSeconds(1))
+                .filter(ex -&gt; ex instanceof WebClientResponseException.ServiceUnavailable))
+            .timeout(Duration.ofSeconds(10));
+    }
+}</code></pre>
 <h3 id="1452-api-zip">14.5.2 여러 API 동시 호출 (zip)</h3>
 <p>대시보드처럼 여러 소스의 데이터가 필요한 경우, <code>Mono.zip()</code>으로 독립적인 API 호출들을 병렬로 실행하고 결과를 한데 모을 수 있다.</p>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
-public class DashboardService {</p>
-<pre><code>private final UserClientService userClient;
-private final OrderClientService orderClient;
-private final WeatherClientService weatherClient;
+public class DashboardService {
 
-public Mono&lt;DashboardResponse&gt; getDashboard(String userId) {
-    Mono&lt;UserProfile&gt; userMono = userClient.getProfile(userId);
-    Mono&lt;List&lt;Order&gt;&gt; ordersMono = orderClient.getRecentOrders(userId).collectList();
-    Mono&lt;WeatherResponse&gt; weatherMono = weatherClient.getCurrentWeather("Seoul");
+    private final UserClientService userClient;
+    private final OrderClientService orderClient;
+    private final WeatherClientService weatherClient;
 
-    return Mono.zip(userMono, ordersMono, weatherMono)
-        .map(tuple -&gt; DashboardResponse.builder()
-            .user(tuple.getT1())
-            .recentOrders(tuple.getT2())
-            .weather(tuple.getT3())
-            .build());
-}
-</code></pre>
-<p>}
-```</p>
+    public Mono&lt;DashboardResponse&gt; getDashboard(String userId) {
+        Mono&lt;UserProfile&gt; userMono = userClient.getProfile(userId);
+        Mono&lt;List&lt;Order&gt;&gt; ordersMono = orderClient.getRecentOrders(userId).collectList();
+        Mono&lt;WeatherResponse&gt; weatherMono = weatherClient.getCurrentWeather("Seoul");
+
+        return Mono.zip(userMono, ordersMono, weatherMono)
+            .map(tuple -&gt; DashboardResponse.builder()
+                .user(tuple.getT1())
+                .recentOrders(tuple.getT2())
+                .weather(tuple.getT3())
+                .build());
+    }
+}</code></pre>
 <p>포인트는 세 API 호출이 <strong>동시에</strong> 실행된다는 것이다. 따라서 가장 느린 호출 기준으로만 대기하면 된다. 각각을 순차로 호출하는 것보다 훨씬 빠르다.</p>
 <h3 id="1453-api-merge">14.5.3 여러 API 결과 병합 (merge)</h3>
 <p>반면 <code>Flux.merge()</code>는 여러 소스의 결과를 도착 순서대로 그냥 합친다. 상대적으로 단순한 조합이지만, 스트리밍 데이터를 다룰 때는 이게 더 편할 수 있다.</p>
-<p>```java
-public Flux<PriceQuote> getPriceQuotes(String productId) {
-    Flux<PriceQuote> a = webClient.get()
+<pre class="highlight"><code class="language-java">public Flux&lt;PriceQuote&gt; getPriceQuotes(String productId) {
+    Flux&lt;PriceQuote&gt; a = webClient.get()
         .uri("https://supplier-a.com/api/price/{id}", productId)
         .retrieve().bodyToMono(PriceQuote.class).flux();
-    Flux<PriceQuote> b = webClient.get()
+    Flux&lt;PriceQuote&gt; b = webClient.get()
         .uri("https://supplier-b.com/api/price/{id}", productId)
-        .retrieve().bodyToMono(PriceQuote.class).flux();</p>
-<pre><code>return Flux.merge(a, b)
-    .timeout(Duration.ofSeconds(5))
-    .onErrorResume(ex -&gt; Flux.empty());
-</code></pre>
-<p>}
-```</p>
+        .retrieve().bodyToMono(PriceQuote.class).flux();
+
+    return Flux.merge(a, b)
+        .timeout(Duration.ofSeconds(5))
+        .onErrorResume(ex -&gt; Flux.empty());
+}</code></pre>
 <h3 id="1454-api-flatmap">14.5.4 순차 API 호출 (flatMap 체이닝)</h3>
 <p>반대로 첫 번째 API의 결과가 두 번째 API 호출에 필요한 경우도 있다. 이럴 땐 <code>flatMap</code>으로 체이닝해서 순차적으로 실행한다.</p>
-<p><code>java
-// 1. 사용자 조회 → 2. 주문 생성 → 3. 결제 처리
+<pre class="highlight"><code class="language-java">// 1. 사용자 조회 → 2. 주문 생성 → 3. 결제 처리
 public Mono&lt;PaymentResult&gt; processOrder(String userId, OrderRequest orderRequest) {
     return webClient.get()
         .uri("/api/users/{id}", userId)
@@ -551,137 +524,126 @@ public Mono&lt;PaymentResult&gt; processOrder(String userId, OrderRequest orderR
             .bodyValue(new PaymentRequest(order.getId(), order.getTotalAmount()))
             .retrieve()
             .bodyToMono(PaymentResult.class));
-}</code></p>
+}</code></pre>
 <h3 id="1455-fallback">14.5.5 폴백(Fallback) 패턴</h3>
 <p>외부 API가 실패해도 서비스는 계속 돌아야 할 수 있다. 이럴 때는 캐시나 기본값 같은 대체 데이터로 폴백하는 방식이 있다.</p>
-<p>```java
-@Slf4j
+<pre class="highlight"><code class="language-java">@Slf4j
 @Service
 @RequiredArgsConstructor
-public class ProductService {</p>
-<pre><code>private final WebClient webClient;
-private final ProductRepository productRepository;
+public class ProductService {
 
-public Mono&lt;Product&gt; getProduct(String id) {
-    return webClient.get()
-        .uri("/api/products/{id}", id)
-        .retrieve().bodyToMono(Product.class)
-        .timeout(Duration.ofSeconds(3))
-        .onErrorResume(ex -&gt; {
-            log.warn("외부 API 실패, 로컬 DB 폴백: {}", ex.getMessage());
-            return productRepository.findById(id);
-        });
-}
+    private final WebClient webClient;
+    private final ProductRepository productRepository;
 
-// 다단계 폴백: 캐시 → 외부 API → 기본값
-public Mono&lt;ExchangeRate&gt; getExchangeRate(String currency) {
-    return getFromCache(currency)
-        .switchIfEmpty(getFromExternalApi(currency)
-            .doOnNext(rate -&gt; saveToCache(currency, rate)))
-        .switchIfEmpty(Mono.just(ExchangeRate.defaultRate(currency)))
-        .onErrorReturn(ExchangeRate.defaultRate(currency));
-}
-</code></pre>
-<p>}
-```</p>
+    public Mono&lt;Product&gt; getProduct(String id) {
+        return webClient.get()
+            .uri("/api/products/{id}", id)
+            .retrieve().bodyToMono(Product.class)
+            .timeout(Duration.ofSeconds(3))
+            .onErrorResume(ex -&gt; {
+                log.warn("외부 API 실패, 로컬 DB 폴백: {}", ex.getMessage());
+                return productRepository.findById(id);
+            });
+    }
+
+    // 다단계 폴백: 캐시 → 외부 API → 기본값
+    public Mono&lt;ExchangeRate&gt; getExchangeRate(String currency) {
+        return getFromCache(currency)
+            .switchIfEmpty(getFromExternalApi(currency)
+                .doOnNext(rate -&gt; saveToCache(currency, rate)))
+            .switchIfEmpty(Mono.just(ExchangeRate.defaultRate(currency)))
+            .onErrorReturn(ExchangeRate.defaultRate(currency));
+    }
+}</code></pre>
 <h3 id="1456-api">14.5.6 페이지네이션 API 전체 조회</h3>
 <p>API가 페이지네이션으로 데이터를 제공하면, <code>expand()</code> 연산자로 다음 페이지를 자동으로 호출할 수 있다. 더 이상 다음 페이지가 없으면 <code>Mono.empty()</code>를 반환해서 재귀를 멈춘다.</p>
-<p>```java
-public Flux<Product> getAllProductsPaginated() {
+<pre class="highlight"><code class="language-java">public Flux&lt;Product&gt; getAllProductsPaginated() {
     return fetchPage(0)
         .expand(page -&gt; page.hasNext() ? fetchPage(page.getPage() + 1) : Mono.empty())
         .flatMapIterable(PageResponse::getContent);
-}</p>
-<p>private Mono<PageResponse\<Product>> fetchPage(int page) {
+}
+
+private Mono&lt;PageResponse&lt;Product&gt;&gt; fetchPage(int page) {
     return webClient.get()
         .uri(uriBuilder -&gt; uriBuilder.path("/api/products")
             .queryParam("page", page).queryParam("size", 100).build())
         .retrieve()
-        .bodyToMono(new ParameterizedTypeReference<PageResponse\<Product>>() {});
-}
-```</p>
+        .bodyToMono(new ParameterizedTypeReference&lt;PageResponse&lt;Product&gt;&gt;() {});
+}</code></pre>
 <hr>
 <h2 id="146-webclient">14.6 WebClient 필터와 인터셉터</h2>
 <p>대규모 애플리케이션에서는 로깅, 인증, 에러 처리 같은 공통 로직을 모든 API 호출에 적용해야 하는데, 매번 반복하는 건 비효율적이다. <code>ExchangeFilterFunction</code>으로 이런 횡단 관심사(cross-cutting concern)를 깔끔하게 처리할 수 있다.</p>
 <h3 id="1461-exchangefilterfunction">14.6.1 ExchangeFilterFunction과 로깅 필터</h3>
 <p><code>ExchangeFilterFunction</code>은 <code>WebClient</code>의 요청/응답 파이프라인에 끼워넣는 필터다. <code>WebClient.builder().filter()</code>로 등록하고, 여러 개를 등록하면 등록한 순서 그대로 체이닝된다.</p>
-<p>```java
-@Slf4j
-public class WebClientFilters {</p>
-<pre><code>public static ExchangeFilterFunction logRequestResponse() {
-    return (request, next) -&gt; {
-        long startTime = System.currentTimeMillis();
-        log.info("&gt;&gt;&gt; {} {}", request.method(), request.url());
+<pre class="highlight"><code class="language-java">@Slf4j
+public class WebClientFilters {
 
-        return next.exchange(request)
-            .doOnNext(response -&gt; {
-                long duration = System.currentTimeMillis() - startTime;
-                log.info("&lt;&lt;&lt; {} {} - {}ms",
-                    response.statusCode(), request.url(), duration);
-            });
-    };
-}
-</code></pre>
-<p>}
-```</p>
+    public static ExchangeFilterFunction logRequestResponse() {
+        return (request, next) -&gt; {
+            long startTime = System.currentTimeMillis();
+            log.info("&gt;&gt;&gt; {} {}", request.method(), request.url());
+
+            return next.exchange(request)
+                .doOnNext(response -&gt; {
+                    long duration = System.currentTimeMillis() - startTime;
+                    log.info("&lt;&lt;&lt; {} {} - {}ms",
+                        response.statusCode(), request.url(), duration);
+                });
+        };
+    }
+}</code></pre>
 <h3 id="1462">14.6.2 인증 필터</h3>
 <p>외부 API 호출할 때는 당연히 인증이 필요하다. 간단한 API 키부터 복잡한 OAuth 토큰까지 여러 방식이 있다. 필터로 이걸 깔끔하게 처리해 보자.</p>
-<p><code>java
-public static ExchangeFilterFunction apiKeyAuth(String apiKey) {
+<pre class="highlight"><code class="language-java">public static ExchangeFilterFunction apiKeyAuth(String apiKey) {
     return (request, next) -&gt; {
         ClientRequest filtered = ClientRequest.from(request)
             .header("X-API-Key", apiKey).build();
         return next.exchange(filtered);
     };
-}</code></p>
-<p>```java
-@Component
+}</code></pre>
+<pre class="highlight"><code class="language-java">@Component
 @RequiredArgsConstructor
-public class DynamicAuthFilter {</p>
-<pre><code>private final TokenService tokenService;
+public class DynamicAuthFilter {
 
-public ExchangeFilterFunction authFilter() {
-    return (request, next) -&gt;
-        tokenService.getValidToken()
-            .flatMap(token -&gt; {
-                ClientRequest filtered = ClientRequest.from(request)
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-                    .build();
-                return next.exchange(filtered);
-            });
-}
-</code></pre>
-<p>}
-```</p>
-<p>```java
-@Service
-public class TokenService {</p>
-<pre><code>private final WebClient authClient;
-private final AtomicReference&lt;TokenInfo&gt; cachedToken = new AtomicReference&lt;&gt;();
+    private final TokenService tokenService;
 
-public TokenService(WebClient.Builder builder) {
-    this.authClient = builder.baseUrl("https://auth.example.com").build();
-}
-
-public Mono&lt;String&gt; getValidToken() {
-    TokenInfo current = cachedToken.get();
-    if (current != null &amp;&amp; !current.isExpired()) {
-        return Mono.just(current.getAccessToken());
+    public ExchangeFilterFunction authFilter() {
+        return (request, next) -&gt;
+            tokenService.getValidToken()
+                .flatMap(token -&gt; {
+                    ClientRequest filtered = ClientRequest.from(request)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .build();
+                    return next.exchange(filtered);
+                });
     }
-    return authClient.post().uri("/oauth/token")
-        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-        .body(BodyInserters.fromFormData("grant_type", "client_credentials")
-            .with("client_id", "my-client").with("client_secret", "my-secret"))
-        .retrieve().bodyToMono(TokenInfo.class)
-        .doOnNext(cachedToken::set).map(TokenInfo::getAccessToken);
-}
-</code></pre>
-<p>}
-```</p>
+}</code></pre>
+<pre class="highlight"><code class="language-java">@Service
+public class TokenService {
+
+    private final WebClient authClient;
+    private final AtomicReference&lt;TokenInfo&gt; cachedToken = new AtomicReference&lt;&gt;();
+
+    public TokenService(WebClient.Builder builder) {
+        this.authClient = builder.baseUrl("https://auth.example.com").build();
+    }
+
+    public Mono&lt;String&gt; getValidToken() {
+        TokenInfo current = cachedToken.get();
+        if (current != null &amp;&amp; !current.isExpired()) {
+            return Mono.just(current.getAccessToken());
+        }
+        return authClient.post().uri("/oauth/token")
+            .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+            .body(BodyInserters.fromFormData("grant_type", "client_credentials")
+                .with("client_id", "my-client").with("client_secret", "my-secret"))
+            .retrieve().bodyToMono(TokenInfo.class)
+            .doOnNext(cachedToken::set).map(TokenInfo::getAccessToken);
+    }
+}</code></pre>
 <h3 id="1463-id">14.6.3 에러 처리 필터와 요청 ID 전파 필터</h3>
 <p>기타 유용한 필터들도 몇 가지 있다.</p>
-<p>```java
-public static ExchangeFilterFunction errorHandlingFilter() {
+<pre class="highlight"><code class="language-java">public static ExchangeFilterFunction errorHandlingFilter() {
     return (request, next) -&gt; next.exchange(request)
         .flatMap(response -&gt; {
             if (response.statusCode().is5xxServerError()) {
@@ -691,8 +653,9 @@ public static ExchangeFilterFunction errorHandlingFilter() {
             }
             return Mono.just(response);
         });
-}</p>
-<p>public static ExchangeFilterFunction traceIdFilter() {
+}
+
+public static ExchangeFilterFunction traceIdFilter() {
     return (request, next) -&gt; {
         String traceId = Optional.ofNullable(MDC.get("traceId"))
             .orElse(UUID.randomUUID().toString().substring(0, 8));
@@ -700,88 +663,82 @@ public static ExchangeFilterFunction errorHandlingFilter() {
             .header("X-Trace-Id", traceId).build();
         return next.exchange(filtered);
     };
-}
-```</p>
+}</code></pre>
 <h3 id="1464">14.6.4 필터 조합과 적용</h3>
 <p>이제 여러 필터를 조합해서 실제로 WebClient 빈을 만드는 방법을 보자.</p>
-<p>```java
-@Configuration
+<pre class="highlight"><code class="language-java">@Configuration
 @RequiredArgsConstructor
-public class WebClientConfig {</p>
-<pre><code>private final DynamicAuthFilter dynamicAuthFilter;
-@Value("${external.api.base-url}") private String baseUrl;
+public class WebClientConfig {
 
-@Bean
-public WebClient webClient() {
-    HttpClient httpClient = HttpClient.create()
-        .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
-        .responseTimeout(Duration.ofSeconds(10))
-        .doOnConnected(conn -&gt; conn
-            .addHandlerLast(new ReadTimeoutHandler(10, TimeUnit.SECONDS))
-            .addHandlerLast(new WriteTimeoutHandler(10, TimeUnit.SECONDS)));
+    private final DynamicAuthFilter dynamicAuthFilter;
+    @Value("${external.api.base-url}") private String baseUrl;
 
-    return WebClient.builder()
-        .baseUrl(baseUrl)
-        .clientConnector(new ReactorClientHttpConnector(httpClient))
-        .codecs(c -&gt; c.defaultCodecs().maxInMemorySize(5 * 1024 * 1024))
-        .filter(WebClientFilters.traceIdFilter())       // 1. 추적
-        .filter(dynamicAuthFilter.authFilter())          // 2. 인증
-        .filter(WebClientFilters.logRequestResponse())   // 3. 로깅
-        .filter(WebClientFilters.errorHandlingFilter())  // 4. 에러 처리
-        .build();
-}
-</code></pre>
-<p>}
-```</p>
+    @Bean
+    public WebClient webClient() {
+        HttpClient httpClient = HttpClient.create()
+            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
+            .responseTimeout(Duration.ofSeconds(10))
+            .doOnConnected(conn -&gt; conn
+                .addHandlerLast(new ReadTimeoutHandler(10, TimeUnit.SECONDS))
+                .addHandlerLast(new WriteTimeoutHandler(10, TimeUnit.SECONDS)));
+
+        return WebClient.builder()
+            .baseUrl(baseUrl)
+            .clientConnector(new ReactorClientHttpConnector(httpClient))
+            .codecs(c -&gt; c.defaultCodecs().maxInMemorySize(5 * 1024 * 1024))
+            .filter(WebClientFilters.traceIdFilter())       // 1. 추적
+            .filter(dynamicAuthFilter.authFilter())          // 2. 인증
+            .filter(WebClientFilters.logRequestResponse())   // 3. 로깅
+            .filter(WebClientFilters.errorHandlingFilter())  // 4. 에러 처리
+            .build();
+    }
+}</code></pre>
 <p>필터는 등록 순서대로 체이닝되므로 순서가 중요하다. 필자의 경험상 추적 -&gt; 인증 -&gt; 로깅 -&gt; 에러 처리 이 순서가 가장 깔끔하다.</p>
 <h3 id="1465-webclient">14.6.5 테스트에서의 WebClient 모킹</h3>
 <p><code>WebClient</code>를 사용하는 코드를 테스트할 때는 실제 외부 API를 호출할 수 없다. <code>MockWebServer</code>라는 도구로 가짜 API를 만들어서 테스트한다.</p>
-<p><code>groovy
-testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'</code></p>
-<p>```java
-class ProductClientServiceTest {</p>
-<pre><code>private MockWebServer mockWebServer;
-private ProductClientService service;
+<pre class="highlight"><code class="language-groovy">testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'</code></pre>
+<pre class="highlight"><code class="language-java">class ProductClientServiceTest {
 
-@BeforeEach
-void setUp() throws IOException {
-    mockWebServer = new MockWebServer();
-    mockWebServer.start();
-    service = new ProductClientService(
-        WebClient.builder().baseUrl(mockWebServer.url("/").toString()).build());
-}
+    private MockWebServer mockWebServer;
+    private ProductClientService service;
 
-@AfterEach
-void tearDown() throws IOException { mockWebServer.shutdown(); }
+    @BeforeEach
+    void setUp() throws IOException {
+        mockWebServer = new MockWebServer();
+        mockWebServer.start();
+        service = new ProductClientService(
+            WebClient.builder().baseUrl(mockWebServer.url("/").toString()).build());
+    }
 
-@Test
-void getProduct_성공() {
-    mockWebServer.enqueue(new MockResponse()
-        .setBody("{\"id\":\"123\",\"name\":\"테스트 상품\",\"price\":10000}")
-        .addHeader("Content-Type", "application/json"));
+    @AfterEach
+    void tearDown() throws IOException { mockWebServer.shutdown(); }
 
-    StepVerifier.create(service.getProduct("123"))
-        .assertNext(p -&gt; assertThat(p.getName()).isEqualTo("테스트 상품"))
-        .verifyComplete();
-}
+    @Test
+    void getProduct_성공() {
+        mockWebServer.enqueue(new MockResponse()
+            .setBody("{\"id\":\"123\",\"name\":\"테스트 상품\",\"price\":10000}")
+            .addHeader("Content-Type", "application/json"));
 
-@Test
-void getProduct_재시도_후_성공() {
-    // 처음 두 번은 503, 세 번째는 성공
-    mockWebServer.enqueue(new MockResponse().setResponseCode(503));
-    mockWebServer.enqueue(new MockResponse().setResponseCode(503));
-    mockWebServer.enqueue(new MockResponse()
-        .setBody("{\"id\":\"123\",\"name\":\"상품\",\"price\":5000}")
-        .addHeader("Content-Type", "application/json"));
+        StepVerifier.create(service.getProduct("123"))
+            .assertNext(p -&gt; assertThat(p.getName()).isEqualTo("테스트 상품"))
+            .verifyComplete();
+    }
 
-    StepVerifier.create(service.getProductWithBackoff("123"))
-        .assertNext(p -&gt; assertThat(p.getId()).isEqualTo("123"))
-        .verifyComplete();
-    assertThat(mockWebServer.getRequestCount()).isEqualTo(3);
-}
-</code></pre>
-<p>}
-```</p>
+    @Test
+    void getProduct_재시도_후_성공() {
+        // 처음 두 번은 503, 세 번째는 성공
+        mockWebServer.enqueue(new MockResponse().setResponseCode(503));
+        mockWebServer.enqueue(new MockResponse().setResponseCode(503));
+        mockWebServer.enqueue(new MockResponse()
+            .setBody("{\"id\":\"123\",\"name\":\"상품\",\"price\":5000}")
+            .addHeader("Content-Type", "application/json"));
+
+        StepVerifier.create(service.getProductWithBackoff("123"))
+            .assertNext(p -&gt; assertThat(p.getId()).isEqualTo("123"))
+            .verifyComplete();
+        assertThat(mockWebServer.getRequestCount()).isEqualTo(3);
+    }
+}</code></pre>
 <hr>
 <h2 id="_1">요약</h2>
 <table>

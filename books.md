@@ -1,3 +1,196 @@
+# Spring Boot + WebFlux + JPA (MongoDB) 목차
+
+---
+
+## Part 1. 기초 다지기
+
+### Chapter 1. 리액티브 프로그래밍 소개
+- 1.1 리액티브 프로그래밍이란?
+- 1.2 명령형 프로그래밍 vs 리액티브 프로그래밍
+- 1.3 리액티브 스트림(Reactive Streams) 표준
+- 1.4 배압(Backpressure)의 개념
+- 1.5 왜 리액티브가 필요한가?
+
+### Chapter 2. Spring WebFlux 개요
+- 2.1 Spring MVC와 Spring WebFlux 비교
+- 2.2 WebFlux의 내부 구조와 Netty
+- 2.3 논블로킹 I/O의 원리
+- 2.4 WebFlux를 선택해야 하는 경우와 그렇지 않은 경우
+- 2.5 WebFlux의 두 가지 프로그래밍 모델: 어노테이션 기반 vs 함수형
+
+### Chapter 3. Project Reactor 핵심
+- 3.1 Mono와 Flux 이해하기
+- 3.2 Reactor의 주요 연산자 (map, flatMap, filter, zip 등)
+- 3.3 에러 처리 전략 (onErrorResume, onErrorReturn, retry)
+- 3.4 스케줄러(Scheduler)와 스레드 모델
+- 3.5 Cold vs Hot Publisher
+- 3.6 Reactor 디버깅 기법
+
+### Chapter 4. MongoDB 소개
+- 4.1 NoSQL과 MongoDB의 특징
+- 4.2 도큐먼트 모델과 컬렉션
+- 4.3 MongoDB 설치 및 기본 CRUD
+- 4.4 인덱싱과 쿼리 최적화 기초
+- 4.5 MongoDB와 리액티브 드라이버
+
+---
+
+## Part 2. 프로젝트 시작하기
+
+### Chapter 5. 개발 환경 구성
+- 5.1 JDK, IDE, Docker 설치
+- 5.2 Spring Initializr로 프로젝트 생성
+- 5.3 주요 의존성 설정 (WebFlux, Reactive MongoDB, Lombok 등)
+- 5.4 application.yml 설정
+- 5.5 MongoDB Docker 컨테이너 구성
+- 5.6 프로젝트 구조 설계
+
+### Chapter 6. 어노테이션 기반 REST API 구현
+- 6.1 도메인 모델(Document) 정의
+- 6.2 ReactiveMongoRepository 활용
+- 6.3 서비스 계층 구현
+- 6.4 @RestController로 CRUD API 만들기
+- 6.5 요청/응답 DTO 설계
+- 6.6 API 테스트 (cURL, Postman)
+
+### Chapter 7. 함수형 엔드포인트 (Router Functions)
+- 7.1 HandlerFunction과 RouterFunction 이해
+- 7.2 RouterFunction으로 라우팅 정의하기
+- 7.3 HandlerFunction 구현
+- 7.4 요청 파라미터 및 바디 처리
+- 7.5 어노테이션 방식과 함수형 방식 비교
+
+---
+
+## Part 3. 심화 개발
+
+### Chapter 8. MongoDB 리액티브 데이터 접근 심화
+- 8.1 ReactiveMongoTemplate 활용
+- 8.2 커스텀 쿼리와 Criteria API
+- 8.3 Aggregation Pipeline 사용
+- 8.4 변경 스트림(Change Streams) 활용
+- 8.5 트랜잭션 처리 (ReactiveMongoTransactionManager)
+- 8.6 인덱스 관리와 쿼리 성능 최적화
+
+### Chapter 9. 데이터 검증과 예외 처리
+- 9.1 Bean Validation을 활용한 입력 검증
+- 9.2 커스텀 Validator 구현
+- 9.3 글로벌 예외 처리 (@ControllerAdvice)
+- 9.4 ErrorWebExceptionHandler를 활용한 함수형 예외 처리
+- 9.5 에러 응답 표준화 (Problem Details)
+
+### Chapter 10. WebFlux 필터와 인터셉터
+- 10.1 WebFilter 구현
+- 10.2 HandlerFilterFunction 활용
+- 10.3 요청/응답 로깅
+- 10.4 CORS 설정
+- 10.5 요청 속도 제한(Rate Limiting)
+
+### Chapter 11. 리액티브 보안 (Spring Security WebFlux)
+- 11.1 Spring Security Reactive 설정
+- 11.2 SecurityWebFilterChain 구성
+- 11.3 인증과 인가 구현
+- 11.4 JWT 기반 인증 구현
+- 11.5 리액티브 환경에서의 SecurityContext 관리
+- 11.6 OAuth2 / OpenID Connect 연동
+
+---
+
+## Part 4. 실시간 통신과 고급 기능
+
+### Chapter 12. Server-Sent Events (SSE)
+- 12.1 SSE란 무엇인가?
+- 12.2 Flux를 활용한 SSE 엔드포인트 구현
+- 12.3 실시간 알림 시스템 구축
+- 12.4 MongoDB Change Streams + SSE 연동
+
+### Chapter 13. WebSocket
+- 13.1 WebSocket 프로토콜 이해
+- 13.2 WebFlux에서 WebSocket 핸들러 구현
+- 13.3 실시간 채팅 애플리케이션 구축
+- 13.4 WebSocket 세션 관리
+
+### Chapter 14. WebClient: 리액티브 HTTP 클라이언트
+- 14.1 WebClient 설정과 기본 사용법
+- 14.2 요청/응답 처리 (GET, POST, PUT, DELETE)
+- 14.3 에러 핸들링과 재시도 전략
+- 14.4 타임아웃 설정
+- 14.5 외부 API 연동 실전 예제
+- 14.6 WebClient 필터와 인터셉터
+
+### Chapter 15. R2DBC와의 통합 (보너스)
+- 15.1 R2DBC란?
+- 15.2 MongoDB + R2DBC(관계형 DB) 멀티 데이터소스 구성
+- 15.3 리액티브 환경에서 여러 데이터소스 조합하기
+
+---
+
+## Part 5. 테스트와 품질
+
+### Chapter 16. 리액티브 테스트 전략
+- 16.1 StepVerifier를 활용한 단위 테스트
+- 16.2 WebTestClient를 활용한 통합 테스트
+- 16.3 Embedded MongoDB를 활용한 리포지토리 테스트
+- 16.4 Testcontainers로 MongoDB 테스트 환경 구성
+- 16.5 MockWebServer를 활용한 외부 API 모킹
+- 16.6 테스트 슬라이스(@WebFluxTest, @DataMongoTest)
+
+### Chapter 17. 문서화와 API 관리
+- 17.1 SpringDoc OpenAPI(Swagger) 연동
+- 17.2 리액티브 API 문서 자동 생성
+- 17.3 API 버전 관리 전략
+
+---
+
+## Part 6. 운영과 배포
+
+### Chapter 18. 모니터링과 관측 가능성
+- 18.1 Spring Boot Actuator 설정
+- 18.2 Micrometer와 Prometheus 연동
+- 18.3 Grafana 대시보드 구성
+- 18.4 리액티브 스트림 메트릭 수집
+- 18.5 분산 추적 (Zipkin / Jaeger)
+- 18.6 구조화된 로깅 (Logback + MDC in Reactive)
+
+### Chapter 19. 성능 최적화
+- 19.1 리액티브 애플리케이션 성능 측정
+- 19.2 MongoDB 커넥션 풀 튜닝
+- 19.3 Netty 이벤트 루프 최적화
+- 19.4 캐싱 전략 (Caffeine, Redis)
+- 19.5 블로킹 코드 탐지 및 제거 (BlockHound)
+- 19.6 부하 테스트 (Gatling, k6)
+
+### Chapter 20. 컨테이너화와 배포
+- 20.1 Docker 이미지 빌드 (Jib, Buildpacks)
+- 20.2 Docker Compose로 전체 스택 구성
+- 20.3 Kubernetes 배포 기초
+- 20.4 MongoDB Atlas 클라우드 연동
+- 20.5 CI/CD 파이프라인 구성 (GitHub Actions)
+- 20.6 GraalVM Native Image 빌드
+
+---
+
+## Part 7. 실전 프로젝트
+
+### Chapter 21. 실전 프로젝트: 실시간 게시판 서비스
+- 21.1 요구사항 분석 및 설계
+- 21.2 사용자 관리 (회원가입, 로그인, JWT)
+- 21.3 게시글 CRUD API 구현
+- 21.4 댓글 시스템 (내장 도큐먼트 vs 참조)
+- 21.5 실시간 알림 (SSE)
+- 21.6 페이징과 검색 기능
+- 21.7 파일 업로드 (GridFS)
+- 21.8 전체 테스트 작성
+- 21.9 Docker Compose로 배포
+
+---
+
+## 부록
+
+### 부록 A. Reactor 주요 연산자 레퍼런스
+### 부록 B. MongoDB 쿼리 연산자 정리
+### 부록 C. 자주 발생하는 문제와 해결 방법 (FAQ)
+### 부록 D. 참고 자료 및 추천 학습 경로
 # Chapter 1. 리액티브 프로그래밍 소개
 
 현대 소프트웨어 시스템이 직면한 현실을 생각해 보자. 수백만 사용자의 동시 요청을 처리하고, 밀리초 단위의 응답 시간을 보장하며, 24/7 무중단 운영을 해야 한다는 것은 정말 과도한 요구사항처럼 들린다. 그런데 이미 우리는 그런 시스템들이 존재한다는 것을 알고 있다. 전통적인 명령형 프로그래밍 모델만으로는 이런 요구사항을 충족하기 어렵다는 것도 경험상 알 수 있기 때문이다. 이 장에서는 리액티브 프로그래밍의 핵심 개념을 살펴보면서, Spring WebFlux가 왜 이 패러다임을 선택했는지 그 이유를 함께 이해해 보자.
@@ -118,7 +311,7 @@ public Flux<String> getActiveUserNames(Flux<User> users) {
 }
 ```
 
-보다시피 리액티브 코드는 훨씬 간결하다. 그리고 데이터가 도착할 때마다 파이프라인을 통해 처리되므로 전체 데이터가 메모리에 있어야 한다는 제약이 없다. 무엇보다 호출 스레드가 차단되지 않는다는 것이 가장 큰 장점이다.
+보다시피 리액티브 코드는 훨씬 간결하다. 그리고 데이터가 도착할 때마다 파이프라인을 통해 처리되며, 각 연산자가 데이터를 하나씩 처리하고 필요한 경우에만 버퍼링한다(예: sort는 전체 데이터를 모은 후 정렬). 무엇보다 호출 스레드가 차단되지 않는다는 것이 가장 큰 장점이다.
 
 ### 1.2.3 동기 vs 비동기, 블로킹 vs 논블로킹
 
@@ -246,6 +439,7 @@ Subscriber                    Publisher
 
 ```java
 import java.util.concurrent.Flow.*;
+import java.util.concurrent.SubmissionPublisher;
 
 public class SimpleReactiveExample {
 
@@ -287,6 +481,7 @@ public class SimpleReactiveExample {
             publisher.submit(i);
         }
         publisher.close();
+        Thread.sleep(1000); // 비동기 처리 완료 대기
     }
 }
 ```
@@ -914,6 +1109,7 @@ Thread-1: ──[read() 호출]──────[대기중...]─────�
 SocketChannel channel = SocketChannel.open();
 channel.configureBlocking(false);  // 논블로킹 모드 설정
 channel.connect(new InetSocketAddress("example.com", 80));
+while (!channel.finishConnect()) { /* 연결 완료 대기 */ }
 
 ByteBuffer buffer = ByteBuffer.allocate(1024);
 int bytesRead = channel.read(buffer);  // ← 즉시 반환 (데이터 없으면 0 또는 -1)
@@ -1860,8 +2056,8 @@ public class UserService {
             .switchIfEmpty(
                 mongoTemplate.findById(id, User.class)   // 2. DB 조회
                     .doOnNext(user ->
-                        cacheService.cacheUser(user)      // 3. 캐시 저장
-                            .subscribe()
+                        cacheService.cacheUser(user)      // 3. 캐시 저장 (fire-and-forget 패턴으로,
+                            .subscribe()                  //    캐시 실패가 메인 흐름에 영향을 주지 않도록 의도적으로 사용)
                     )
             )
             .switchIfEmpty(
@@ -2842,7 +3038,7 @@ db.books.find({ author: "홍길동" }).explain("executionStats")
     "executionTimeMillis": 0,     // 실행 시간 (ms)
     "totalKeysExamined": 1,       // 검사한 인덱스 키 수
     "totalDocsExamined": 1,       // 검사한 도큐먼트 수
-    "executionStages": {
+    "executionStage": {
       "stage": "FETCH",           // 실행 스테이지
       "inputStage": {
         "stage": "IXSCAN",        // 인덱스 스캔 사용
@@ -4354,7 +4550,8 @@ public class UserController {
         return userService.getUserById(id)
                 .map(UserResponse::from)
                 .map(ResponseEntity::ok)
-                .defaultIfEmpty(ResponseEntity.notFound().build());
+                .onErrorResume(ResourceNotFoundException.class,
+                        e -> Mono.just(ResponseEntity.notFound().build()));
     }
 
     @GetMapping
@@ -4629,9 +4826,6 @@ curl -X POST http://localhost:8080/api/posts \
   -H "Content-Type: application/json" \
   -d '{ "title": "WebFlux 첫 글", "content": "리액티브 API 구현",
         "authorId": "65f1a2b3c4d5e6f7a8b9c0d1", "tags": ["spring","webflux"] }'
-
-# 게시글 검색
-curl "http://localhost:8080/api/posts/search?keyword=WebFlux"
 
 # 작성자별 페이징 조회
 curl "http://localhost:8080/api/posts/author/65f1a2b3c4d5e6f7a8b9c0d1?page=0&size=5"
@@ -5041,11 +5235,16 @@ public class Product {
 ```
 
 ```java
+public interface ProductRepository extends ReactiveMongoRepository<Product, String> {
+}
+```
+
+```java
 @Service
 @RequiredArgsConstructor
 public class ProductService {
 
-    private final ReactiveMongoRepository<Product, String> productRepository;
+    private final ProductRepository productRepository;
 
     public Flux<Product> findAll() { return productRepository.findAll(); }
     public Mono<Product> findById(String id) { return productRepository.findById(id); }
@@ -5069,6 +5268,7 @@ public class ProductService {
     }
 
     public Mono<Void> deleteById(String id) { return productRepository.deleteById(id); }
+}
 ```
 
 ### 7.3.3 에러 처리가 포함된 핸들러
@@ -5660,7 +5860,7 @@ public Mono<Product> decrementStock(String productId, int quantity) {
 Criteria.where("category").is("electronics");       // 등호
 Criteria.where("price").gte(10000).lte(50000);       // 범위
 Criteria.where("description").exists(true);           // 존재 여부
-Criteria.where("deletedAt").isNull();                 // null 체크
+Criteria.where("deletedAt").isNull();                 // null 체크 — Spring Data MongoDB 4.x+ (Boot 3.2+)
 ```
 
 주요 비교 메서드는 다음과 같다.
@@ -6023,14 +6223,9 @@ public class ResilientChangeStreamService {
 
     public Flux<ChangeStreamEvent<Order>> watchWithResume(String streamId) {
         return tokenStore.getLastToken(streamId)
-            .flatMapMany(lastToken -> {
-                ChangeStreamOptions.ChangeStreamOptionsBuilder builder =
-                    ChangeStreamOptions.builder();
-                if (lastToken != null) {
-                    builder.resumeAfter(lastToken);
-                }
-                return mongoTemplate.changeStream("orders", builder.build(), Order.class);
-            })
+            .map(token -> ChangeStreamOptions.builder().resumeAfter(token).build())
+            .defaultIfEmpty(ChangeStreamOptions.empty())
+            .flatMapMany(options -> mongoTemplate.changeStream("orders", options, Order.class))
             .doOnNext(event ->
                 tokenStore.saveToken(streamId, event.getResumeToken()).subscribe())
             .retryWhen(Retry.backoff(Long.MAX_VALUE, Duration.ofSeconds(1))
@@ -7759,10 +7954,10 @@ public class RateLimitFilter implements WebFilter {
     }
 
     private Bucket createBucket(String key) {
-        Bandwidth limit = Bandwidth.classic(
-            10,                                      // 버킷 용량 (버스트)
-            Refill.greedy(60, Duration.ofMinutes(1)) // 분당 60개 보충
-        );
+        Bandwidth limit = Bandwidth.builder()
+            .capacity(10)                                      // 버킷 용량 (버스트)
+            .refillGreedy(60, Duration.ofMinutes(1))           // 분당 60개 보충
+            .build();
         return Bucket.builder().addLimit(limit).build();
     }
 
@@ -7838,8 +8033,9 @@ public class UserRateLimitFilter implements WebFilter {
     }
 
     private Bucket createBucket(Plan plan) {
-        return Bucket.builder().addLimit(Bandwidth.classic(
-            plan.capacity, Refill.greedy(plan.capacity, plan.period))).build();
+        return Bucket.builder().addLimit(Bandwidth.builder()
+            .capacity(plan.capacity).refillGreedy(plan.capacity, plan.period)
+            .build()).build();
     }
 }
 ```
@@ -7854,10 +8050,11 @@ public class RateLimitConfig {
 
     @Bean
     public RouterFunction<ServerResponse> rateLimitedAuthRoutes(AuthHandler handler) {
-        return route(POST("/api/auth/login"), handler::login)
-            .filter(createRateLimitFilter(5, Duration.ofMinutes(1)))   // 분당 5회
-            .andRoute(POST("/api/auth/register"), handler::register)
+        RouterFunction<ServerResponse> loginRoute = route(POST("/api/auth/login"), handler::login)
+            .filter(createRateLimitFilter(5, Duration.ofMinutes(1)));   // 분당 5회
+        RouterFunction<ServerResponse> registerRoute = route(POST("/api/auth/register"), handler::register)
             .filter(createRateLimitFilter(3, Duration.ofHours(1)));    // 시간당 3회
+        return loginRoute.and(registerRoute);
     }
 
     private HandlerFilterFunction<ServerResponse, ServerResponse>
@@ -7868,7 +8065,7 @@ public class RateLimitConfig {
                 .map(a -> a.getAddress().getHostAddress()).orElse("unknown");
             Bucket bucket = buckets.computeIfAbsent(ip, k ->
                 Bucket.builder().addLimit(
-                    Bandwidth.classic(capacity, Refill.greedy(capacity, period))
+                    Bandwidth.builder().capacity(capacity).refillGreedy(capacity, period).build()
                 ).build());
 
             if (bucket.tryConsume(1)) return next.handle(request);
@@ -8099,6 +8296,7 @@ public class User {
 ```java
 public interface UserRepository extends ReactiveMongoRepository<User, String> {
     Mono<User> findByUsername(String username);
+    Mono<User> findByEmail(String email);
     Mono<Boolean> existsByUsername(String username);
 }
 ```
@@ -8646,6 +8844,8 @@ public class CustomOAuth2UserService
 }
 ```
 
+> **참고**: 이 서비스는 OIDC를 지원하는 프로바이더(Google 등)에만 적용됩니다. GitHub 등 비-OIDC 프로바이더를 위해서는 `ReactiveOAuth2UserService<OAuth2UserRequest, OAuth2User>`를 별도로 구현해야 합니다.
+
 ### 11.6.4 Resource Server 설정
 
 Keycloak이나 Auth0 같은 외부 인증 서버에서 발급받은 JWT를 검증해야 하는 경우가 있다. 이 경우 우리 애플리케이션은 Resource Server가 되는데, 그 설정 방법을 살펴보자.
@@ -8870,6 +9070,7 @@ public Flux<ServerSentEvent<Map<String, Object>>> streamEventsAuto() {
 실제 SSE 구현에서는 타이머 같은 구조가 자주 나온다. `Flux.interval()`이 바로 그 도구다. 지정된 간격으로 0부터 시작하는 `Long` 값을 계속 내보내는 Hot Publisher다. 주기적으로 데이터를 보내야 하는 SSE 엔드포인트에 딱 맞다.
 
 ```java
+@Slf4j
 @RestController
 @RequestMapping("/api/sse")
 @RequiredArgsConstructor
@@ -9336,15 +9537,15 @@ public class ProductSseController {
             changeStreamService.watchProducts()
                 .map(event -> {
                     ProductChangeEvent payload = ProductChangeEvent.builder()
-                        .operationType(event.getOperationType().getValue())
+                        .operationType(event.getOperationType().name())
                         .product(event.getBody())
                         .timestamp(Instant.now())
                         .build();
 
                     return ServerSentEvent.<ProductChangeEvent>builder()
-                        .id(event.getResumeToken() != null
-                            ? event.getResumeToken().toJson() : null)
-                        .event("product-" + event.getOperationType().getValue())
+                        .id(event.getRaw() != null && event.getRaw().getResumeToken() != null
+                            ? event.getRaw().getResumeToken().toJson() : null)
+                        .event("product-" + event.getOperationType().name())
                         .data(payload)
                         .build();
                 });
@@ -9405,11 +9606,11 @@ public Flux<ServerSentEvent<ProductChangeEvent>> streamResumable(
 
     return resumableChangeStreamService.watchProducts(lastEventId)
         .map(event -> {
-            String tokenJson = event.getResumeToken() != null
-                ? event.getResumeToken().toJson() : null;
+            String tokenJson = event.getRaw() != null && event.getRaw().getResumeToken() != null
+                ? event.getRaw().getResumeToken().toJson() : null;
 
             ProductChangeEvent payload = ProductChangeEvent.builder()
-                .operationType(event.getOperationType().getValue())
+                .operationType(event.getOperationType().name())
                 .product(event.getBody())
                 .timestamp(Instant.now())
                 .build();
@@ -10163,6 +10364,14 @@ public class WebSocketSessionRegistry {
             .collect(Collectors.toSet());
     }
 
+    public Map<String, WebSocketSession> getSessions(String roomId) {
+        return roomSessions.getOrDefault(roomId, new ConcurrentHashMap<>());
+    }
+
+    public String getUsername(String sessionId) {
+        return sessionUserMap.getOrDefault(sessionId, "unknown");
+    }
+
     public Map<String, WebSocketSession> getAllSessions() {
         Map<String, WebSocketSession> all = new ConcurrentHashMap<>();
         roomSessions.values().forEach(all::putAll);
@@ -10811,13 +11020,13 @@ public class WeatherClientService {
                                 @Value("${weather.api.key}") String apiKey) {
         this.webClient = builder
             .baseUrl("https://api.openweathermap.org/data/2.5")
-            .defaultUriVariables(Map.of("appid", apiKey)).build();
+            .build();
     }
 
     public Mono<WeatherResponse> getCurrentWeather(String city) {
         return webClient.get()
             .uri(uriBuilder -> uriBuilder.path("/weather")
-                .queryParam("q", city).queryParam("appid", "{appid}")
+                .queryParam("q", city).queryParam("appid", apiKey)
                 .queryParam("units", "metric").build())
             .retrieve()
             .onStatus(HttpStatusCode::is4xxClientError, response ->
@@ -11403,6 +11612,8 @@ CREATE INDEX idx_order_items_order_id ON order_items(order_id);
 
 두 데이터소스를 독립적으로 관리하려면 각각의 설정 클래스가 필요합니다. 리포지토리 스캔 경로를 분리하는 것이 핵심입니다.
 
+> **참고**: Spring Boot의 R2DBC 자동 설정을 비활성화(`@SpringBootApplication(exclude = R2dbcAutoConfiguration.class)`)하거나, 자동 설정을 사용하는 경우 이 설정 클래스를 제거하세요.
+
 ```java
 @Configuration
 @EnableR2dbcRepositories(basePackages = "com.example.shop.repository.r2dbc")
@@ -11794,7 +12005,7 @@ public class OrderSagaService {
     }
 
     private Mono<Void> processPayment(OrderEntity order, OrderRequest request) {
-        PaymentEntity payment = PaymentEntity.builder()
+        Payment payment = Payment.builder()
             .orderId(order.getId())
             .paymentMethod(request.getPaymentMethod())
             .amount(order.getTotalAmount())
@@ -11988,7 +12199,7 @@ public class MultiDataSourceHealthIndicator
             .flatMap(conn -> Mono.from(conn.createStatement("SELECT 1")
                 .execute())
                 .flatMap(result -> Mono.from(result.map((row, meta) -> "UP")))
-                .doFinally(signal -> conn.close()))
+                .doFinally(signal -> Mono.from(conn.close()).subscribe()))
             .onErrorReturn("DOWN");
 
         Mono<String> mongoHealth = mongoTemplate.executeCommand("{ ping: 1 }")
@@ -12308,7 +12519,7 @@ class ProductControllerTest {
     @Autowired
     private WebTestClient webTestClient;
 
-    @MockBean
+    @MockitoBean  // Spring Boot 3.4+에서는 @MockitoBean 사용 권장
     private ProductService productService;
 
     @Test
@@ -13021,7 +13232,7 @@ class PaymentGatewayClientTest {
 
 ### 16.6.2 @WebFluxTest
 
-가장 많이 쓰는 테스트 슬라이스는 `@WebFluxTest`다. 웹 계층만 로드하고 서비스나 리포지토리는 로드하지 않으므로, `@MockBean`으로 의존성을 모킹해줘야 한다.
+가장 많이 쓰는 테스트 슬라이스는 `@WebFluxTest`다. 웹 계층만 로드하고 서비스나 리포지토리는 로드하지 않으므로, `@MockitoBean`으로 의존성을 모킹해줘야 한다.
 
 ```java
 @WebFluxTest(controllers = ProductController.class)
@@ -13030,7 +13241,7 @@ class ProductControllerSliceTest {
     @Autowired
     private WebTestClient webTestClient;
 
-    @MockBean
+    @MockitoBean  // Spring Boot 3.4+에서는 @MockitoBean 사용 권장
     private ProductService productService;
 
     @Test
@@ -13127,7 +13338,7 @@ class FullIntegrationTest {
 }
 ```
 
-### 16.6.4 Mockito와 @MockBean 활용 팁
+### 16.6.4 Mockito와 @MockitoBean 활용 팁
 
 리액티브 환경에서 Mockito를 쓸 때는 동기 환경과는 조금 다르다. 몇 가지 주의할 점들을 정리해봤다.
 
@@ -13138,7 +13349,7 @@ class OrderControllerTest {
     @Autowired
     private WebTestClient webTestClient;
 
-    @MockBean
+    @MockitoBean  // Spring Boot 3.4+에서는 @MockitoBean 사용 권장
     private OrderService orderService;
 
     @Test
@@ -13201,7 +13412,7 @@ class OrderControllerTest {
 │   @WebFluxTest         │    @DataMongoTest              │
 │   (컨트롤러 슬라이스)    │    (리포지토리 슬라이스)         │
 │   - HTTP 요청/응답 검증 │    - 쿼리 메서드 검증           │
-│   - @MockBean 서비스   │    - Embedded MongoDB 또는     │
+│   - @MockitoBean 서비스│    - Embedded MongoDB 또는     │
 │     모킹              │      Testcontainers 사용       │
 ├────────────────────────┴────────────────────────────────┤
 │          StepVerifier + Mockito (순수 단위 테스트)        │
@@ -13268,12 +13479,12 @@ void 잘못된_테스트() {
 }
 ```
 
-**3. @MockBean과 @Mock의 차이를 이해한다**
+**3. @MockitoBean과 @Mock의 차이를 이해한다**
 
 | 어노테이션 | 컨텍스트 | 사용 위치 |
 |-----------|---------|----------|
 | `@Mock` | Spring 컨텍스트 없음 | `@ExtendWith(MockitoExtension.class)` 테스트 |
-| `@MockBean` | Spring 컨텍스트 내 빈 대체 | `@WebFluxTest`, `@SpringBootTest` 등 |
+| `@MockitoBean` | Spring 컨텍스트 내 빈 대체 | `@WebFluxTest`, `@SpringBootTest` 등 |
 
 ---
 
@@ -14642,7 +14853,7 @@ public class UserIdThreadLocalAccessor implements ThreadLocalAccessor<String> {
     public void setValue(String value) { MDC.put(KEY, value); }
 
     @Override
-    public void setValue() { MDC.remove(KEY); }
+    public void reset() { MDC.remove(KEY); }
 }
 ```
 
@@ -14817,18 +15028,18 @@ public class ReactorBenchmark {
 
     @Benchmark
     public void flatMap_동시성_기본값(Blackhole bh) {
-        Flux.fromIterable(items)
+        bh.consume(Flux.fromIterable(items)
             .flatMap(item -> Mono.fromCallable(() -> item.toUpperCase()))
             .collectList()
-            .block();
+            .block());
     }
 
     @Benchmark
     public void map_단순변환(Blackhole bh) {
-        Flux.fromIterable(items)
+        bh.consume(Flux.fromIterable(items)
             .map(String::toUpperCase)
             .collectList()
-            .block();
+            .block());
     }
 }
 ```
@@ -14967,7 +15178,7 @@ mongodb_driver_pool_waitqueuesize{server_address="localhost:27017"} 0
 
 ```
 소켓 타임아웃 (connectTimeout, readTimeout)
-  └─ 쿼리 타임아웃 (maxTimeMsec)
+  └─ 쿼리 타임아웃 (maxTime)
        └─ Reactor 타임아웃 (timeout 연산자)
             └─ HTTP 응답 타임아웃 (WebFlux 타임아웃)
 ```
@@ -14975,7 +15186,7 @@ mongodb_driver_pool_waitqueuesize{server_address="localhost:27017"} 0
 ```java
 public Flux<Product> findByCategory(String category) {
     Query query = new Query(Criteria.where("category").is(category))
-        .maxTimeMsec(5000);  // 쿼리 레벨 타임아웃 (5초)
+        .maxTime(Duration.ofSeconds(5));  // 쿼리 레벨 타임아웃 (5초)
 
     return mongoTemplate.find(query, Product.class)
         .timeout(Duration.ofSeconds(10));  // Reactor 레벨 타임아웃
@@ -16755,10 +16966,10 @@ public class PostController {
 
     @PostMapping @ResponseStatus(HttpStatus.CREATED)
     public Mono<PostResponse> createPost(@Valid @RequestBody PostRequest request,
-            @AuthenticationPrincipal Mono<String> principalId) {
-        return principalId.flatMap(uid -> userRepository.findById(uid)
-            .flatMap(u -> postService.createPost(request, uid, u.getNickname()))
-            .map(PostResponse::from));
+            @AuthenticationPrincipal String principalId) {
+        return userRepository.findById(principalId)
+            .flatMap(u -> postService.createPost(request, principalId, u.getNickname()))
+            .map(PostResponse::from);
     }
 
     @GetMapping("/{postId}")
@@ -16769,15 +16980,15 @@ public class PostController {
     @PutMapping("/{postId}")
     public Mono<PostResponse> updatePost(@PathVariable String postId,
             @Valid @RequestBody PostRequest request,
-            @AuthenticationPrincipal Mono<String> principalId) {
-        return principalId.flatMap(uid ->
-            postService.updatePost(postId, request, uid).map(PostResponse::from));
+            @AuthenticationPrincipal String principalId) {
+        return postService.updatePost(postId, request, principalId)
+            .map(PostResponse::from);
     }
 
     @DeleteMapping("/{postId}") @ResponseStatus(HttpStatus.NO_CONTENT)
     public Mono<Void> deletePost(@PathVariable String postId,
-            @AuthenticationPrincipal Mono<String> principalId) {
-        return principalId.flatMap(uid -> postService.deletePost(postId, uid));
+            @AuthenticationPrincipal String principalId) {
+        return postService.deletePost(postId, principalId);
     }
 
     @GetMapping
@@ -17073,8 +17284,7 @@ public class FileController {
 public abstract class IntegrationTestBase {
 
     @Container
-    static MongoDBContainer mongo = new MongoDBContainer("mongo:7.0")
-        .withCommand("--replSet", "rs0");
+    static MongoDBContainer mongo = new MongoDBContainer("mongo:7.0");
 
     @DynamicPropertySource
     static void mongoProps(DynamicPropertyRegistry registry) {
@@ -17831,8 +18041,8 @@ Mono<Response> safeCall = webClient.get()
     .uri("/api/data").retrieve().bodyToMono(Response.class)
     .timeout(Duration.ofSeconds(5))
     .retryWhen(Retry.backoff(3, Duration.ofSeconds(1)))
-    .onErrorResume(e -> Mono.just(Response.fallback()))
-    .doOnError(e -> log.error("API 호출 최종 실패", e));
+    .doOnError(e -> log.error("API 호출 최종 실패", e))
+    .onErrorResume(e -> Mono.just(Response.fallback()));
 ```
 
 ### 패턴 2: 병렬 호출 후 결합
@@ -17954,7 +18164,7 @@ Criteria nor = new Criteria().norOperator(
 | 연산자 | 설명 | MongoDB 쿼리 예제 | Spring Data Criteria |
 |--------|------|-------------------|---------------------|
 | `$exists` | 필드 존재 여부 확인 | `{ email: { $exists: true } }` | `Criteria.where("email").exists(true)` |
-| `$type` | 필드의 BSON 타입 확인 | `{ age: { $type: "int" } }` | `Criteria.where("age").type(Type.INT32)` |
+| `$type` | 필드의 BSON 타입 확인 | `{ age: { $type: "int" } }` | `Criteria.where("age").type(16)` <!-- 16은 BSON INT32 타입 코드 --> |
 
 ---
 
@@ -18491,12 +18701,12 @@ public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
 **해결 방법**: `retryWhen`으로 재시도 로직을 구성하고, Resume Token을 저장했다가 활용하면 끊긴 지점부터 다시 받을 수 있다.
 
 ```java
-private volatile BsonValue lastResumeToken;
+private volatile BsonDocument lastResumeToken;
 
 public Flux<Order> watchOrders() {
     return createChangeStream()
         .doOnNext(event -> lastResumeToken =
-            event.getRaw().getResumeToken().get("_data"))
+            event.getRaw().getResumeToken())
         .map(ChangeStreamEvent::getBody)
         .retryWhen(Retry.backoff(Long.MAX_VALUE, Duration.ofSeconds(1))
             .maxBackoff(Duration.ofMinutes(1)));
@@ -18508,7 +18718,7 @@ private Flux<ChangeStreamEvent<Order>> createChangeStream() {
             Aggregation.match(Criteria.where("operationType")
                 .in("insert", "update"))));
     if (lastResumeToken != null) {
-        builder.resumeAfter(new BsonDocument("_data", lastResumeToken));
+        builder.resumeAfter(lastResumeToken);
     }
     return mongoTemplate.changeStream("orders", builder.build(), Order.class);
 }

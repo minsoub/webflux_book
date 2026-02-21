@@ -86,13 +86,11 @@
 </table>
 <p>실제로는 여러 조건을 조합해서 쓰는 경우가 많으니 예제를 살펴보자.</p>
 <p><strong>범위 조건 결합 예제:</strong></p>
-<p><code>javascript
-// MongoDB: 나이가 18 이상 65 이하
-db.users.find({ age: { $gte: 18, $lte: 65 } })</code></p>
-<p><code>java
-// Spring Data MongoDB
+<pre class="highlight"><code class="language-javascript">// MongoDB: 나이가 18 이상 65 이하
+db.users.find({ age: { $gte: 18, $lte: 65 } })</code></pre>
+<pre class="highlight"><code class="language-java">// Spring Data MongoDB
 Criteria criteria = Criteria.where("age").gte(18).lte(65);
-reactiveMongoTemplate.find(Query.query(criteria), User.class);</code></p>
+reactiveMongoTemplate.find(Query.query(criteria), User.class);</code></pre>
 <hr>
 <h2 id="b2">B.2 논리 연산자</h2>
 <p>복잡한 조건을 만들어야 할 때 논리 연산자가 나온다. AND, OR 같은 연산들인데, Criteria API를 쓸 때는 직관적으로 처리할 수 있다.</p>
@@ -122,15 +120,13 @@ reactiveMongoTemplate.find(Query.query(criteria), User.class);</code></p>
 </tr>
 </tbody>
 </table>
-<p><code>javascript
-// $and: status가 "active"이고 age가 18 이상
+<pre class="highlight"><code class="language-javascript">// $and: status가 "active"이고 age가 18 이상
 db.users.find({ $and: [{ status: "active" }, { age: { $gte: 18 } }] })
 // $or: role이 "admin"이거나 age가 30 이상
 db.users.find({ $or: [{ role: "admin" }, { age: { $gte: 30 } }] })
 // $nor: status가 "active"도 아니고 role이 "admin"도 아닌 도큐먼트
-db.users.find({ $nor: [{ status: "active" }, { role: "admin" }] })</code></p>
-<p><code>java
-// $and — Criteria 체이닝으로 AND 조건이 된다
+db.users.find({ $nor: [{ status: "active" }, { role: "admin" }] })</code></pre>
+<pre class="highlight"><code class="language-java">// $and — Criteria 체이닝으로 AND 조건이 된다
 Criteria and = Criteria.where("status").is("active").and("age").gte(18);
 // $or
 Criteria or = new Criteria().orOperator(
@@ -141,7 +137,7 @@ Criteria not = Criteria.where("age").not().gt(25);
 // $nor
 Criteria nor = new Criteria().norOperator(
     Criteria.where("status").is("active"),
-    Criteria.where("role").is("admin"));</code></p>
+    Criteria.where("role").is("admin"));</code></pre>
 <hr>
 <h2 id="b3">B.3 요소 연산자</h2>
 <p>특정 필드의 존재 여부나 타입을 확인할 때 사용한다. 데이터가 불완전하거나 스키마 마이그레이션 과정에서 유용하게 쓸 수 있다.</p>
@@ -165,7 +161,7 @@ Criteria nor = new Criteria().norOperator(
 <td><code>$type</code></td>
 <td>필드의 BSON 타입 확인</td>
 <td><code>{ age: { $type: "int" } }</code></td>
-<td><code>Criteria.where("age").type(Type.INT32)</code></td>
+<td><code>Criteria.where("age").type(16)</code> <!-- 16은 BSON INT32 타입 코드 --></td>
 </tr>
 </tbody>
 </table>
@@ -194,29 +190,25 @@ Criteria nor = new Criteria().norOperator(
 </tr>
 </tbody>
 </table>
-<p><code>javascript
-// $all: tags에 "mongodb"와 "reactive" 모두 포함
+<pre class="highlight"><code class="language-javascript">// $all: tags에 "mongodb"와 "reactive" 모두 포함
 db.articles.find({ tags: { $all: ["mongodb", "reactive"] } })
 // $elemMatch: scores 중 80~90 사이 요소가 존재
 db.students.find({ scores: { $elemMatch: { $gte: 80, $lte: 90 } } })
 // $size: tags 길이가 정확히 3
-db.articles.find({ tags: { $size: 3 } })</code></p>
-<p><code>java
-Criteria all = Criteria.where("tags").all("mongodb", "reactive");
+db.articles.find({ tags: { $size: 3 } })</code></pre>
+<pre class="highlight"><code class="language-java">Criteria all = Criteria.where("tags").all("mongodb", "reactive");
 Criteria elem = Criteria.where("scores").elemMatch(new Criteria().gte(80).lte(90));
-Criteria size = Criteria.where("tags").size(3);</code></p>
+Criteria size = Criteria.where("tags").size(3);</code></pre>
 <hr>
 <h2 id="b5">B.5 정규식 연산자</h2>
 <p>문자열 검색이 필요할 때가 있다. 정확한 일치가 아니라 패턴 기반의 검색을 해야 한다면 정규식을 활용하자.</p>
-<p><code>javascript
-// name이 "Kim"으로 시작 (대소문자 무시)
+<pre class="highlight"><code class="language-javascript">// name이 "Kim"으로 시작 (대소문자 무시)
 db.users.find({ name: { $regex: "^Kim", $options: "i" } })
 // email이 "@example.com"으로 끝남
-db.users.find({ email: { $regex: "@example\\.com$" } })</code></p>
-<p><code>java
-Criteria regex1 = Criteria.where("name").regex("^Kim", "i");
+db.users.find({ email: { $regex: "@example\\.com$" } })</code></pre>
+<pre class="highlight"><code class="language-java">Criteria regex1 = Criteria.where("name").regex("^Kim", "i");
 Criteria regex2 = Criteria.where("email").regex("@example\\.com$");
-reactiveMongoTemplate.find(Query.query(regex1), User.class);</code></p>
+reactiveMongoTemplate.find(Query.query(regex1), User.class);</code></pre>
 <hr>
 <h2 id="b6">B.6 업데이트 연산자</h2>
 <p>SELECT와 함께 UPDATE도 중요하다. 도큐먼트를 수정할 때 사용하는 연산자들을 정리했다.</p>
@@ -262,26 +254,22 @@ reactiveMongoTemplate.find(Query.query(regex1), User.class);</code></p>
 </tbody>
 </table>
 <h3 id="set-unset-inc">$set / $unset / $inc</h3>
-<p><code>javascript
-db.users.updateOne({ _id: ObjectId("...") },
-  { $set: { status: "inactive" }, $inc: { loginCount: 1 }, $unset: { temp: "" } })</code></p>
-<p><code>java
-Query query = Query.query(Criteria.where("id").is(userId));
+<pre class="highlight"><code class="language-javascript">db.users.updateOne({ _id: ObjectId("...") },
+  { $set: { status: "inactive" }, $inc: { loginCount: 1 }, $unset: { temp: "" } })</code></pre>
+<pre class="highlight"><code class="language-java">Query query = Query.query(Criteria.where("id").is(userId));
 Update update = new Update()
     .set("status", "inactive")
     .inc("loginCount", 1)
     .unset("temp");
-reactiveMongoTemplate.updateFirst(query, update, User.class);</code></p>
+reactiveMongoTemplate.updateFirst(query, update, User.class);</code></pre>
 <h3 id="push-pull-addtoset">$push / $pull / $addToSet</h3>
-<p><code>javascript
-db.articles.updateOne({ _id: ObjectId("...") }, { $push: { tags: "webflux" } })
+<pre class="highlight"><code class="language-javascript">db.articles.updateOne({ _id: ObjectId("...") }, { $push: { tags: "webflux" } })
 db.articles.updateOne({ _id: ObjectId("...") }, { $pull: { tags: "deprecated" } })
-db.articles.updateOne({ _id: ObjectId("...") }, { $addToSet: { tags: "reactive" } })</code></p>
-<p><code>java
-Query query = Query.query(Criteria.where("id").is(articleId));
+db.articles.updateOne({ _id: ObjectId("...") }, { $addToSet: { tags: "reactive" } })</code></pre>
+<pre class="highlight"><code class="language-java">Query query = Query.query(Criteria.where("id").is(articleId));
 reactiveMongoTemplate.updateFirst(query, new Update().push("tags", "webflux"), Article.class);
 reactiveMongoTemplate.updateFirst(query, new Update().pull("tags", "deprecated"), Article.class);
-reactiveMongoTemplate.updateFirst(query, new Update().addToSet("tags", "reactive"), Article.class);</code></p>
+reactiveMongoTemplate.updateFirst(query, new Update().addToSet("tags", "reactive"), Article.class);</code></pre>
 <hr>
 <h2 id="b7-aggregation-pipeline">B.7 Aggregation Pipeline 스테이지</h2>
 <p>Aggregation Pipeline은 MongoDB의 강력한 기능이다. 여러 단계를 거쳐서 복잡한 데이터 변환과 집계를 할 수 있으며, 필자의 경험상 실무에서 리포팅 기능을 구현할 때 정말 유용하게 쓰인다.</p>
@@ -328,63 +316,54 @@ reactiveMongoTemplate.updateFirst(query, new Update().addToSet("tags", "reactive
 </tbody>
 </table>
 <h3 id="match-group">$match / $group</h3>
-<p><code>javascript
-db.orders.aggregate([
+<pre class="highlight"><code class="language-javascript">db.orders.aggregate([
   { $match: { status: "completed" } },
   { $group: { _id: "$category", count: { $sum: 1 }, total: { $sum: "$amount" } } }
-])</code></p>
-<p><code>java
-Aggregation agg = Aggregation.newAggregation(
+])</code></pre>
+<pre class="highlight"><code class="language-java">Aggregation agg = Aggregation.newAggregation(
     Aggregation.match(Criteria.where("status").is("completed")),
     Aggregation.group("category").count().as("count").sum("amount").as("total")
 );
-reactiveMongoTemplate.aggregate(agg, "orders", Document.class);</code></p>
+reactiveMongoTemplate.aggregate(agg, "orders", Document.class);</code></pre>
 <h3 id="project-sort-limit-skip">$project / $sort / $limit / $skip</h3>
-<p><code>javascript
-db.articles.aggregate([
+<pre class="highlight"><code class="language-javascript">db.articles.aggregate([
   { $project: { title: 1, author: 1, _id: 0 } },
   { $sort: { createdAt: -1 } },
   { $skip: 20 },
   { $limit: 10 }
-])</code></p>
-<p><code>java
-Aggregation agg = Aggregation.newAggregation(
+])</code></pre>
+<pre class="highlight"><code class="language-java">Aggregation agg = Aggregation.newAggregation(
     Aggregation.project("title", "author").andExclude("_id"),
     Aggregation.sort(Sort.Direction.DESC, "createdAt"),
     Aggregation.skip(20),
     Aggregation.limit(10)
 );
-reactiveMongoTemplate.aggregate(agg, "articles", Article.class);</code></p>
+reactiveMongoTemplate.aggregate(agg, "articles", Article.class);</code></pre>
 <h3 id="unwind">$unwind</h3>
-<p><code>javascript
-// tags 배열을 분해하여 태그별 빈도 집계
+<pre class="highlight"><code class="language-javascript">// tags 배열을 분해하여 태그별 빈도 집계
 db.articles.aggregate([
   { $unwind: "$tags" },
   { $group: { _id: "$tags", count: { $sum: 1 } } },
   { $sort: { count: -1 } }
-])</code></p>
-<p><code>java
-Aggregation agg = Aggregation.newAggregation(
+])</code></pre>
+<pre class="highlight"><code class="language-java">Aggregation agg = Aggregation.newAggregation(
     Aggregation.unwind("tags"),
     Aggregation.group("tags").count().as("count"),
     Aggregation.sort(Sort.Direction.DESC, "count")
 );
-reactiveMongoTemplate.aggregate(agg, "articles", Document.class);</code></p>
+reactiveMongoTemplate.aggregate(agg, "articles", Document.class);</code></pre>
 <h3 id="lookup">$lookup</h3>
-<p><code>javascript
-db.orders.aggregate([
+<pre class="highlight"><code class="language-javascript">db.orders.aggregate([
   { $lookup: { from: "products", localField: "productId",
                foreignField: "_id", as: "productDetails" } }
-])</code></p>
-<p><code>java
-Aggregation agg = Aggregation.newAggregation(
+])</code></pre>
+<pre class="highlight"><code class="language-java">Aggregation agg = Aggregation.newAggregation(
     Aggregation.lookup("products", "productId", "_id", "productDetails")
 );
-reactiveMongoTemplate.aggregate(agg, "orders", Document.class);</code></p>
+reactiveMongoTemplate.aggregate(agg, "orders", Document.class);</code></pre>
 <h3 id="_1">파이프라인 조합 예제</h3>
 <p>이론만으로는 와닿지 않으니 실전 예제를 살펴보자. 카테고리별 매출 상위 5개를 조회하는 파이프라인이다.</p>
-<p><code>java
-Aggregation agg = Aggregation.newAggregation(
+<pre class="highlight"><code class="language-java">Aggregation agg = Aggregation.newAggregation(
     Aggregation.match(Criteria.where("status").is("completed")),
     Aggregation.group("category")
         .sum("amount").as("totalRevenue")
@@ -396,7 +375,7 @@ Aggregation agg = Aggregation.newAggregation(
         .andInclude("totalRevenue", "orderCount")
         .andExclude("_id")
 );
-Flux&lt;Document&gt; results = reactiveMongoTemplate.aggregate(agg, "orders", Document.class);</code></p>
+Flux&lt;Document&gt; results = reactiveMongoTemplate.aggregate(agg, "orders", Document.class);</code></pre>
 <hr>
 <h2 id="b8">B.8 인덱스</h2>
 <p>인덱스는 쿼리 성능을 좌우하는 핵심 요소다. 어떤 인덱스 전략을 쓰느냐에 따라 조회 성능이 크게 달라진다.</p>
@@ -437,31 +416,27 @@ Flux&lt;Document&gt; results = reactiveMongoTemplate.aggregate(agg, "orders", Do
 </tbody>
 </table>
 <h3 id="_2">단일 필드 / 유니크 인덱스</h3>
-<p>```java
-@Document(collection = "users")
+<pre class="highlight"><code class="language-java">@Document(collection = "users")
 public class User {
     @Indexed(unique = true)
-    private String email;</p>
-<pre><code>@Indexed(direction = IndexDirection.DESCENDING)
-private LocalDateTime createdAt;
-</code></pre>
-<p>}
+    private String email;
+
+    @Indexed(direction = IndexDirection.DESCENDING)
+    private LocalDateTime createdAt;
+}
 // 프로그래밍 방식
 reactiveMongoTemplate.indexOps("users")
     .ensureIndex(new Index().on("email", Sort.Direction.ASC).unique())
-    .subscribe();
-```</p>
+    .subscribe();</code></pre>
 <h3 id="_3">복합 인덱스</h3>
-<p><code>java
-@Document(collection = "orders")
+<pre class="highlight"><code class="language-java">@Document(collection = "orders")
 @CompoundIndex(name = "user_date_idx", def = "{'userId': 1, 'createdAt': -1}")
 public class Order {
     private String userId;
     private LocalDateTime createdAt;
-}</code></p>
+}</code></pre>
 <h3 id="_4">텍스트 인덱스</h3>
-<p><code>java
-@Document(collection = "articles")
+<pre class="highlight"><code class="language-java">@Document(collection = "articles")
 public class Article {
     @TextIndexed(weight = 10)
     private String title;
@@ -471,10 +446,9 @@ public class Article {
 // 텍스트 검색 쿼리
 TextCriteria textCriteria = TextCriteria.forDefaultLanguage().matching("reactive webflux");
 Query query = TextQuery.queryText(textCriteria).sortByScore();
-reactiveMongoTemplate.find(query, Article.class);</code></p>
+reactiveMongoTemplate.find(query, Article.class);</code></pre>
 <h3 id="ttl">TTL 인덱스</h3>
-<p><code>java
-@Document(collection = "sessions")
+<pre class="highlight"><code class="language-java">@Document(collection = "sessions")
 public class Session {
     @Indexed(expireAfterSeconds = 3600)
     private LocalDateTime createdAt;
@@ -483,43 +457,39 @@ public class Session {
 reactiveMongoTemplate.indexOps("sessions")
     .ensureIndex(new Index().on("createdAt", Sort.Direction.ASC)
         .expire(3600, TimeUnit.SECONDS))
-    .subscribe();</code></p>
+    .subscribe();</code></pre>
 <hr>
 <h2 id="b9">B.9 자주 사용하는 패턴</h2>
 <p>일상적인 작업들을 패턴으로 정리했다. 이 정도는 프로젝트마다 거의 똑같이 쓰는 코드들이다.</p>
 <h3 id="_5">페이징 처리</h3>
-<p><code>java
-Query query = Query.query(Criteria.where("status").is("active"))
+<pre class="highlight"><code class="language-java">Query query = Query.query(Criteria.where("status").is("active"))
     .with(Sort.by(Sort.Direction.DESC, "createdAt"))
     .skip(page * size).limit(size);
-reactiveMongoTemplate.find(query, Article.class);</code></p>
+reactiveMongoTemplate.find(query, Article.class);</code></pre>
 <h3 id="upsert-">Upsert - 존재하면 수정, 없으면 삽입</h3>
-<p><code>java
-Query query = Query.query(Criteria.where("userId").is(userId).and("date").is(today));
+<pre class="highlight"><code class="language-java">Query query = Query.query(Criteria.where("userId").is(userId).and("date").is(today));
 Update update = new Update()
     .set("lastAccess", LocalDateTime.now())
     .inc("visitCount", 1)
     .setOnInsert("createdAt", LocalDateTime.now());
-reactiveMongoTemplate.upsert(query, update, UserActivity.class);</code></p>
+reactiveMongoTemplate.upsert(query, update, UserActivity.class);</code></pre>
 <h3 id="_6">동적 쿼리 생성</h3>
 <p>검색 기능을 구현할 때는 사용자가 입력한 조건에 따라 쿼리를 동적으로 만들어야 한다. 다음은 그런 상황을 처리하는 예제다.</p>
-<p>```java
-public Flux<Product> search(String keyword, Double minPrice,
-                            Double maxPrice, List<String> categories) {
-    List<Criteria> conditions = new ArrayList&lt;&gt;();
+<pre class="highlight"><code class="language-java">public Flux&lt;Product&gt; search(String keyword, Double minPrice,
+                            Double maxPrice, List&lt;String&gt; categories) {
+    List&lt;Criteria&gt; conditions = new ArrayList&lt;&gt;();
     if (keyword != null) conditions.add(Criteria.where("name").regex(keyword, "i"));
     if (minPrice != null) conditions.add(Criteria.where("price").gte(minPrice));
     if (maxPrice != null) conditions.add(Criteria.where("price").lte(maxPrice));
     if (categories != null &amp;&amp; !categories.isEmpty())
-        conditions.add(Criteria.where("category").in(categories));</p>
-<pre><code>Criteria criteria = new Criteria();
-if (!conditions.isEmpty())
-    criteria.andOperator(conditions.toArray(new Criteria[0]));
+        conditions.add(Criteria.where("category").in(categories));
 
-return reactiveMongoTemplate.find(Query.query(criteria), Product.class);
-</code></pre>
-<p>}
-```</p>
+    Criteria criteria = new Criteria();
+    if (!conditions.isEmpty())
+        criteria.andOperator(conditions.toArray(new Criteria[0]));
+
+    return reactiveMongoTemplate.find(Query.query(criteria), Product.class);
+}</code></pre>
 <hr>
 <blockquote>
 <p><strong>참고</strong>: 여기서 다룬 연산자들은 가장 자주 쓰이는 것들일 뿐, MongoDB는 훨씬 더 많은 기능을 제공한다. 더 알아보려면 <a href="https://www.mongodb.com/docs/manual/reference/operator/">MongoDB 공식 문서</a>를 참고하고, Spring Data MongoDB의 Criteria API에 대해서는 <a href="https://docs.spring.io/spring-data/mongodb/reference/">Spring Data MongoDB 레퍼런스</a>를 확인하자.</p>

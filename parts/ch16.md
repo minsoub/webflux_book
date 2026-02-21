@@ -267,7 +267,7 @@ class ProductControllerTest {
     @Autowired
     private WebTestClient webTestClient;
 
-    @MockBean
+    @MockitoBean  // Spring Boot 3.4+에서는 @MockitoBean 사용 권장
     private ProductService productService;
 
     @Test
@@ -980,7 +980,7 @@ class PaymentGatewayClientTest {
 
 ### 16.6.2 @WebFluxTest
 
-가장 많이 쓰는 테스트 슬라이스는 `@WebFluxTest`다. 웹 계층만 로드하고 서비스나 리포지토리는 로드하지 않으므로, `@MockBean`으로 의존성을 모킹해줘야 한다.
+가장 많이 쓰는 테스트 슬라이스는 `@WebFluxTest`다. 웹 계층만 로드하고 서비스나 리포지토리는 로드하지 않으므로, `@MockitoBean`으로 의존성을 모킹해줘야 한다.
 
 ```java
 @WebFluxTest(controllers = ProductController.class)
@@ -989,7 +989,7 @@ class ProductControllerSliceTest {
     @Autowired
     private WebTestClient webTestClient;
 
-    @MockBean
+    @MockitoBean  // Spring Boot 3.4+에서는 @MockitoBean 사용 권장
     private ProductService productService;
 
     @Test
@@ -1086,7 +1086,7 @@ class FullIntegrationTest {
 }
 ```
 
-### 16.6.4 Mockito와 @MockBean 활용 팁
+### 16.6.4 Mockito와 @MockitoBean 활용 팁
 
 리액티브 환경에서 Mockito를 쓸 때는 동기 환경과는 조금 다르다. 몇 가지 주의할 점들을 정리해봤다.
 
@@ -1097,7 +1097,7 @@ class OrderControllerTest {
     @Autowired
     private WebTestClient webTestClient;
 
-    @MockBean
+    @MockitoBean  // Spring Boot 3.4+에서는 @MockitoBean 사용 권장
     private OrderService orderService;
 
     @Test
@@ -1160,7 +1160,7 @@ class OrderControllerTest {
 │   @WebFluxTest         │    @DataMongoTest              │
 │   (컨트롤러 슬라이스)    │    (리포지토리 슬라이스)         │
 │   - HTTP 요청/응답 검증 │    - 쿼리 메서드 검증           │
-│   - @MockBean 서비스   │    - Embedded MongoDB 또는     │
+│   - @MockitoBean 서비스│    - Embedded MongoDB 또는     │
 │     모킹              │      Testcontainers 사용       │
 ├────────────────────────┴────────────────────────────────┤
 │          StepVerifier + Mockito (순수 단위 테스트)        │
@@ -1227,12 +1227,12 @@ void 잘못된_테스트() {
 }
 ```
 
-**3. @MockBean과 @Mock의 차이를 이해한다**
+**3. @MockitoBean과 @Mock의 차이를 이해한다**
 
 | 어노테이션 | 컨텍스트 | 사용 위치 |
 |-----------|---------|----------|
 | `@Mock` | Spring 컨텍스트 없음 | `@ExtendWith(MockitoExtension.class)` 테스트 |
-| `@MockBean` | Spring 컨텍스트 내 빈 대체 | `@WebFluxTest`, `@SpringBootTest` 등 |
+| `@MockitoBean` | Spring 컨텍스트 내 빈 대체 | `@WebFluxTest`, `@SpringBootTest` 등 |
 
 ---
 

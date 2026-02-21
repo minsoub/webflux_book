@@ -134,7 +134,7 @@ public Mono<Product> decrementStock(String productId, int quantity) {
 Criteria.where("category").is("electronics");       // 등호
 Criteria.where("price").gte(10000).lte(50000);       // 범위
 Criteria.where("description").exists(true);           // 존재 여부
-Criteria.where("deletedAt").isNull();                 // null 체크
+Criteria.where("deletedAt").isNull();                 // null 체크 — Spring Data MongoDB 4.x+ (Boot 3.2+)
 ```
 
 주요 비교 메서드는 다음과 같다.
@@ -497,14 +497,9 @@ public class ResilientChangeStreamService {
 
     public Flux<ChangeStreamEvent<Order>> watchWithResume(String streamId) {
         return tokenStore.getLastToken(streamId)
-            .flatMapMany(lastToken -> {
-                ChangeStreamOptions.ChangeStreamOptionsBuilder builder =
-                    ChangeStreamOptions.builder();
-                if (lastToken != null) {
-                    builder.resumeAfter(lastToken);
-                }
-                return mongoTemplate.changeStream("orders", builder.build(), Order.class);
-            })
+            .map(token -> ChangeStreamOptions.builder().resumeAfter(token).build())
+            .defaultIfEmpty(ChangeStreamOptions.empty())
+            .flatMapMany(options -> mongoTemplate.changeStream("orders", options, Order.class))
             .doOnNext(event ->
                 tokenStore.saveToken(streamId, event.getResumeToken()).subscribe())
             .retryWhen(Retry.backoff(Long.MAX_VALUE, Duration.ofSeconds(1))
@@ -2233,10 +2228,10 @@ public class RateLimitFilter implements WebFilter {
     }
 
     private Bucket createBucket(String key) {
-        Bandwidth limit = Bandwidth.classic(
-            10,                                      // 버킷 용량 (버스트)
-            Refill.greedy(60, Duration.ofMinutes(1)) // 분당 60개 보충
-        );
+        Bandwidth limit = Bandwidth.builder()
+            .capacity(10)                                      // 버킷 용량 (버스트)
+            .refillGreedy(60, Duration.ofMinutes(1))           // 분당 60개 보충
+            .build();
         return Bucket.builder().addLimit(limit).build();
     }
 
@@ -2312,8 +2307,9 @@ public class UserRateLimitFilter implements WebFilter {
     }
 
     private Bucket createBucket(Plan plan) {
-        return Bucket.builder().addLimit(Bandwidth.classic(
-            plan.capacity, Refill.greedy(plan.capacity, plan.period))).build();
+        return Bucket.builder().addLimit(Bandwidth.builder()
+            .capacity(plan.capacity).refillGreedy(plan.capacity, plan.period)
+            .build()).build();
     }
 }
 ```
@@ -2328,10 +2324,11 @@ public class RateLimitConfig {
 
     @Bean
     public RouterFunction<ServerResponse> rateLimitedAuthRoutes(AuthHandler handler) {
-        return route(POST("/api/auth/login"), handler::login)
-            .filter(createRateLimitFilter(5, Duration.ofMinutes(1)))   // 분당 5회
-            .andRoute(POST("/api/auth/register"), handler::register)
+        RouterFunction<ServerResponse> loginRoute = route(POST("/api/auth/login"), handler::login)
+            .filter(createRateLimitFilter(5, Duration.ofMinutes(1)));   // 분당 5회
+        RouterFunction<ServerResponse> registerRoute = route(POST("/api/auth/register"), handler::register)
             .filter(createRateLimitFilter(3, Duration.ofHours(1)));    // 시간당 3회
+        return loginRoute.and(registerRoute);
     }
 
     private HandlerFilterFunction<ServerResponse, ServerResponse>
@@ -2342,7 +2339,7 @@ public class RateLimitConfig {
                 .map(a -> a.getAddress().getHostAddress()).orElse("unknown");
             Bucket bucket = buckets.computeIfAbsent(ip, k ->
                 Bucket.builder().addLimit(
-                    Bandwidth.classic(capacity, Refill.greedy(capacity, period))
+                    Bandwidth.builder().capacity(capacity).refillGreedy(capacity, period).build()
                 ).build());
 
             if (bucket.tryConsume(1)) return next.handle(request);
@@ -2573,6 +2570,7 @@ public class User {
 ```java
 public interface UserRepository extends ReactiveMongoRepository<User, String> {
     Mono<User> findByUsername(String username);
+    Mono<User> findByEmail(String email);
     Mono<Boolean> existsByUsername(String username);
 }
 ```
@@ -3119,6 +3117,8 @@ public class CustomOAuth2UserService
     }
 }
 ```
+
+> **참고**: 이 서비스는 OIDC를 지원하는 프로바이더(Google 등)에만 적용됩니다. GitHub 등 비-OIDC 프로바이더를 위해서는 `ReactiveOAuth2UserService<OAuth2UserRequest, OAuth2User>`를 별도로 구현해야 합니다.
 
 ### 11.6.4 Resource Server 설정
 

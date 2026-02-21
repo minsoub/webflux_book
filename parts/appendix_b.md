@@ -80,7 +80,7 @@ Criteria nor = new Criteria().norOperator(
 | 연산자 | 설명 | MongoDB 쿼리 예제 | Spring Data Criteria |
 |--------|------|-------------------|---------------------|
 | `$exists` | 필드 존재 여부 확인 | `{ email: { $exists: true } }` | `Criteria.where("email").exists(true)` |
-| `$type` | 필드의 BSON 타입 확인 | `{ age: { $type: "int" } }` | `Criteria.where("age").type(Type.INT32)` |
+| `$type` | 필드의 BSON 타입 확인 | `{ age: { $type: "int" } }` | `Criteria.where("age").type(16)` <!-- 16은 BSON INT32 타입 코드 --> |
 
 ---
 

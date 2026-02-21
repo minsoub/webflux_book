@@ -69,56 +69,53 @@
 <p>실제로 프로젝트에서 두 가지를 함께 사용할 때 패턴이 명확해진다. 간단한 CRUD 작업은 <code>ReactiveMongoRepository</code>로 깔끔하게 처리하고, 복잡한 쿼리나 특수한 요구사항이 있는 부분에서만 <code>ReactiveMongoTemplate</code>을 주입받아 사용하는 식이다.</p>
 <h3 id="812-reactivemongotemplate-crud">8.1.2 ReactiveMongoTemplate 기본 CRUD</h3>
 <p>좋은 소식은 <code>ReactiveMongoTemplate</code>이 Spring Boot의 자동 설정에 포함되어 있다는 것이다. 따라서 특별한 설정 없이 주입받기만 하면 바로 사용할 수 있다.</p>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
-public class ProductQueryService {</p>
-<pre><code>private final ReactiveMongoTemplate mongoTemplate;
+public class ProductQueryService {
 
-public Flux&lt;Product&gt; findAll() {
-    return mongoTemplate.findAll(Product.class);
-}
+    private final ReactiveMongoTemplate mongoTemplate;
 
-public Mono&lt;Product&gt; findById(String id) {
-    return mongoTemplate.findById(id, Product.class);
-}
+    public Flux&lt;Product&gt; findAll() {
+        return mongoTemplate.findAll(Product.class);
+    }
 
-public Flux&lt;Product&gt; findByCategory(String category) {
-    Query query = Query.query(Criteria.where("category").is(category));
-    return mongoTemplate.find(query, Product.class);
-}
+    public Mono&lt;Product&gt; findById(String id) {
+        return mongoTemplate.findById(id, Product.class);
+    }
 
-public Mono&lt;Product&gt; insert(Product product) {
-    return mongoTemplate.insert(product);
-}
+    public Flux&lt;Product&gt; findByCategory(String category) {
+        Query query = Query.query(Criteria.where("category").is(category));
+        return mongoTemplate.find(query, Product.class);
+    }
 
-public Mono&lt;DeleteResult&gt; deleteById(String id) {
-    Query query = Query.query(Criteria.where("id").is(id));
-    return mongoTemplate.remove(query, Product.class);
-}
-</code></pre>
-<p>}
-```</p>
+    public Mono&lt;Product&gt; insert(Product product) {
+        return mongoTemplate.insert(product);
+    }
+
+    public Mono&lt;DeleteResult&gt; deleteById(String id) {
+        Query query = Query.query(Criteria.where("id").is(id));
+        return mongoTemplate.remove(query, Product.class);
+    }
+}</code></pre>
 <h3 id="813-query-update">8.1.3 Query와 Update 객체</h3>
 <p>실제 쿼리를 작성할 때는 <code>Query</code> 객체와 <code>Update</code> 객체를 다루게 된다. 전자는 "어떤 도큐먼트를 찾을 것인가"를 정의하고, 후자는 "어떤 필드를 어떻게 수정할 것인가"를 담당한다.</p>
-<p>```java
-// 특정 필드만 업데이트 (부분 업데이트)
-public Mono<UpdateResult> updatePrice(String productId, BigDecimal newPrice) {
+<pre class="highlight"><code class="language-java">// 특정 필드만 업데이트 (부분 업데이트)
+public Mono&lt;UpdateResult&gt; updatePrice(String productId, BigDecimal newPrice) {
     Query query = Query.query(Criteria.where("id").is(productId));
     Update update = new Update()
         .set("price", newPrice)
         .set("updatedAt", LocalDateTime.now());
     return mongoTemplate.updateFirst(query, update, Product.class);
-}</p>
-<p>// 조건에 맞는 모든 도큐먼트 업데이트
-public Mono<UpdateResult> applyDiscount(String category, int discountPercent) {
+}
+
+// 조건에 맞는 모든 도큐먼트 업데이트
+public Mono&lt;UpdateResult&gt; applyDiscount(String category, int discountPercent) {
     Query query = Query.query(Criteria.where("category").is(category));
     Update update = new Update()
         .mul("price", (100 - discountPercent) / 100.0)
         .set("updatedAt", LocalDateTime.now());
     return mongoTemplate.updateMulti(query, update, Product.class);
-}
-```</p>
+}</code></pre>
 <p><code>Update</code> 객체의 주요 메서드는 다음과 같다.</p>
 <table>
 <thead>
@@ -168,18 +165,18 @@ public Mono<UpdateResult> applyDiscount(String category, int discountPercent) {
 </table>
 <h3 id="814-upsert-findandmodify">8.1.4 Upsert와 findAndModify</h3>
 <p>여기서 정말 유용한 두 가지 패턴을 소개하려고 한다. 먼저 <code>upsert</code>는 "있으면 수정하고, 없으면 생성해"라는 요구사항을 한 번에 처리할 수 있는 원자적 연산이다. <code>findAndModify()</code>는 다르게, 도큐먼트를 수정한 후 그 결과를 바로 반환하기 때문에 "방금 수정한 상태"를 즉시 확인해야 할 때 쓸모가 있다. 필자의 경험상 이 두 메서드는 재고 관리나 카운터 증감 같은 시나리오에서 정말 자주 사용된다.</p>
-<p>```java
-// Upsert: 조회수 카운터 — 없으면 생성, 있으면 증가
-public Mono<UpdateResult> incrementViewCount(String productId) {
+<pre class="highlight"><code class="language-java">// Upsert: 조회수 카운터 — 없으면 생성, 있으면 증가
+public Mono&lt;UpdateResult&gt; incrementViewCount(String productId) {
     Query query = Query.query(Criteria.where("productId").is(productId));
     Update update = new Update()
         .inc("viewCount", 1)
         .setOnInsert("productId", productId)
         .setOnInsert("createdAt", LocalDateTime.now());
     return mongoTemplate.upsert(query, update, "product_views");
-}</p>
-<p>// findAndModify: 재고 차감 — 원자적으로 수행하고 수정된 결과 반환
-public Mono<Product> decrementStock(String productId, int quantity) {
+}
+
+// findAndModify: 재고 차감 — 원자적으로 수행하고 수정된 결과 반환
+public Mono&lt;Product&gt; decrementStock(String productId, int quantity) {
     Query query = Query.query(
         Criteria.where("id").is(productId).and("stock").gte(quantity)
     );
@@ -188,18 +185,16 @@ public Mono<Product> decrementStock(String productId, int quantity) {
         .returnNew(true)
         .upsert(false);
     return mongoTemplate.findAndModify(query, update, options, Product.class);
-}
-```</p>
+}</code></pre>
 <p><code>setOnInsert()</code>는 도큐먼트가 새로 삽입될 때만 적용되는 필드를 지정한다. MongoDB의 <code>$setOnInsert</code> 연산자에 대응한다.</p>
 <hr>
 <h2 id="82-criteria-api">8.2 커스텀 쿼리와 Criteria API</h2>
 <h3 id="821-criteria">8.2.1 Criteria 기본 사용법</h3>
 <p>이제 본격적으로 동적 쿼리를 만들어보자. <code>Criteria</code>라는 클래스를 사용하면, MongoDB의 복잡한 쿼리 문법을 자바스럽게 빌더 패턴으로 구성할 수 있다.</p>
-<p><code>java
-Criteria.where("category").is("electronics");       // 등호
+<pre class="highlight"><code class="language-java">Criteria.where("category").is("electronics");       // 등호
 Criteria.where("price").gte(10000).lte(50000);       // 범위
 Criteria.where("description").exists(true);           // 존재 여부
-Criteria.where("deletedAt").isNull();                 // null 체크</code></p>
+Criteria.where("deletedAt").isNull();                 // null 체크 — Spring Data MongoDB 4.x+ (Boot 3.2+)</code></pre>
 <p>주요 비교 메서드는 다음과 같다.</p>
 <table>
 <thead>
@@ -239,20 +234,21 @@ Criteria.where("deletedAt").isNull();                 // null 체크</code></p>
 </table>
 <h3 id="822-andorinregex">8.2.2 복잡한 조건 조합 (and/or/in/regex)</h3>
 <p>실무에서는 사용자의 검색 조건이 복합적이어서 여러 논리 연산자를 조합해야 한다. 다음 예제들이 자주 나타나는 패턴들이다.</p>
-<p>```java
-// AND 조건 — 체이닝
+<pre class="highlight"><code class="language-java">// AND 조건 — 체이닝
 Query query = Query.query(
     Criteria.where("category").is("electronics")
         .and("price").gte(10000).and("stock").gt(0)
-);</p>
-<p>// OR 조건
+);
+
+// OR 조건
 Query query = Query.query(
     new Criteria().orOperator(
         Criteria.where("category").is("electronics"),
         Criteria.where("category").is("books")
     )
-);</p>
-<p>// AND + OR 혼합
+);
+
+// AND + OR 혼합
 Query query = Query.query(
     new Criteria().orOperator(
         new Criteria().andOperator(
@@ -262,78 +258,75 @@ Query query = Query.query(
             Criteria.where("category").is("books"),
             Criteria.where("price").gte(5000))
     )
-);</p>
-<p>// in, regex, elemMatch
+);
+
+// in, regex, elemMatch
 Criteria.where("category").in("electronics", "books", "clothing");
 Criteria.where("name").regex("갤럭시", "i");  // 대소문자 무시
 Criteria.where("tags").elemMatch(
     Criteria.where("name").is("sale").and("active").is(true)
-);
-```</p>
+);</code></pre>
 <h3 id="823-projection">8.2.3 정렬, 페이징, Projection</h3>
 <p>검색 결과를 정렬하고 페이징하는 것은 기본이다. 그리고 때론 모든 필드가 필요한 게 아니라 특정 필드만 가져오면 되는 경우도 있는데, 이때 Projection을 사용하면 네트워크 트래픽과 메모리 사용량을 줄일 수 있다.</p>
-<p>```java
-// 정렬 + 페이징
-public Flux<Product> findWithPaging(String category, int page, int size) {
+<pre class="highlight"><code class="language-java">// 정렬 + 페이징
+public Flux&lt;Product&gt; findWithPaging(String category, int page, int size) {
     Query query = Query.query(Criteria.where("category").is(category))
         .with(Sort.by(Sort.Direction.DESC, "createdAt"))
         .skip((long) page * size)
         .limit(size);
     return mongoTemplate.find(query, Product.class);
-}</p>
-<p>// 전체 건수 조회 (페이징 UI용)
-public Mono<Long> countByCategory(String category) {
+}
+
+// 전체 건수 조회 (페이징 UI용)
+public Mono&lt;Long&gt; countByCategory(String category) {
     Query query = Query.query(Criteria.where("category").is(category));
     return mongoTemplate.count(query, Product.class);
-}</p>
-<p>// Projection — 필요한 필드만 선택
-public Flux<ProductSummary> findSummaries() {
+}
+
+// Projection — 필요한 필드만 선택
+public Flux&lt;ProductSummary&gt; findSummaries() {
     Query query = new Query();
     query.fields().include("name").include("price").include("category");
     return mongoTemplate.find(query, ProductSummary.class, "products");
-}
-```</p>
+}</code></pre>
 <h3 id="824">8.2.4 동적 쿼리 구성</h3>
 <p>이 부분이 정말 중요하다. 실무에서는 사용자가 모든 필터를 입력하지 않는다. 카테고리만 선택할 수도 있고, 가격 범위만 선택할 수도 있고, 검색어만 입력할 수도 있다. 따라서 쿼리를 동적으로 구성해야 한다.</p>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
-public class ProductSearchService {</p>
-<pre><code>private final ReactiveMongoTemplate mongoTemplate;
+public class ProductSearchService {
 
-public Flux&lt;Product&gt; search(ProductSearchCriteria sc) {
-    Query query = new Query();
+    private final ReactiveMongoTemplate mongoTemplate;
 
-    if (sc.getCategory() != null) {
-        query.addCriteria(Criteria.where("category").is(sc.getCategory()));
-    }
-    if (sc.getMinPrice() != null || sc.getMaxPrice() != null) {
-        Criteria price = Criteria.where("price");
-        if (sc.getMinPrice() != null) price = price.gte(sc.getMinPrice());
-        if (sc.getMaxPrice() != null) price = price.lte(sc.getMaxPrice());
-        query.addCriteria(price);
-    }
-    if (sc.getKeyword() != null) {
-        query.addCriteria(Criteria.where("name").regex(sc.getKeyword(), "i"));
-    }
-    if (Boolean.TRUE.equals(sc.getInStockOnly())) {
-        query.addCriteria(Criteria.where("stock").gt(0));
-    }
+    public Flux&lt;Product&gt; search(ProductSearchCriteria sc) {
+        Query query = new Query();
 
-    query.with(Sort.by(
-        Sort.Direction.fromString(
-            sc.getSortDirection() != null ? sc.getSortDirection() : "DESC"),
-        sc.getSortBy() != null ? sc.getSortBy() : "createdAt"
-    ));
-    query.skip((long) sc.getPage() * sc.getSize()).limit(sc.getSize());
+        if (sc.getCategory() != null) {
+            query.addCriteria(Criteria.where("category").is(sc.getCategory()));
+        }
+        if (sc.getMinPrice() != null || sc.getMaxPrice() != null) {
+            Criteria price = Criteria.where("price");
+            if (sc.getMinPrice() != null) price = price.gte(sc.getMinPrice());
+            if (sc.getMaxPrice() != null) price = price.lte(sc.getMaxPrice());
+            query.addCriteria(price);
+        }
+        if (sc.getKeyword() != null) {
+            query.addCriteria(Criteria.where("name").regex(sc.getKeyword(), "i"));
+        }
+        if (Boolean.TRUE.equals(sc.getInStockOnly())) {
+            query.addCriteria(Criteria.where("stock").gt(0));
+        }
 
-    return mongoTemplate.find(query, Product.class);
-}
-</code></pre>
-<p>}
-```</p>
-<p><code>java
-@Data
+        query.with(Sort.by(
+            Sort.Direction.fromString(
+                sc.getSortDirection() != null ? sc.getSortDirection() : "DESC"),
+            sc.getSortBy() != null ? sc.getSortBy() : "createdAt"
+        ));
+        query.skip((long) sc.getPage() * sc.getSize()).limit(sc.getSize());
+
+        return mongoTemplate.find(query, Product.class);
+    }
+}</code></pre>
+<pre class="highlight"><code class="language-java">@Data
 @Builder
 public class ProductSearchCriteria {
     private String category;
@@ -345,7 +338,7 @@ public class ProductSearchCriteria {
     private String sortDirection;
     @Builder.Default private int page = 0;
     @Builder.Default private int size = 20;
-}</code></p>
+}</code></pre>
 <hr>
 <h2 id="83-aggregation-pipeline">8.3 Aggregation Pipeline 사용</h2>
 <h3 id="831-aggregation-pipeline">8.3.1 Aggregation Pipeline 개념</h3>
@@ -400,8 +393,7 @@ public class ProductSearchCriteria {
 </table>
 <h3 id="832">8.3.2 기본 집계: 카테고리별 통계</h3>
 <p>가장 단순하면서도 유용한 예제부터 보자. 활성 상태의 상품들을 카테고리별로 그룹핑해서 통계를 낸다.</p>
-<p><code>java
-public Flux&lt;CategoryStats&gt; getCategoryStats() {
+<pre class="highlight"><code class="language-java">public Flux&lt;CategoryStats&gt; getCategoryStats() {
     Aggregation aggregation = Aggregation.newAggregation(
         Aggregation.match(Criteria.where("active").is(true)),
         Aggregation.group("category")
@@ -416,9 +408,8 @@ public Flux&lt;CategoryStats&gt; getCategoryStats() {
             .andInclude("productCount", "avgPrice", "minPrice", "maxPrice", "totalStock")
     );
     return mongoTemplate.aggregate(aggregation, "products", CategoryStats.class);
-}</code></p>
-<p><code>java
-@Data
+}</code></pre>
+<pre class="highlight"><code class="language-java">@Data
 public class CategoryStats {
     private String category;
     private long productCount;
@@ -426,14 +417,13 @@ public class CategoryStats {
     private double minPrice;
     private double maxPrice;
     private long totalStock;
-}</code></p>
+}</code></pre>
 <h3 id="833-typedaggregation">8.3.3 TypedAggregation</h3>
 <p>작은 팁이지만 실무에서는 꽤 유용하다. <code>TypedAggregation</code>을 사용하면 도메인 클래스를 첫 번째 인자로 전달해서 컬렉션 이름을 자동으로 추론할 수 있다. <code>Aggregation.newAggregation(Product.class, ...)</code>처럼 쓰면 되고, <code>aggregate()</code> 호출할 때 컬렉션 이름을 명시하지 않아도 된다는 뜻이다. 코드가 조금 더 깔끔해진다.</p>
 <h3 id="834-unwind-lookup">8.3.4 Unwind와 Lookup</h3>
 <p>두 가지 고급 스테이지가 있다. <strong>Unwind</strong>는 배열 필드를 개별 도큐먼트로 분해해서, 배열의 각 요소에 대해 별도의 행이 생기도록 한다. <strong>Lookup</strong>은 SQL의 JOIN처럼 다른 컬렉션과 조인하는 역할을 한다.</p>
-<p>```java
-// 태그별 상품 수 집계 (Unwind)
-public Flux<TagStats> getTagStats() {
+<pre class="highlight"><code class="language-java">// 태그별 상품 수 집계 (Unwind)
+public Flux&lt;TagStats&gt; getTagStats() {
     Aggregation aggregation = Aggregation.newAggregation(
         Aggregation.unwind("tags"),
         Aggregation.group("tags").count().as("count").avg("price").as("avgPrice"),
@@ -441,9 +431,10 @@ public Flux<TagStats> getTagStats() {
         Aggregation.limit(10)
     );
     return mongoTemplate.aggregate(aggregation, "products", TagStats.class);
-}</p>
-<p>// 주문 + 사용자 조인 (Lookup)
-public Flux<OrderWithUser> getOrdersWithUserInfo() {
+}
+
+// 주문 + 사용자 조인 (Lookup)
+public Flux&lt;OrderWithUser&gt; getOrdersWithUserInfo() {
     Aggregation aggregation = Aggregation.newAggregation(
         Aggregation.lookup("users", "userId", "_id", "userInfo"),
         Aggregation.unwind("userInfo"),
@@ -453,156 +444,139 @@ public Flux<OrderWithUser> getOrdersWithUserInfo() {
             .and("userInfo.email").as("userEmail")
     );
     return mongoTemplate.aggregate(aggregation, "orders", OrderWithUser.class);
-}
-```</p>
+}</code></pre>
 <h3 id="835-api">8.3.5 실전 통계 API: 일별 매출 집계</h3>
 <p>이제 실제로 대시보드에 쓸 수 있는 통계를 만들어보자. 일정 기간 동안 완료된 주문들의 일별 매출, 주문 건수, 평균 주문액을 조회한다.</p>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
-public class SalesStatisticsService {</p>
-<pre><code>private final ReactiveMongoTemplate mongoTemplate;
+public class SalesStatisticsService {
 
-public Flux&lt;DailySales&gt; getDailySales(LocalDateTime from, LocalDateTime to) {
-    Aggregation aggregation = Aggregation.newAggregation(
-        Aggregation.match(
-            Criteria.where("orderDate").gte(from).lte(to)
-                .and("status").is("COMPLETED")),
-        Aggregation.project()
-            .andExpression("dateToString('%Y-%m-%d', orderDate)").as("date")
-            .andInclude("totalAmount"),
-        Aggregation.group("date")
-            .sum("totalAmount").as("totalSales")
-            .count().as("orderCount")
-            .avg("totalAmount").as("avgOrderAmount"),
-        Aggregation.sort(Sort.Direction.ASC, "_id"),
-        Aggregation.project()
-            .and("_id").as("date")
-            .andInclude("totalSales", "orderCount", "avgOrderAmount")
-    );
-    return mongoTemplate.aggregate(aggregation, "orders", DailySales.class);
-}
-</code></pre>
-<p>}
-```</p>
-<p>```java
-@RestController
+    private final ReactiveMongoTemplate mongoTemplate;
+
+    public Flux&lt;DailySales&gt; getDailySales(LocalDateTime from, LocalDateTime to) {
+        Aggregation aggregation = Aggregation.newAggregation(
+            Aggregation.match(
+                Criteria.where("orderDate").gte(from).lte(to)
+                    .and("status").is("COMPLETED")),
+            Aggregation.project()
+                .andExpression("dateToString('%Y-%m-%d', orderDate)").as("date")
+                .andInclude("totalAmount"),
+            Aggregation.group("date")
+                .sum("totalAmount").as("totalSales")
+                .count().as("orderCount")
+                .avg("totalAmount").as("avgOrderAmount"),
+            Aggregation.sort(Sort.Direction.ASC, "_id"),
+            Aggregation.project()
+                .and("_id").as("date")
+                .andInclude("totalSales", "orderCount", "avgOrderAmount")
+        );
+        return mongoTemplate.aggregate(aggregation, "orders", DailySales.class);
+    }
+}</code></pre>
+<pre class="highlight"><code class="language-java">@RestController
 @RequestMapping("/api/statistics")
 @RequiredArgsConstructor
-public class StatisticsController {</p>
-<pre><code>private final SalesStatisticsService salesStatisticsService;
+public class StatisticsController {
 
-@GetMapping("/daily-sales")
-public Flux&lt;DailySales&gt; getDailySales(
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
-    return salesStatisticsService.getDailySales(from, to);
-}
-</code></pre>
-<p>}
-```</p>
+    private final SalesStatisticsService salesStatisticsService;
+
+    @GetMapping("/daily-sales")
+    public Flux&lt;DailySales&gt; getDailySales(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
+        return salesStatisticsService.getDailySales(from, to);
+    }
+}</code></pre>
 <hr>
 <h2 id="84-change-streams">8.4 변경 스트림(Change Streams) 활용</h2>
 <h3 id="841-change-streams">8.4.1 Change Streams 개념</h3>
 <p>MongoDB의 Change Streams라는 기능이 있는데, 이걸 쓰면 컬렉션의 모든 데이터 변경(삽입, 수정, 삭제)을 실시간으로 감시할 수 있다. 내부적으로는 MongoDB의 oplog를 기반으로 동작한다. 주의할 점은 <strong>Replica Set 또는 Sharded Cluster 환경에서만 사용 가능</strong>하다는 것인데, 로컬 개발 환경에서도 Docker로 단일 노드 Replica Set을 구성하면 테스트할 수 있다. 실시간 알림, 이벤트 발행, 데이터 동기화, 캐시 무효화 같은 작업에 유용하다.</p>
 <h3 id="842-reactivemongotemplate-change-streams">8.4.2 ReactiveMongoTemplate으로 Change Streams 구독</h3>
 <p><code>ReactiveMongoTemplate</code>의 <code>changeStream()</code> 메서드를 사용하면 특정 컬렉션의 변경을 Flux로 수신할 수 있다. 여러 필터를 조합해서 원하는 이벤트만 감시할 수 있다.</p>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
 @Slf4j
-public class OrderChangeStreamService {</p>
-<pre><code>private final ReactiveMongoTemplate mongoTemplate;
+public class OrderChangeStreamService {
 
-// INSERT 이벤트 실시간 감시
-public Flux&lt;ChangeStreamEvent&lt;Order&gt;&gt; watchNewOrders() {
-    return mongoTemplate.changeStream("orders",
-            ChangeStreamOptions.builder()
-                .filter(Aggregation.newAggregation(
-                    Aggregation.match(
-                        Criteria.where("operationType").is("insert"))))
-                .build(),
-            Order.class)
-        .doOnNext(event -&gt; log.info("새 주문 감지: orderId={}",
-            event.getBody().getId()));
-}
+    private final ReactiveMongoTemplate mongoTemplate;
 
-// UPDATE 이벤트 감시 (전체 도큐먼트 수신)
-public Flux&lt;ChangeStreamEvent&lt;Order&gt;&gt; watchOrderStatusChanges() {
-    return mongoTemplate.changeStream("orders",
-            ChangeStreamOptions.builder()
-                .filter(Aggregation.newAggregation(
-                    Aggregation.match(
-                        Criteria.where("operationType").is("update")
-                            .and("updateDescription.updatedFields.status").exists(true))))
-                .returnFullDocumentOnUpdate()
-                .build(),
-            Order.class);
-}
-</code></pre>
-<p>}
-```</p>
+    // INSERT 이벤트 실시간 감시
+    public Flux&lt;ChangeStreamEvent&lt;Order&gt;&gt; watchNewOrders() {
+        return mongoTemplate.changeStream("orders",
+                ChangeStreamOptions.builder()
+                    .filter(Aggregation.newAggregation(
+                        Aggregation.match(
+                            Criteria.where("operationType").is("insert"))))
+                    .build(),
+                Order.class)
+            .doOnNext(event -&gt; log.info("새 주문 감지: orderId={}",
+                event.getBody().getId()));
+    }
+
+    // UPDATE 이벤트 감시 (전체 도큐먼트 수신)
+    public Flux&lt;ChangeStreamEvent&lt;Order&gt;&gt; watchOrderStatusChanges() {
+        return mongoTemplate.changeStream("orders",
+                ChangeStreamOptions.builder()
+                    .filter(Aggregation.newAggregation(
+                        Aggregation.match(
+                            Criteria.where("operationType").is("update")
+                                .and("updateDescription.updatedFields.status").exists(true))))
+                    .returnFullDocumentOnUpdate()
+                    .build(),
+                Order.class);
+    }
+}</code></pre>
 <p>한 가지 중요한 옵션이 <code>returnFullDocumentOnUpdate()</code>인데, 이걸 호출하면 UPDATE 이벤트가 발생했을 때 변경된 필드만 받는 대신 전체 도큐먼트를 받을 수 있다. 상황에 따라 필요한 쪽을 선택해서 사용하면 된다.</p>
 <h3 id="843-change-streams-sse">8.4.3 Change Streams + SSE 연동</h3>
 <p>Change Streams로 감시한 이벤트를 Server-Sent Events(SSE)로 클라이언트에게 실시간으로 푸시할 수 있다. 이렇게 하면 웹 클라이언트가 새로운 주문, 상태 변경 같은 이벤트를 즉시 받을 수 있다.</p>
-<p>```java
-@RestController
+<pre class="highlight"><code class="language-java">@RestController
 @RequestMapping("/api/notifications")
 @RequiredArgsConstructor
-public class NotificationController {</p>
-<pre><code>private final OrderChangeStreamService changeStreamService;
+public class NotificationController {
 
-@GetMapping(value = "/orders", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-public Flux&lt;ServerSentEvent&lt;Order&gt;&gt; streamNewOrders() {
-    return changeStreamService.watchNewOrders()
-        .map(event -&gt; ServerSentEvent.&lt;Order&gt;builder()
-            .id(event.getResumeToken().toJson())
-            .event("new-order")
-            .data(event.getBody())
-            .build());
-}
-</code></pre>
-<p>}
-```</p>
+    private final OrderChangeStreamService changeStreamService;
+
+    @GetMapping(value = "/orders", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux&lt;ServerSentEvent&lt;Order&gt;&gt; streamNewOrders() {
+        return changeStreamService.watchNewOrders()
+            .map(event -&gt; ServerSentEvent.&lt;Order&gt;builder()
+                .id(event.getResumeToken().toJson())
+                .event("new-order")
+                .data(event.getBody())
+                .build());
+    }
+}</code></pre>
 <h3 id="844-resume-token">8.4.4 Resume Token을 이용한 재연결</h3>
 <p>실시간 시스템의 가장 까다로운 부분은 네트워크가 끊어졌을 때 처리다. Change Streams는 이런 상황에 대비해 <code>resume token</code>이라는 것을 제공한다. 이 토큰을 저장해두면 연결이 끊어진 후에도 마지막 이벤트부터 이어서 수신할 수 있다. 아주 유용한 기능이다.</p>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
 @Slf4j
-public class ResilientChangeStreamService {</p>
-<pre><code>private final ReactiveMongoTemplate mongoTemplate;
-private final ResumeTokenStore tokenStore;
+public class ResilientChangeStreamService {
 
-public Flux&lt;ChangeStreamEvent&lt;Order&gt;&gt; watchWithResume(String streamId) {
-    return tokenStore.getLastToken(streamId)
-        .flatMapMany(lastToken -&gt; {
-            ChangeStreamOptions.ChangeStreamOptionsBuilder builder =
-                ChangeStreamOptions.builder();
-            if (lastToken != null) {
-                builder.resumeAfter(lastToken);
-            }
-            return mongoTemplate.changeStream("orders", builder.build(), Order.class);
-        })
-        .doOnNext(event -&gt;
-            tokenStore.saveToken(streamId, event.getResumeToken()).subscribe())
-        .retryWhen(Retry.backoff(Long.MAX_VALUE, Duration.ofSeconds(1))
-            .maxBackoff(Duration.ofMinutes(1))
-            .doBeforeRetry(signal -&gt;
-                log.warn("Change Stream 재연결 시도: attempt={}",
-                    signal.totalRetries())));
-}
-</code></pre>
-<p>}
-```</p>
+    private final ReactiveMongoTemplate mongoTemplate;
+    private final ResumeTokenStore tokenStore;
+
+    public Flux&lt;ChangeStreamEvent&lt;Order&gt;&gt; watchWithResume(String streamId) {
+        return tokenStore.getLastToken(streamId)
+            .map(token -&gt; ChangeStreamOptions.builder().resumeAfter(token).build())
+            .defaultIfEmpty(ChangeStreamOptions.empty())
+            .flatMapMany(options -&gt; mongoTemplate.changeStream("orders", options, Order.class))
+            .doOnNext(event -&gt;
+                tokenStore.saveToken(streamId, event.getResumeToken()).subscribe())
+            .retryWhen(Retry.backoff(Long.MAX_VALUE, Duration.ofSeconds(1))
+                .maxBackoff(Duration.ofMinutes(1))
+                .doBeforeRetry(signal -&gt;
+                    log.warn("Change Stream 재연결 시도: attempt={}",
+                        signal.totalRetries())));
+    }
+}</code></pre>
 <p><code>ResumeTokenStore</code> 컴포넌트는 resume token을 MongoDB에 저장하고 조회하는 역할을 한다. 보통 <code>upsert</code>를 활용해서 구현한다. 이벤트를 처리할 때마다 토큰을 저장해두면 애플리케이션이 재시작되더라도 유실 없이 그 다음부터의 이벤트를 이어서 수신할 수 있다. 필자의 경험상 이런 안정성 기능은 프로덕션 환경에서 정말 중요하다.</p>
 <hr>
 <h2 id="85-reactivemongotransactionmanager">8.5 트랜잭션 처리 (ReactiveMongoTransactionManager)</h2>
 <h3 id="851-mongodb">8.5.1 MongoDB 트랜잭션의 전제 조건</h3>
 <p>MongoDB의 트랜잭션은 꽤 최근에 지원되기 시작했고, 중요한 제약이 하나 있다. <strong>Replica Set 환경에서만 사용할 수 있다</strong>는 것이다. 다행히 Docker Compose로 단일 노드 Replica Set을 구성할 수 있어서 로컬 개발 환경에서도 충분히 테스트할 수 있다.</p>
-<p>```yaml</p>
-<h1 id="docker-composeyml">docker-compose.yml</h1>
-<p>services:
+<pre class="highlight"><code class="language-yaml"># docker-compose.yml
+services:
   mongodb:
     image: mongo:7.0
     ports:
@@ -612,95 +586,88 @@ public Flux&lt;ChangeStreamEvent&lt;Order&gt;&gt; watchWithResume(String streamI
       test: echo "try { rs.status() } catch (err) { rs.initiate() }" | mongosh
       interval: 5s
       timeout: 30s
-      retries: 5
-```</p>
+      retries: 5</code></pre>
 <h3 id="852-reactivemongotransactionmanager">8.5.2 ReactiveMongoTransactionManager 설정</h3>
-<p>```java
-@Configuration
-public class MongoTransactionConfig {</p>
-<pre><code>@Bean
-public ReactiveMongoTransactionManager transactionManager(
-        ReactiveMongoDatabaseFactory dbFactory) {
-    return new ReactiveMongoTransactionManager(dbFactory);
-}
-</code></pre>
-<p>}
-```</p>
+<pre class="highlight"><code class="language-java">@Configuration
+public class MongoTransactionConfig {
+
+    @Bean
+    public ReactiveMongoTransactionManager transactionManager(
+            ReactiveMongoDatabaseFactory dbFactory) {
+        return new ReactiveMongoTransactionManager(dbFactory);
+    }
+}</code></pre>
 <h3 id="853-transactional">8.5.3 @Transactional 어노테이션 사용</h3>
 <p>가장 간단한 방법은 서비스 메서드에 <code>@Transactional</code>을 붙이는 것이다. Spring이 자동으로 트랜잭션 경계를 관리해주고, 예외가 발생하면 모든 변경사항을 자동으로 롤백한다.</p>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
-public class OrderService {</p>
-<pre><code>private final ReactiveMongoTemplate mongoTemplate;
-private final ProductService productService;
+public class OrderService {
 
-@Transactional
-public Mono&lt;Order&gt; createOrder(OrderRequest request) {
-    return Flux.fromIterable(request.getItems())
-        .flatMap(item -&gt;
-            productService.decrementStock(item.getProductId(), item.getQuantity())
-                .switchIfEmpty(Mono.error(new InsufficientStockException(
-                    "재고 부족: productId=" + item.getProductId()))))
-        .collectList()
-        .flatMap(products -&gt; {
-            Order order = Order.builder()
-                .userId(request.getUserId())
-                .items(request.getItems())
-                .totalAmount(calculateTotal(request.getItems(), products))
-                .status("CREATED")
-                .orderDate(LocalDateTime.now())
-                .build();
-            return mongoTemplate.insert(order);
-        });
-}
-</code></pre>
-<p>}
-```</p>
+    private final ReactiveMongoTemplate mongoTemplate;
+    private final ProductService productService;
+
+    @Transactional
+    public Mono&lt;Order&gt; createOrder(OrderRequest request) {
+        return Flux.fromIterable(request.getItems())
+            .flatMap(item -&gt;
+                productService.decrementStock(item.getProductId(), item.getQuantity())
+                    .switchIfEmpty(Mono.error(new InsufficientStockException(
+                        "재고 부족: productId=" + item.getProductId()))))
+            .collectList()
+            .flatMap(products -&gt; {
+                Order order = Order.builder()
+                    .userId(request.getUserId())
+                    .items(request.getItems())
+                    .totalAmount(calculateTotal(request.getItems(), products))
+                    .status("CREATED")
+                    .orderDate(LocalDateTime.now())
+                    .build();
+                return mongoTemplate.insert(order);
+            });
+    }
+}</code></pre>
 <h3 id="854-transactionaloperator">8.5.4 TransactionalOperator 프로그래밍 방식</h3>
 <p>선언적 방식 외에도 프로그래밍 방식으로 트랜잭션 경계를 세밀하게 제어할 수 있다. <code>TransactionalOperator</code>를 사용하면 더 유연해진다. 예를 들어 특정 조건에서만 트랜잭션을 적용하거나, 여러 개의 독립적인 트랜잭션을 순서대로 실행할 때 유용하다.</p>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
-public class TransferService {</p>
-<pre><code>private final ReactiveMongoTemplate mongoTemplate;
-private final TransactionalOperator transactionalOperator;
+public class TransferService {
 
-public Mono&lt;TransferResult&gt; transferPoints(
-        String fromUserId, String toUserId, int amount) {
+    private final ReactiveMongoTemplate mongoTemplate;
+    private final TransactionalOperator transactionalOperator;
 
-    Mono&lt;TransferResult&gt; transferMono = deductPoints(fromUserId, amount)
-        .then(addPoints(toUserId, amount))
-        .then(createTransferLog(fromUserId, toUserId, amount))
-        .map(log -&gt; new TransferResult("SUCCESS", log.getId()));
+    public Mono&lt;TransferResult&gt; transferPoints(
+            String fromUserId, String toUserId, int amount) {
 
-    return transactionalOperator.transactional(transferMono);
-}
+        Mono&lt;TransferResult&gt; transferMono = deductPoints(fromUserId, amount)
+            .then(addPoints(toUserId, amount))
+            .then(createTransferLog(fromUserId, toUserId, amount))
+            .map(log -&gt; new TransferResult("SUCCESS", log.getId()));
 
-private Mono&lt;UpdateResult&gt; deductPoints(String userId, int amount) {
-    Query query = Query.query(
-        Criteria.where("id").is(userId).and("points").gte(amount));
-    Update update = new Update().inc("points", -amount);
-    return mongoTemplate.updateFirst(query, update, User.class)
-        .flatMap(result -&gt; result.getModifiedCount() == 0
-            ? Mono.error(new InsufficientPointsException("포인트 부족"))
-            : Mono.just(result));
-}
+        return transactionalOperator.transactional(transferMono);
+    }
 
-private Mono&lt;UpdateResult&gt; addPoints(String userId, int amount) {
-    Query query = Query.query(Criteria.where("id").is(userId));
-    return mongoTemplate.updateFirst(query, new Update().inc("points", amount), User.class);
-}
+    private Mono&lt;UpdateResult&gt; deductPoints(String userId, int amount) {
+        Query query = Query.query(
+            Criteria.where("id").is(userId).and("points").gte(amount));
+        Update update = new Update().inc("points", -amount);
+        return mongoTemplate.updateFirst(query, update, User.class)
+            .flatMap(result -&gt; result.getModifiedCount() == 0
+                ? Mono.error(new InsufficientPointsException("포인트 부족"))
+                : Mono.just(result));
+    }
 
-private Mono&lt;TransferLog&gt; createTransferLog(
-        String fromUserId, String toUserId, int amount) {
-    return mongoTemplate.insert(TransferLog.builder()
-        .fromUserId(fromUserId).toUserId(toUserId)
-        .amount(amount).transferredAt(LocalDateTime.now()).build());
-}
-</code></pre>
-<p>}
-```</p>
+    private Mono&lt;UpdateResult&gt; addPoints(String userId, int amount) {
+        Query query = Query.query(Criteria.where("id").is(userId));
+        return mongoTemplate.updateFirst(query, new Update().inc("points", amount), User.class);
+    }
+
+    private Mono&lt;TransferLog&gt; createTransferLog(
+            String fromUserId, String toUserId, int amount) {
+        return mongoTemplate.insert(TransferLog.builder()
+            .fromUserId(fromUserId).toUserId(toUserId)
+            .amount(amount).transferredAt(LocalDateTime.now()).build());
+    }
+}</code></pre>
 <h3 id="855-transactional-vs-transactionaloperator">8.5.5 @Transactional vs TransactionalOperator 선택 기준</h3>
 <table>
 <thead>
@@ -737,98 +704,89 @@ private Mono&lt;TransferLog&gt; createTransferLog(
 <h2 id="86">8.6 인덱스 관리와 쿼리 성능 최적화</h2>
 <h3 id="861-indexed">8.6.1 @Indexed 어노테이션</h3>
 <p>이제 성능 최적화 부분으로 넘어가자. 인덱스 없이 운영하는 MongoDB 시스템은 결국 느려진다. Spring Data MongoDB는 <code>@Indexed</code> 어노테이션으로 단순하게 인덱스를 선언할 수 있게 해준다.</p>
-<p>```java
-@Document(collection = "products")
+<pre class="highlight"><code class="language-java">@Document(collection = "products")
 @Data @Builder @NoArgsConstructor @AllArgsConstructor
-public class Product {</p>
-<pre><code>@Id
-private String id;
-private String name;
+public class Product {
 
-@Indexed
-private String category;
+    @Id
+    private String id;
+    private String name;
 
-private BigDecimal price;
+    @Indexed
+    private String category;
 
-@Indexed(unique = true)
-private String sku;
+    private BigDecimal price;
 
-@Indexed(direction = IndexDirection.DESCENDING)
-private LocalDateTime createdAt;
+    @Indexed(unique = true)
+    private String sku;
 
-private int stock;
-private boolean active;
-private List&lt;String&gt; tags;
-</code></pre>
-<p>}
-```</p>
+    @Indexed(direction = IndexDirection.DESCENDING)
+    private LocalDateTime createdAt;
+
+    private int stock;
+    private boolean active;
+    private List&lt;String&gt; tags;
+}</code></pre>
 <blockquote>
 <p><strong>주의</strong>: Spring Boot 3.x부터 <code>auto-index-creation</code>이 기본값 <code>false</code>다. <code>@Indexed</code>가 동작하려면 명시적으로 활성화해야 한다.</p>
 </blockquote>
-<p><code>yaml
-spring:
+<pre class="highlight"><code class="language-yaml">spring:
   data:
     mongodb:
-      auto-index-creation: true</code></p>
+      auto-index-creation: true</code></pre>
 <h3 id="862-compoundindex">8.6.2 @CompoundIndex 복합 인덱스</h3>
 <p>실무에서는 단일 필드 인덱스만으로는 부족하다. 여러 필드를 조합해서 인덱스를 만들어야 하는 경우가 많은데, 이때는 <code>@CompoundIndex</code>를 사용한다.</p>
-<p><code>java
-@Document(collection = "products")
+<pre class="highlight"><code class="language-java">@Document(collection = "products")
 @CompoundIndex(name = "category_price_idx", def = "{'category': 1, 'price': -1}")
 @CompoundIndex(name = "category_active_created_idx",
                def = "{'category': 1, 'active': 1, 'createdAt': -1}")
-public class Product { /* ... */ }</code></p>
+public class Product { /* ... */ }</code></pre>
 <p>복합 인덱스의 필드 순서는 정말 중요한데, <strong>ESR (Equality, Sort, Range) 규칙</strong>을 따르면 최적화된다.</p>
 <ol>
 <li><strong>Equality</strong>: 등호(<code>=</code>) 조건 필드를 먼저 배치</li>
 <li><strong>Sort</strong>: 정렬 필드를 다음에 배치</li>
 <li><strong>Range</strong>: 범위 조건(<code>&gt;=</code>, <code>&lt;=</code>) 필드를 마지막에 배치</li>
 </ol>
-<p><code>java
-// 쿼리: category = ? AND active = ?, 정렬: createdAt DESC, 조건: price &gt;= ?
+<pre class="highlight"><code class="language-java">// 쿼리: category = ? AND active = ?, 정렬: createdAt DESC, 조건: price &gt;= ?
 // 최적 인덱스: { category: 1, active: 1, createdAt: -1, price: 1 }
 @CompoundIndex(name = "optimized_search_idx",
-               def = "{'category': 1, 'active': 1, 'createdAt': -1, 'price': 1}")</code></p>
+               def = "{'category': 1, 'active': 1, 'createdAt': -1, 'price': 1}")</code></pre>
 <h3 id="863-ttl">8.6.3 TTL 인덱스</h3>
 <p>TTL 인덱스는 흥미로운 기능이다. 지정된 시간이 지나면 도큐먼트를 자동으로 삭제해주는데, 세션 데이터, 임시 토큰, 로그 같은 일시적 데이터를 관리할 때 정말 유용하다. 수동으로 정리 작업을 구현할 필요가 없어진다.</p>
-<p>```java
-@Document(collection = "sessions")
+<pre class="highlight"><code class="language-java">@Document(collection = "sessions")
 @Data @Builder @NoArgsConstructor @AllArgsConstructor
-public class Session {</p>
-<pre><code>@Id
-private String id;
-private String userId;
-private String token;
+public class Session {
 
-@Indexed(expireAfterSeconds = 3600)  // 1시간 후 자동 삭제
-private LocalDateTime createdAt;
-</code></pre>
-<p>}
-```</p>
+    @Id
+    private String id;
+    private String userId;
+    private String token;
+
+    @Indexed(expireAfterSeconds = 3600)  // 1시간 후 자동 삭제
+    private LocalDateTime createdAt;
+}</code></pre>
 <p>대상 필드는 반드시 <code>Date</code> 또는 <code>LocalDateTime</code> 타입이어야 한다. MongoDB 백그라운드 태스크가 60초 간격으로 만료 도큐먼트를 삭제하므로, 실제 삭제 시점은 약간의 지연이 있을 수 있다.</p>
 <h3 id="864-partial-index">8.6.4 프로그래밍 방식 인덱스 생성과 Partial Index</h3>
 <p>어노테이션으로 인덱스를 선언하는 것도 좋지만, 때론 애플리케이션 시작 시에 동적으로 인덱스를 생성해야 할 수도 있다. <code>ReactiveMongoTemplate</code>의 <code>indexOps()</code>를 사용하면 이게 가능하다. 또한 <strong>Partial Index</strong>라는 개념도 있는데, 특정 조건을 만족하는 도큐먼트에만 인덱스를 적용하는 기법이다. 이렇게 하면 저장 공간도 절약하고 쓰기 성능도 개선된다.</p>
-<p>```java
-@Component
+<pre class="highlight"><code class="language-java">@Component
 @RequiredArgsConstructor
 @Slf4j
-public class IndexInitializer implements ApplicationRunner {</p>
-<pre><code>private final ReactiveMongoTemplate mongoTemplate;
+public class IndexInitializer implements ApplicationRunner {
 
-@Override
-public void run(ApplicationArguments args) {
-    ReactiveIndexOperations indexOps = mongoTemplate.indexOps(Product.class);
-    Index partialIndex = new Index()
-        .on("price", IndexDirection.ASCENDING)
-        .named("active_products_price_idx")
-        .partial(PartialIndexFilter.of(Criteria.where("active").is(true)));
-    indexOps.ensureIndex(partialIndex)
-        .doOnSuccess(name -&gt; log.info("인덱스 생성 완료: {}", name))
-        .subscribe();
-}
-</code></pre>
-<p>}
-```</p>
+    private final ReactiveMongoTemplate mongoTemplate;
+
+    @Override
+    public void run(ApplicationArguments args) {
+        ReactiveIndexOperations indexOps = mongoTemplate.indexOps(Product.class);
+        Index partialIndex = new Index()
+            .on("price", IndexDirection.ASCENDING)
+            .named("active_products_price_idx")
+            .partial(PartialIndexFilter.of(Criteria.where("active").is(true)));
+        indexOps.ensureIndex(partialIndex)
+            .doOnSuccess(name -&gt; log.info("인덱스 생성 완료: {}", name))
+            .subscribe();
+    }
+}</code></pre>
 <h3 id="865-explain">8.6.5 explain()으로 쿼리 실행 계획 분석</h3>
 <p>인덱스를 만들었다고 해서 항상 인덱스가 사용되는 건 아니다. 쿼리가 정말로 인덱스를 활용하고 있는지 확인하려면 <code>explain()</code>으로 실행 계획을 분석해야 한다. <code>ReactiveMongoTemplate</code>에서 네이티브 컬렉션을 가져와 <code>explain()</code>을 호출하면 실행 계획을 얻을 수 있다. 결과에서 <code>queryPlanner.winningPlan.stage</code>가 <code>IXSCAN</code>(인덱스 스캔)이면 좋은 것이고, <code>COLLSCAN</code>(컬렉션 풀 스캔)이라면 인덱스를 다시 설계해야 한다는 뜻이다. 또한 <code>totalDocsExamined</code>와 <code>nReturned</code>가 비슷할수록 인덱스가 잘 설계된 것이다.</p>
 <h3 id="866">8.6.6 인덱스 설계 실무 가이드라인</h3>
@@ -885,11 +843,10 @@ public void run(ApplicationArguments args) {
 <h2 id="91-bean-validation">9.1 Bean Validation을 활용한 입력 검증</h2>
 <h3 id="911">9.1.1 의존성 추가</h3>
 <p>Spring Boot에서 Bean Validation을 쓰려면 먼저 의존성을 선언해야 한다. 다행히 <code>spring-boot-starter-validation</code>이 모든 것을 담고 있어서 추가만 하면 바로 사용할 수 있다.</p>
-<p><code>xml
-&lt;dependency&gt;
+<pre class="highlight"><code class="language-xml">&lt;dependency&gt;
     &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
     &lt;artifactId&gt;spring-boot-starter-validation&lt;/artifactId&gt;
-&lt;/dependency&gt;</code></p>
+&lt;/dependency&gt;</code></pre>
 <p>이 스타터 안에는 Hibernate Validator가 포함되어 있고, Jakarta Bean Validation 3.0 API(<code>jakarta.validation</code> 패키지)도 함께 제공된다.</p>
 <h3 id="912">9.1.2 주요 검증 어노테이션</h3>
 <p>실무에서 가장 자주 쓰이는 검증 어노테이션들을 정리해봤다.</p>
@@ -951,115 +908,108 @@ public void run(ApplicationArguments args) {
 </table>
 <h3 id="913-dto">9.1.3 DTO에 검증 어노테이션 적용</h3>
 <p>이제 Chapter 6에서 만들었던 사용자 등록 DTO에 검증 규칙을 붙여보자. 이렇게 하면 클라이언트의 요청이 들어올 때 자동으로 검증된다.</p>
-<p>```java
-package com.example.webfluxdemo.dto;</p>
-<p>import jakarta.validation.constraints.<em>;
-import lombok.</em>;</p>
-<p>@Getter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class UserCreateRequest {</p>
-<pre><code>@NotBlank(message = "이름은 필수 입력 항목입니다")
-@Size(min = 2, max = 50, message = "이름은 2~50자 사이여야 합니다")
-private String name;
+<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.dto;
 
-@NotBlank(message = "이메일은 필수 입력 항목입니다")
-@Email(message = "올바른 이메일 형식이 아닙니다")
-private String email;
+import jakarta.validation.constraints.*;
+import lombok.*;
 
-@NotBlank(message = "비밀번호는 필수 입력 항목입니다")
-@Pattern(
-    regexp = "^(?=.*[A-Za-z])(?=.*\\d)(?=.*[@$!%*#?&amp;])[A-Za-z\\d@$!%*#?&amp;]{8,20}$",
-    message = "비밀번호는 8~20자이며, 영문, 숫자, 특수문자를 포함해야 합니다"
-)
-private String password;
-</code></pre>
-<p>}
-```</p>
-<p>상품 생성 DTO에도 비슷한 방식으로 검증을 추가할 수 있다.</p>
-<p>```java
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ProductCreateRequest {</p>
-<pre><code>@NotBlank(message = "상품명은 필수 입력 항목입니다")
-@Size(max = 200, message = "상품명은 200자를 초과할 수 없습니다")
-private String name;
+public class UserCreateRequest {
 
-@NotNull(message = "가격은 필수 입력 항목입니다")
-@Positive(message = "가격은 양수여야 합니다")
-private Integer price;
+    @NotBlank(message = "이름은 필수 입력 항목입니다")
+    @Size(min = 2, max = 50, message = "이름은 2~50자 사이여야 합니다")
+    private String name;
 
-@Size(max = 1000, message = "설명은 1000자를 초과할 수 없습니다")
-private String description;
+    @NotBlank(message = "이메일은 필수 입력 항목입니다")
+    @Email(message = "올바른 이메일 형식이 아닙니다")
+    private String email;
 
-@NotBlank(message = "카테고리는 필수 입력 항목입니다")
-private String category;
-</code></pre>
-<p>}
-```</p>
+    @NotBlank(message = "비밀번호는 필수 입력 항목입니다")
+    @Pattern(
+        regexp = "^(?=.*[A-Za-z])(?=.*\\d)(?=.*[@$!%*#?&amp;])[A-Za-z\\d@$!%*#?&amp;]{8,20}$",
+        message = "비밀번호는 8~20자이며, 영문, 숫자, 특수문자를 포함해야 합니다"
+    )
+    private String password;
+}</code></pre>
+<p>상품 생성 DTO에도 비슷한 방식으로 검증을 추가할 수 있다.</p>
+<pre class="highlight"><code class="language-java">@Getter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class ProductCreateRequest {
+
+    @NotBlank(message = "상품명은 필수 입력 항목입니다")
+    @Size(max = 200, message = "상품명은 200자를 초과할 수 없습니다")
+    private String name;
+
+    @NotNull(message = "가격은 필수 입력 항목입니다")
+    @Positive(message = "가격은 양수여야 합니다")
+    private Integer price;
+
+    @Size(max = 1000, message = "설명은 1000자를 초과할 수 없습니다")
+    private String description;
+
+    @NotBlank(message = "카테고리는 필수 입력 항목입니다")
+    private String category;
+}</code></pre>
 <h3 id="914-valid">9.1.4 컨트롤러에서 @Valid 적용</h3>
 <p>WebFlux를 쓸 때 어노테이션 기반 컨트롤러라면, <code>@Valid</code>를 <code>@RequestBody</code>와 함께 붙이기만 하면 자동으로 검증이 시작된다.</p>
-<p>```java
-@RestController
+<pre class="highlight"><code class="language-java">@RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
-public class UserController {</p>
-<pre><code>private final UserService userService;
+public class UserController {
 
-@PostMapping
-@ResponseStatus(HttpStatus.CREATED)
-public Mono&lt;UserResponse&gt; createUser(
-        @Valid @RequestBody UserCreateRequest request) {
-    return userService.createUser(request);
-}
+    private final UserService userService;
 
-@PutMapping("/{id}")
-public Mono&lt;UserResponse&gt; updateUser(
-        @PathVariable String id,
-        @Valid @RequestBody UserUpdateRequest request) {
-    return userService.updateUser(id, request);
-}
-</code></pre>
-<p>}
-```</p>
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public Mono&lt;UserResponse&gt; createUser(
+            @Valid @RequestBody UserCreateRequest request) {
+        return userService.createUser(request);
+    }
+
+    @PutMapping("/{id}")
+    public Mono&lt;UserResponse&gt; updateUser(
+            @PathVariable String id,
+            @Valid @RequestBody UserUpdateRequest request) {
+        return userService.updateUser(id, request);
+    }
+}</code></pre>
 <p>만약 <code>@Valid</code>가 붙은 파라미터의 검증이 실패하면 어떻게 될까? Spring WebFlux가 <code>WebExchangeBindException</code>을 던지는데, 이건 9.3절에서 만들 글로벌 예외 처리기가 받아서 깔끔한 형식으로 클라이언트에 전달해준다.</p>
 <h3 id="915">9.1.5 함수형 엔드포인트에서의 검증</h3>
 <p>함수형 엔드포인트는 어노테이션 없이 라우팅을 정의하는 방식이라, 검증도 직접 손으로 해줘야 한다. <code>Validator</code>를 주입받아서 명시적으로 검증하는 방식이다.</p>
-<p>```java
-@Component
+<pre class="highlight"><code class="language-java">@Component
 @RequiredArgsConstructor
-public class ProductHandler {</p>
-<pre><code>private final ProductService productService;
-private final Validator validator;
+public class ProductHandler {
 
-public Mono&lt;ServerResponse&gt; createProduct(ServerRequest request) {
-    return request.bodyToMono(ProductCreateRequest.class)
-        .doOnNext(this::validate)
-        .flatMap(productService::createProduct)
-        .flatMap(product -&gt; ServerResponse
-            .created(URI.create("/api/products/" + product.getId()))
-            .bodyValue(product));
-}
+    private final ProductService productService;
+    private final Validator validator;
 
-private &lt;T&gt; void validate(T body) {
-    Set&lt;ConstraintViolation&lt;T&gt;&gt; violations = validator.validate(body);
-    if (!violations.isEmpty()) {
-        throw new ConstraintViolationException(violations);
+    public Mono&lt;ServerResponse&gt; createProduct(ServerRequest request) {
+        return request.bodyToMono(ProductCreateRequest.class)
+            .doOnNext(this::validate)
+            .flatMap(productService::createProduct)
+            .flatMap(product -&gt; ServerResponse
+                .created(URI.create("/api/products/" + product.getId()))
+                .bodyValue(product));
     }
-}
-</code></pre>
-<p>}
-```</p>
+
+    private &lt;T&gt; void validate(T body) {
+        Set&lt;ConstraintViolation&lt;T&gt;&gt; violations = validator.validate(body);
+        if (!violations.isEmpty()) {
+            throw new ConstraintViolationException(violations);
+        }
+    }
+}</code></pre>
 <p>검증에서 문제가 발견되면 <code>ConstraintViolationException</code>을 던져버리면 되는데, 이것도 나중에 만들 글로벌 예외 처리기가 받아서 깔끔하게 정리해준다.</p>
 <hr>
 <h2 id="92-validator">9.2 커스텀 Validator 구현</h2>
 <h3 id="921">9.2.1 커스텀 어노테이션 정의</h3>
 <p>Bean Validation의 표준 어노테이션만으로는 표현하기 어려운 비즈니스 규칙들이 있다. 예를 들어, 특정한 카테고리 값들만 허용하는 경우 같은 경우 말이다. 이럴 때는 자신만의 검증 어노테이션을 만드는 게 깔끔하다.</p>
-<p><code>java
-@Documented
+<pre class="highlight"><code class="language-java">@Documented
 @Constraint(validatedBy = AllowedCategoryValidator.class)
 @Target({ElementType.FIELD, ElementType.PARAMETER})
 @Retention(RetentionPolicy.RUNTIME)
@@ -1068,41 +1018,37 @@ public @interface AllowedCategory {
     Class&lt;?&gt;[] groups() default {};
     Class&lt;? extends Payload&gt;[] payload() default {};
     String[] values() default {};
-}</code></p>
+}</code></pre>
 <h3 id="922-constraintvalidator">9.2.2 ConstraintValidator 구현</h3>
 <p>이제 실제로 검증 로직을 구현할 차례다. <code>ConstraintValidator&lt;A, T&gt;</code> 인터페이스를 구현하면 되는데, <code>A</code>는 어노테이션 타입이고 <code>T</code>는 검증할 필드의 타입이다.</p>
-<p>```java
-public class AllowedCategoryValidator
-        implements ConstraintValidator<AllowedCategory, String> {</p>
-<pre><code>private Set&lt;String&gt; allowedValues;
+<pre class="highlight"><code class="language-java">public class AllowedCategoryValidator
+        implements ConstraintValidator&lt;AllowedCategory, String&gt; {
 
-@Override
-public void initialize(AllowedCategory annotation) {
-    this.allowedValues = Set.of(annotation.values());
-}
+    private Set&lt;String&gt; allowedValues;
 
-@Override
-public boolean isValid(String value, ConstraintValidatorContext context) {
-    if (value == null) {
-        return true; // null 검사는 @NotBlank에 위임
+    @Override
+    public void initialize(AllowedCategory annotation) {
+        this.allowedValues = Set.of(annotation.values());
     }
-    return allowedValues.contains(value);
-}
-</code></pre>
-<p>}
-```</p>
+
+    @Override
+    public boolean isValid(String value, ConstraintValidatorContext context) {
+        if (value == null) {
+            return true; // null 검사는 @NotBlank에 위임
+        }
+        return allowedValues.contains(value);
+    }
+}</code></pre>
 <p>이제 DTO의 필드에 이 커스텀 어노테이션을 붙이면 된다.</p>
-<p><code>java
-@AllowedCategory(
+<pre class="highlight"><code class="language-java">@AllowedCategory(
     values = {"ELECTRONICS", "BOOKS", "CLOTHING", "FOOD"},
     message = "카테고리는 ELECTRONICS, BOOKS, CLOTHING, FOOD 중 하나여야 합니다"
 )
 @NotBlank(message = "카테고리는 필수 입력 항목입니다")
-private String category;</code></p>
+private String category;</code></pre>
 <h3 id="923-validator">9.2.3 크로스 필드 검증 (클래스 레벨 Validator)</h3>
 <p>이번엔 좀 더 복잡한 경우를 생각해보자. 비밀번호와 비밀번호 확인 필드가 일치해야 한다거나, 여러 필드를 함께 검증해야 하는 상황 말이다. 이럴 때는 <strong>클래스 레벨 어노테이션</strong>으로 처리한다.</p>
-<p><code>java
-@Documented
+<pre class="highlight"><code class="language-java">@Documented
 @Constraint(validatedBy = PasswordMatchValidator.class)
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
@@ -1110,271 +1056,262 @@ public @interface PasswordMatch {
     String message() default "비밀번호와 비밀번호 확인이 일치하지 않습니다";
     Class&lt;?&gt;[] groups() default {};
     Class&lt;? extends Payload&gt;[] payload() default {};
-}</code></p>
+}</code></pre>
 <p>그 다음 검증 대상이 될 DTO가 따를 인터페이스를 정의한다.</p>
-<p><code>java
-public interface PasswordConfirmable {
+<pre class="highlight"><code class="language-java">public interface PasswordConfirmable {
     String getPassword();
     String getPasswordConfirm();
-}</code></p>
-<p>```java
-public class PasswordMatchValidator
-        implements ConstraintValidator<PasswordMatch, PasswordConfirmable> {</p>
-<pre><code>@Override
-public boolean isValid(PasswordConfirmable dto,
-                       ConstraintValidatorContext context) {
-    if (dto.getPassword() == null || dto.getPasswordConfirm() == null) {
-        return true;
+}</code></pre>
+<pre class="highlight"><code class="language-java">public class PasswordMatchValidator
+        implements ConstraintValidator&lt;PasswordMatch, PasswordConfirmable&gt; {
+
+    @Override
+    public boolean isValid(PasswordConfirmable dto,
+                           ConstraintValidatorContext context) {
+        if (dto.getPassword() == null || dto.getPasswordConfirm() == null) {
+            return true;
+        }
+        boolean matches = dto.getPassword().equals(dto.getPasswordConfirm());
+        if (!matches) {
+            context.disableDefaultConstraintViolation();
+            context.buildConstraintViolationWithTemplate(
+                    "비밀번호와 비밀번호 확인이 일치하지 않습니다")
+                .addPropertyNode("passwordConfirm")
+                .addConstraintViolation();
+        }
+        return matches;
     }
-    boolean matches = dto.getPassword().equals(dto.getPasswordConfirm());
-    if (!matches) {
-        context.disableDefaultConstraintViolation();
-        context.buildConstraintViolationWithTemplate(
-                "비밀번호와 비밀번호 확인이 일치하지 않습니다")
-            .addPropertyNode("passwordConfirm")
-            .addConstraintViolation();
-    }
-    return matches;
-}
-</code></pre>
-<p>}
-```</p>
+}</code></pre>
 <p>필자의 경험상, 이런 식으로 <code>@PasswordMatch</code>를 DTO 클래스에 붙이면 필드별 검증과 크로스 필드 검증이 깔끔하게 함께 실행된다.</p>
-<p>```java
-@PasswordMatch
+<pre class="highlight"><code class="language-java">@PasswordMatch
 @Getter @NoArgsConstructor @AllArgsConstructor @Builder
-public class SignUpRequest implements PasswordConfirmable {</p>
-<pre><code>@NotBlank(message = "이름은 필수 입력 항목입니다")
-private String name;
+public class SignUpRequest implements PasswordConfirmable {
 
-@NotBlank @Email
-private String email;
+    @NotBlank(message = "이름은 필수 입력 항목입니다")
+    private String name;
 
-@NotBlank
-private String password;
+    @NotBlank @Email
+    private String email;
 
-@NotBlank
-private String passwordConfirm;
-</code></pre>
-<p>}
-```</p>
+    @NotBlank
+    private String password;
+
+    @NotBlank
+    private String passwordConfirm;
+}</code></pre>
 <hr>
 <h2 id="93-controlleradvice">9.3 글로벌 예외 처리 (@ControllerAdvice)</h2>
 <h3 id="931">9.3.1 커스텀 예외 클래스 정의</h3>
 <p>지금부터 예외 처리 전략을 짠다. 비즈니스 로직에서 터지는 예외들을 타입별로 구분해서 관리하면, 나중에 처리하기도 편하고 에러 메시지도 일관되게 만들 수 있다.</p>
-<p>```java
-package com.example.webfluxdemo.exception;</p>
-<p>import lombok.Getter;</p>
-<p>@Getter
-public class BusinessException extends RuntimeException {</p>
-<pre><code>private final ErrorCode errorCode;
+<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.exception;
 
-public BusinessException(ErrorCode errorCode) {
-    super(errorCode.getMessage());
-    this.errorCode = errorCode;
-}
+import lombok.Getter;
 
-public BusinessException(ErrorCode errorCode, String detail) {
-    super(detail);
-    this.errorCode = errorCode;
-}
-</code></pre>
-<p>}
-```</p>
-<p>```java
-public class ResourceNotFoundException extends BusinessException {
+@Getter
+public class BusinessException extends RuntimeException {
+
+    private final ErrorCode errorCode;
+
+    public BusinessException(ErrorCode errorCode) {
+        super(errorCode.getMessage());
+        this.errorCode = errorCode;
+    }
+
+    public BusinessException(ErrorCode errorCode, String detail) {
+        super(detail);
+        this.errorCode = errorCode;
+    }
+}</code></pre>
+<pre class="highlight"><code class="language-java">public class ResourceNotFoundException extends BusinessException {
     public ResourceNotFoundException(String resourceName, String id) {
         super(ErrorCode.RESOURCE_NOT_FOUND,
               resourceName + "을(를) 찾을 수 없습니다. ID: " + id);
     }
-}</p>
-<p>public class DuplicateResourceException extends BusinessException {
+}
+
+public class DuplicateResourceException extends BusinessException {
     public DuplicateResourceException(String resourceName, String field) {
         super(ErrorCode.DUPLICATE_RESOURCE,
               resourceName + "이(가) 이미 존재합니다. 필드: " + field);
     }
-}
-```</p>
+}</code></pre>
 <h3 id="932-errorcode">9.3.2 ErrorCode 열거형</h3>
 <p>에러 코드를 열거형으로 관리하는 건 간단하면서도 강력한 패턴이다. 에러의 종류를 한곳에서 정의해두면 코드 전체에서 일관성을 유지할 수 있다.</p>
-<p>```java
-package com.example.webfluxdemo.exception;</p>
-<p>import lombok.Getter;
+<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.exception;
+
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;</p>
-<p>@Getter
+import org.springframework.http.HttpStatus;
+
+@Getter
 @RequiredArgsConstructor
-public enum ErrorCode {</p>
-<pre><code>// 공통
-INVALID_INPUT(HttpStatus.BAD_REQUEST, "C001", "잘못된 입력값입니다"),
-RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "C002", "리소스를 찾을 수 없습니다"),
-INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "C003", "서버 내부 오류"),
-DUPLICATE_RESOURCE(HttpStatus.CONFLICT, "C004", "중복된 리소스입니다"),
+public enum ErrorCode {
 
-// 사용자
-USER_NOT_FOUND(HttpStatus.NOT_FOUND, "U001", "사용자를 찾을 수 없습니다"),
-EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "U002", "이미 등록된 이메일입니다"),
+    // 공통
+    INVALID_INPUT(HttpStatus.BAD_REQUEST, "C001", "잘못된 입력값입니다"),
+    RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "C002", "리소스를 찾을 수 없습니다"),
+    INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "C003", "서버 내부 오류"),
+    DUPLICATE_RESOURCE(HttpStatus.CONFLICT, "C004", "중복된 리소스입니다"),
 
-// 상품
-PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, "P001", "상품을 찾을 수 없습니다"),
-INSUFFICIENT_STOCK(HttpStatus.BAD_REQUEST, "P002", "재고가 부족합니다");
+    // 사용자
+    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "U001", "사용자를 찾을 수 없습니다"),
+    EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "U002", "이미 등록된 이메일입니다"),
 
-private final HttpStatus status;
-private final String code;
-private final String message;
-</code></pre>
-<p>}
-```</p>
+    // 상품
+    PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, "P001", "상품을 찾을 수 없습니다"),
+    INSUFFICIENT_STOCK(HttpStatus.BAD_REQUEST, "P002", "재고가 부족합니다");
+
+    private final HttpStatus status;
+    private final String code;
+    private final String message;
+}</code></pre>
 <h3 id="933-errorresponse-dto">9.3.3 ErrorResponse DTO</h3>
 <p>이제 클라이언트에 어떤 형식으로 에러를 알려줄지 정의해보자.</p>
-<p>```java
-package com.example.webfluxdemo.exception;</p>
-<p>import com.fasterxml.jackson.annotation.JsonInclude;
+<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.exception;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.*;
 import java.time.LocalDateTime;
-import java.util.List;</p>
-<p>@Getter
+import java.util.List;
+
+@Getter
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class ErrorResponse {</p>
-<pre><code>private final String code;
-private final String message;
-private final int status;
-private final LocalDateTime timestamp;
-private final List&lt;FieldError&gt; errors;
+public class ErrorResponse {
 
-@Getter @Builder
-public static class FieldError {
-    private final String field;
-    private final String value;
-    private final String reason;
-}
+    private final String code;
+    private final String message;
+    private final int status;
+    private final LocalDateTime timestamp;
+    private final List&lt;FieldError&gt; errors;
 
-public static ErrorResponse of(ErrorCode ec) {
-    return of(ec, ec.getMessage(), null);
-}
+    @Getter @Builder
+    public static class FieldError {
+        private final String field;
+        private final String value;
+        private final String reason;
+    }
 
-public static ErrorResponse of(ErrorCode ec, String message) {
-    return of(ec, message, null);
-}
+    public static ErrorResponse of(ErrorCode ec) {
+        return of(ec, ec.getMessage(), null);
+    }
 
-public static ErrorResponse of(ErrorCode ec, List&lt;FieldError&gt; errors) {
-    return of(ec, ec.getMessage(), errors);
-}
+    public static ErrorResponse of(ErrorCode ec, String message) {
+        return of(ec, message, null);
+    }
 
-private static ErrorResponse of(ErrorCode ec, String msg,
-                                List&lt;FieldError&gt; errors) {
-    return ErrorResponse.builder()
-        .code(ec.getCode()).message(msg)
-        .status(ec.getStatus().value())
-        .timestamp(LocalDateTime.now()).errors(errors)
-        .build();
-}
-</code></pre>
-<p>}
-```</p>
+    public static ErrorResponse of(ErrorCode ec, List&lt;FieldError&gt; errors) {
+        return of(ec, ec.getMessage(), errors);
+    }
+
+    private static ErrorResponse of(ErrorCode ec, String msg,
+                                    List&lt;FieldError&gt; errors) {
+        return ErrorResponse.builder()
+            .code(ec.getCode()).message(msg)
+            .status(ec.getStatus().value())
+            .timestamp(LocalDateTime.now()).errors(errors)
+            .build();
+    }
+}</code></pre>
 <h3 id="934-restcontrolleradvice">9.3.4 @RestControllerAdvice 구현</h3>
 <p>드디어 예외를 처리하는 핵심 부분이다. <code>@RestControllerAdvice</code>는 <code>@ControllerAdvice</code>와 <code>@ResponseBody</code>를 합친 거고, 모든 컨트롤러에서 터지는 예외를 한곳에서 받아서 처리하는 역할을 한다.</p>
-<p>```java
-package com.example.webfluxdemo.exception;</p>
-<p>import jakarta.validation.ConstraintViolationException;
+<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.exception;
+
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.<em>;
-import org.springframework.web.bind.annotation.</em>;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.bind.support.WebExchangeBindException;
-import java.util.List;</p>
-<p>@Slf4j
+import java.util.List;
+
+@Slf4j
 @RestControllerAdvice
-public class GlobalExceptionHandler {</p>
-<pre><code>@ExceptionHandler(WebExchangeBindException.class)
-public ResponseEntity&lt;ErrorResponse&gt; handleValidation(
-        WebExchangeBindException ex) {
+public class GlobalExceptionHandler {
 
-    List&lt;ErrorResponse.FieldError&gt; fieldErrors = ex.getFieldErrors()
-        .stream()
-        .map(e -&gt; ErrorResponse.FieldError.builder()
-            .field(e.getField())
-            .value(e.getRejectedValue() != null
-                ? e.getRejectedValue().toString() : "")
-            .reason(e.getDefaultMessage())
-            .build())
-        .toList();
+    @ExceptionHandler(WebExchangeBindException.class)
+    public ResponseEntity&lt;ErrorResponse&gt; handleValidation(
+            WebExchangeBindException ex) {
 
-    log.warn("Validation failed: {}", fieldErrors);
-    return ResponseEntity.badRequest()
-        .body(ErrorResponse.of(ErrorCode.INVALID_INPUT, fieldErrors));
-}
+        List&lt;ErrorResponse.FieldError&gt; fieldErrors = ex.getFieldErrors()
+            .stream()
+            .map(e -&gt; ErrorResponse.FieldError.builder()
+                .field(e.getField())
+                .value(e.getRejectedValue() != null
+                    ? e.getRejectedValue().toString() : "")
+                .reason(e.getDefaultMessage())
+                .build())
+            .toList();
 
-@ExceptionHandler(ConstraintViolationException.class)
-public ResponseEntity&lt;ErrorResponse&gt; handleConstraintViolation(
-        ConstraintViolationException ex) {
-    List&lt;ErrorResponse.FieldError&gt; fieldErrors = ex.getConstraintViolations()
-        .stream()
-        .map(v -&gt; ErrorResponse.FieldError.builder()
-            .field(v.getPropertyPath().toString())
-            .reason(v.getMessage()).build())
-        .toList();
-    return ResponseEntity.badRequest()
-        .body(ErrorResponse.of(ErrorCode.INVALID_INPUT, fieldErrors));
-}
+        log.warn("Validation failed: {}", fieldErrors);
+        return ResponseEntity.badRequest()
+            .body(ErrorResponse.of(ErrorCode.INVALID_INPUT, fieldErrors));
+    }
 
-@ExceptionHandler(BusinessException.class)
-public ResponseEntity&lt;ErrorResponse&gt; handleBusiness(
-        BusinessException ex) {
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity&lt;ErrorResponse&gt; handleConstraintViolation(
+            ConstraintViolationException ex) {
+        List&lt;ErrorResponse.FieldError&gt; fieldErrors = ex.getConstraintViolations()
+            .stream()
+            .map(v -&gt; ErrorResponse.FieldError.builder()
+                .field(v.getPropertyPath().toString())
+                .reason(v.getMessage()).build())
+            .toList();
+        return ResponseEntity.badRequest()
+            .body(ErrorResponse.of(ErrorCode.INVALID_INPUT, fieldErrors));
+    }
 
-    ErrorCode ec = ex.getErrorCode();
-    log.warn("Business exception: [{}] {}", ec.getCode(), ex.getMessage());
-    return ResponseEntity.status(ec.getStatus())
-        .body(ErrorResponse.of(ec, ex.getMessage()));
-}
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity&lt;ErrorResponse&gt; handleBusiness(
+            BusinessException ex) {
 
-@ExceptionHandler(Exception.class)
-public ResponseEntity&lt;ErrorResponse&gt; handleException(Exception ex) {
+        ErrorCode ec = ex.getErrorCode();
+        log.warn("Business exception: [{}] {}", ec.getCode(), ex.getMessage());
+        return ResponseEntity.status(ec.getStatus())
+            .body(ErrorResponse.of(ec, ex.getMessage()));
+    }
 
-    log.error("Unhandled exception", ex);
-    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-        .body(ErrorResponse.of(ErrorCode.INTERNAL_ERROR));
-}
-</code></pre>
-<p>}
-```</p>
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity&lt;ErrorResponse&gt; handleException(Exception ex) {
+
+        log.error("Unhandled exception", ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .body(ErrorResponse.of(ErrorCode.INTERNAL_ERROR));
+    }
+}</code></pre>
 <h3 id="935">9.3.5 서비스 계층에서 예외 발생</h3>
 <p>이제 서비스 계층에서는 어떻게 예외를 던질까? 리액티브 파이프라인 안에서는 <code>switchIfEmpty</code>와 <code>Mono.error</code>를 조합해서 처리한다.</p>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
-public class UserService {</p>
-<pre><code>private final UserRepository userRepository;
+public class UserService {
 
-public Mono&lt;UserResponse&gt; findById(String id) {
-    return userRepository.findById(id)
-        .map(UserResponse::from)
-        .switchIfEmpty(Mono.error(
-            new ResourceNotFoundException("사용자", id)));
-}
+    private final UserRepository userRepository;
 
-public Mono&lt;UserResponse&gt; createUser(UserCreateRequest request) {
-    return userRepository.findByEmail(request.getEmail())
-        .flatMap(existing -&gt; Mono.&lt;User&gt;error(
-            new DuplicateResourceException("이메일", request.getEmail())))
-        .switchIfEmpty(Mono.defer(() -&gt; {
-            User user = User.builder()
-                .name(request.getName())
-                .email(request.getEmail())
-                .password(request.getPassword())
-                .build();
-            return userRepository.save(user);
-        }))
-        .map(UserResponse::from);
-}
-</code></pre>
-<p>}
-```</p>
+    public Mono&lt;UserResponse&gt; findById(String id) {
+        return userRepository.findById(id)
+            .map(UserResponse::from)
+            .switchIfEmpty(Mono.error(
+                new ResourceNotFoundException("사용자", id)));
+    }
+
+    public Mono&lt;UserResponse&gt; createUser(UserCreateRequest request) {
+        return userRepository.findByEmail(request.getEmail())
+            .flatMap(existing -&gt; Mono.&lt;User&gt;error(
+                new DuplicateResourceException("이메일", request.getEmail())))
+            .switchIfEmpty(Mono.defer(() -&gt; {
+                User user = User.builder()
+                    .name(request.getName())
+                    .email(request.getEmail())
+                    .password(request.getPassword())
+                    .build();
+                return userRepository.save(user);
+            }))
+            .map(UserResponse::from);
+    }
+}</code></pre>
 <p>서비스에서 던진 예외는 <code>GlobalExceptionHandler</code>가 받아서 깔끔한 HTTP 응답으로 변환해준다.</p>
 <h3 id="936">9.3.6 에러 응답 예시</h3>
 <p>실제로 클라이언트가 받는 응답이 어떻게 생겼는지 몇 가지 예를 보자.</p>
-<p><code>json
-{
+<pre class="highlight"><code class="language-json">{
   "code": "C001",
   "message": "잘못된 입력값입니다",
   "status": 400,
@@ -1383,70 +1320,67 @@ public Mono&lt;UserResponse&gt; createUser(UserCreateRequest request) {
     { "field": "name", "value": "", "reason": "이름은 필수 입력 항목입니다" },
     { "field": "email", "value": "invalid", "reason": "올바른 이메일 형식이 아닙니다" }
   ]
-}</code></p>
+}</code></pre>
 <p>리소스를 찾을 수 없는 경우는 어떨까?</p>
-<p><code>json
-{
+<pre class="highlight"><code class="language-json">{
   "code": "C002",
   "message": "사용자을(를) 찾을 수 없습니다. ID: 64a1b2c3d4e5f6",
   "status": 404,
   "timestamp": "2026-02-14T10:31:00"
-}</code></p>
+}</code></pre>
 <hr>
 <h2 id="94-errorwebexceptionhandler">9.4 ErrorWebExceptionHandler를 활용한 함수형 예외 처리</h2>
 <h3 id="941-controlleradvice">9.4.1 @ControllerAdvice의 한계</h3>
 <p>지금까지 <code>@RestControllerAdvice</code>를 다뤘는데, 이건 어노테이션 기반 컨트롤러에서만 완벽하게 작동한다는 걸 알아야 한다. 함수형 엔드포인트(<code>RouterFunction</code>)에서 발생하는 예외 중에는 <code>@ExceptionHandler</code>가 잡지 못하는 게 있다. 특히 라우팅 전이나 필터 단계에서 터지는 예외 말이다. 이런 경우를 대비하려면 <code>ErrorWebExceptionHandler</code>를 사용해야 한다.</p>
 <h3 id="942-abstracterrorwebexceptionhandler">9.4.2 AbstractErrorWebExceptionHandler 확장</h3>
 <p>Spring Boot에서 제공하는 <code>AbstractErrorWebExceptionHandler</code>를 상속받으면 에러 처리를 맘대로 커스터마이징할 수 있다. 핵심은 <code>getRoutingFunction()</code>을 오버라이드해서 모든 에러 요청이 우리가 정의한 렌더 메서드로 가도록 하는 것이다.</p>
-<p>```java
-@Component
+<pre class="highlight"><code class="language-java">@Component
 @Order(-2) // 기본 에러 핸들러(-1)보다 높은 우선순위
 public class CustomErrorWebExceptionHandler
-        extends AbstractErrorWebExceptionHandler {</p>
-<pre><code>public CustomErrorWebExceptionHandler(
-        ErrorAttributes errorAttributes, WebProperties webProperties,
-        ApplicationContext ctx, ServerCodecConfigurer configurer) {
-    super(errorAttributes, webProperties.getResources(), ctx);
-    this.setMessageWriters(configurer.getWriters());
-}
+        extends AbstractErrorWebExceptionHandler {
 
-@Override
-protected RouterFunction&lt;ServerResponse&gt; getRoutingFunction(
-        ErrorAttributes errorAttributes) {
-    return RouterFunctions.route(
-        RequestPredicates.all(), this::renderErrorResponse);
-}
-
-private Mono&lt;ServerResponse&gt; renderErrorResponse(ServerRequest request) {
-    Throwable error = getError(request);
-    HttpStatus status;
-    String code, message;
-
-    if (error instanceof BusinessException bex) {
-        status = bex.getErrorCode().getStatus();
-        code = bex.getErrorCode().getCode();
-        message = bex.getMessage();
-    } else if (error instanceof WebExchangeBindException) {
-        status = HttpStatus.BAD_REQUEST;
-        code = "C001"; message = "잘못된 입력값입니다";
-    } else {
-        status = HttpStatus.INTERNAL_SERVER_ERROR;
-        code = "C003"; message = "서버 내부 오류가 발생했습니다";
+    public CustomErrorWebExceptionHandler(
+            ErrorAttributes errorAttributes, WebProperties webProperties,
+            ApplicationContext ctx, ServerCodecConfigurer configurer) {
+        super(errorAttributes, webProperties.getResources(), ctx);
+        this.setMessageWriters(configurer.getWriters());
     }
 
-    Map&lt;String, Object&gt; body = Map.of(
-        "code", code, "message", message,
-        "status", status.value(),
-        "timestamp", LocalDateTime.now().toString(),
-        "path", request.path());
+    @Override
+    protected RouterFunction&lt;ServerResponse&gt; getRoutingFunction(
+            ErrorAttributes errorAttributes) {
+        return RouterFunctions.route(
+            RequestPredicates.all(), this::renderErrorResponse);
+    }
 
-    return ServerResponse.status(status)
-        .contentType(MediaType.APPLICATION_JSON)
-        .body(BodyInserters.fromValue(body));
-}
-</code></pre>
-<p>}
-```</p>
+    private Mono&lt;ServerResponse&gt; renderErrorResponse(ServerRequest request) {
+        Throwable error = getError(request);
+        HttpStatus status;
+        String code, message;
+
+        if (error instanceof BusinessException bex) {
+            status = bex.getErrorCode().getStatus();
+            code = bex.getErrorCode().getCode();
+            message = bex.getMessage();
+        } else if (error instanceof WebExchangeBindException) {
+            status = HttpStatus.BAD_REQUEST;
+            code = "C001"; message = "잘못된 입력값입니다";
+        } else {
+            status = HttpStatus.INTERNAL_SERVER_ERROR;
+            code = "C003"; message = "서버 내부 오류가 발생했습니다";
+        }
+
+        Map&lt;String, Object&gt; body = Map.of(
+            "code", code, "message", message,
+            "status", status.value(),
+            "timestamp", LocalDateTime.now().toString(),
+            "path", request.path());
+
+        return ServerResponse.status(status)
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(BodyInserters.fromValue(body));
+    }
+}</code></pre>
 <h3 id="943-controlleradvice">9.4.3 @ControllerAdvice와의 공존</h3>
 <p><code>@Order(-2)</code>를 붙인 이유가 뭘까? Spring이 기본으로 제공하는 <code>DefaultErrorWebExceptionHandler</code>가 <code>-1</code>의 우선순위를 가지고 있어서, 우리의 커스텀 핸들러가 먼저 실행되도록 한 것이다. 둘을 동시에 사용할 수 있는데, 처리 순서는 이렇다.</p>
 <table>
@@ -1508,8 +1442,7 @@ private Mono&lt;ServerResponse&gt; renderErrorResponse(ServerRequest request) {
 <p>Content-Type은 <code>application/problem+json</code>을 사용한다.</p>
 <h3 id="952-spring-framework-6-problemdetail">9.5.2 Spring Framework 6의 ProblemDetail</h3>
 <p>좋은 소식은 Spring Framework 6부터는 이 표준을 구현한 <code>ProblemDetail</code> 클래스를 기본으로 제공한다는 거다. <code>setProperty()</code>로 맞춤 필드도 추가할 수 있다.</p>
-<p><code>java
-// ProblemDetail의 주요 구조
+<pre class="highlight"><code class="language-java">// ProblemDetail의 주요 구조
 public class ProblemDetail {
     private URI type;
     private String title;
@@ -1517,66 +1450,65 @@ public class ProblemDetail {
     private String detail;
     private URI instance;
     private Map&lt;String, Object&gt; properties; // 확장 필드
-}</code></p>
+}</code></pre>
 <h3 id="953-problemdetail">9.5.3 ProblemDetail 기반 글로벌 예외 처리</h3>
 <p>이제 9.3절의 <code>GlobalExceptionHandler</code>를 <code>ProblemDetail</code>을 사용하도록 개선해보자. 반환 타입을 <code>ResponseEntity&lt;ErrorResponse&gt;</code> 대신 <code>ProblemDetail</code>로 바꾸기만 하면 된다.</p>
-<p>```java
-package com.example.webfluxdemo.exception;</p>
-<p>import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.<em>;
-import org.springframework.web.bind.annotation.</em>;
+<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.exception;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.bind.support.WebExchangeBindException;
 import java.net.URI;
 import java.time.Instant;
-import java.util.*;</p>
-<p>@Slf4j
+import java.util.*;
+
+@Slf4j
 @RestControllerAdvice
-public class ProblemDetailExceptionHandler {</p>
-<pre><code>private static final String BASE_TYPE = "https://api.example.com/errors/";
+public class ProblemDetailExceptionHandler {
 
-@ExceptionHandler(WebExchangeBindException.class)
-public ProblemDetail handleValidation(WebExchangeBindException ex) {
-    ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-        HttpStatus.BAD_REQUEST, "입력값 검증에 실패했습니다");
-    problem.setType(URI.create(BASE_TYPE + "validation-failed"));
-    problem.setTitle("Validation Failed");
-    problem.setProperty("errors", ex.getFieldErrors().stream()
-        .map(fe -&gt; Map.of("field", fe.getField(),
-            "message", Objects.toString(fe.getDefaultMessage(), "")))
-        .toList());
-    problem.setProperty("timestamp", Instant.now());
-    return problem;
-}
+    private static final String BASE_TYPE = "https://api.example.com/errors/";
 
-@ExceptionHandler(BusinessException.class)
-public ProblemDetail handleBusiness(BusinessException ex) {
-    ErrorCode ec = ex.getErrorCode();
-    ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-        ec.getStatus(), ex.getMessage());
-    problem.setType(URI.create(BASE_TYPE + ec.getCode()));
-    problem.setTitle(ec.getMessage());
-    problem.setProperty("errorCode", ec.getCode());
-    problem.setProperty("timestamp", Instant.now());
-    return problem;
-}
+    @ExceptionHandler(WebExchangeBindException.class)
+    public ProblemDetail handleValidation(WebExchangeBindException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST, "입력값 검증에 실패했습니다");
+        problem.setType(URI.create(BASE_TYPE + "validation-failed"));
+        problem.setTitle("Validation Failed");
+        problem.setProperty("errors", ex.getFieldErrors().stream()
+            .map(fe -&gt; Map.of("field", fe.getField(),
+                "message", Objects.toString(fe.getDefaultMessage(), "")))
+            .toList());
+        problem.setProperty("timestamp", Instant.now());
+        return problem;
+    }
 
-@ExceptionHandler(Exception.class)
-public ProblemDetail handleUnhandled(Exception ex) {
-    log.error("Unhandled exception", ex);
-    ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-        HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다");
-    problem.setType(URI.create(BASE_TYPE + "internal-error"));
-    problem.setTitle("Internal Server Error");
-    problem.setProperty("timestamp", Instant.now());
-    return problem;
-}
-</code></pre>
-<p>}
-```</p>
+    @ExceptionHandler(BusinessException.class)
+    public ProblemDetail handleBusiness(BusinessException ex) {
+        ErrorCode ec = ex.getErrorCode();
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            ec.getStatus(), ex.getMessage());
+        problem.setType(URI.create(BASE_TYPE + ec.getCode()));
+        problem.setTitle(ec.getMessage());
+        problem.setProperty("errorCode", ec.getCode());
+        problem.setProperty("timestamp", Instant.now());
+        return problem;
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ProblemDetail handleUnhandled(Exception ex) {
+        log.error("Unhandled exception", ex);
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다");
+        problem.setType(URI.create(BASE_TYPE + "internal-error"));
+        problem.setTitle("Internal Server Error");
+        problem.setProperty("timestamp", Instant.now());
+        return problem;
+    }
+}</code></pre>
 <h3 id="954-problemdetail">9.5.4 ProblemDetail 응답 예시</h3>
 <p>이제 실제로 어떻게 응답이 달라지는지 보자. 검증 실패 때는 <code>application/problem+json</code> 타입으로 반환된다.</p>
-<p><code>json
-{
+<pre class="highlight"><code class="language-json">{
   "type": "https://api.example.com/errors/validation-failed",
   "title": "Validation Failed",
   "status": 400,
@@ -1586,44 +1518,40 @@ public ProblemDetail handleUnhandled(Exception ex) {
     { "field": "price", "message": "가격은 양수여야 합니다" }
   ],
   "timestamp": "2026-02-14T01:30:00Z"
-}</code></p>
+}</code></pre>
 <p>비즈니스 로직에서 터진 예외는 어떨까?</p>
-<p><code>json
-{
+<pre class="highlight"><code class="language-json">{
   "type": "https://api.example.com/errors/U002",
   "title": "이미 등록된 이메일입니다",
   "status": 409,
   "detail": "이메일이(가) 이미 존재합니다. 필드: user@example.com",
   "errorCode": "U002",
   "timestamp": "2026-02-14T01:31:00Z"
-}</code></p>
+}</code></pre>
 <h3 id="955-problemdetail">9.5.5 ProblemDetail 활성화 설정</h3>
 <p>Spring Boot 3에서 이 기능을 전면적으로 활성화하려면 설정 파일에 한두 줄을 추가하면 된다.</p>
-<p><code>yaml
-spring:
+<pre class="highlight"><code class="language-yaml">spring:
   webflux:
     problemdetails:
-      enabled: true</code></p>
+      enabled: true</code></pre>
 <p>필자의 경험상, 이 설정을 켜두면 Spring이 자체적으로 처리하는 예외들(404 Not Found, 405 Method Not Allowed 등)도 모두 <code>ProblemDetail</code> 형식으로 통일되어서 관리가 훨씬 깔끔해진다.</p>
 <h3 id="956-errorwebexceptionhandler-problemdetail">9.5.6 ErrorWebExceptionHandler에서 ProblemDetail 사용</h3>
 <p>9.4절에서 만들었던 함수형 엔드포인트용 <code>ErrorWebExceptionHandler</code>도 당연히 <code>ProblemDetail</code> 형식을 써야 한다. <code>renderErrorResponse</code> 메서드에서 <code>Map</code> 대신 <code>ProblemDetail</code>을 만들고, Content-Type을 <code>MediaType.APPLICATION_PROBLEM_JSON</code>으로 설정하기만 하면 된다.</p>
-<p>```java
-private Mono<ServerResponse> renderErrorResponse(ServerRequest request) {
+<pre class="highlight"><code class="language-java">private Mono&lt;ServerResponse&gt; renderErrorResponse(ServerRequest request) {
     Throwable error = getError(request);
     HttpStatus status = (error instanceof BusinessException bex)
         ? bex.getErrorCode().getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;</p>
-<pre><code>ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-    status, error.getMessage());
-problem.setInstance(URI.create(request.path()));
-problem.setProperty("timestamp", Instant.now());
+        : HttpStatus.INTERNAL_SERVER_ERROR;
 
-return ServerResponse.status(status)
-    .contentType(MediaType.APPLICATION_PROBLEM_JSON)
-    .body(BodyInserters.fromValue(problem));
-</code></pre>
-<p>}
-```</p>
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+        status, error.getMessage());
+    problem.setInstance(URI.create(request.path()));
+    problem.setProperty("timestamp", Instant.now());
+
+    return ServerResponse.status(status)
+        .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+        .body(BodyInserters.fromValue(problem));
+}</code></pre>
 <p><code>APPLICATION_PROBLEM_JSON</code>을 설정하면 Content-Type이 정확히 <code>application/problem+json</code>으로 들어가서 RFC 7807 표준을 완벽히 따르게 된다.</p>
 <hr>
 <h2 id="_2">요약</h2>
@@ -1665,10 +1593,9 @@ return ServerResponse.status(status)
 <h2 id="101-webfilter">10.1 WebFilter 구현</h2>
 <h3 id="1011-webfilter">10.1.1 WebFilter 인터페이스 이해</h3>
 <p><code>WebFilter</code>는 Spring WebFlux의 핵심 확장점으로, 모든 HTTP 요청을 가로챌 수 있는 게이트웨이 역할을 한다. 어노테이션 기반 컨트롤러든 함수형 엔드포인트든 동일하게 적용되기 때문에 매우 강력하다.</p>
-<p><code>java
-public interface WebFilter {
+<pre class="highlight"><code class="language-java">public interface WebFilter {
     Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain);
-}</code></p>
+}</code></pre>
 <table>
 <thead>
 <tr>
@@ -1688,127 +1615,119 @@ public interface WebFilter {
 </tbody>
 </table>
 <p>동작 방식은 <strong>필터 체인</strong> 패턴을 따른다. 각 필터가 <code>chain.filter(exchange)</code>를 호출하면 다음 필터로 요청이 전달되고, 그 반환값인 <code>Mono&lt;Void&gt;</code>에 리액티브 연산자를 붙여서 응답 처리를 할 수 있다.</p>
-<p><code>[클라이언트] → [WebFilter 1] → [WebFilter 2] → ... → [핸들러]
+<pre class="highlight"><code>[클라이언트] → [WebFilter 1] → [WebFilter 2] → ... → [핸들러]
                                                          ↓
-[클라이언트] ← [WebFilter 1] ← [WebFilter 2] ← ... ← [응답]</code></p>
+[클라이언트] ← [WebFilter 1] ← [WebFilter 2] ← ... ← [응답]</code></pre>
 <h3 id="1012">10.1.2 요청 전후 처리 필터</h3>
 <p>가장 기본적인 패턴부터 보자. <code>@Component</code>로 등록하면 스프링이 알아서 필터 체인에 추가해주는데, <code>chain.filter()</code> 호출 전후에 코드를 끼워 넣으면 요청과 응답을 동시에 처리할 수 있다.</p>
-<p>```java
-@Slf4j
+<pre class="highlight"><code class="language-java">@Slf4j
 @Component
-public class RequestTimingFilter implements WebFilter {</p>
-<pre><code>@Override
-public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
-    // === 전처리 ===
-    long startTime = System.currentTimeMillis();
-    String method = exchange.getRequest().getMethod().name();
-    String path = exchange.getRequest().getURI().getPath();
+public class RequestTimingFilter implements WebFilter {
 
-    log.info("&gt;&gt;&gt; 요청 시작: {} {}", method, path);
+    @Override
+    public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
+        // === 전처리 ===
+        long startTime = System.currentTimeMillis();
+        String method = exchange.getRequest().getMethod().name();
+        String path = exchange.getRequest().getURI().getPath();
 
-    return chain.filter(exchange)
-        // === 후처리 ===
-        .doFinally(signalType -&gt; {
-            long duration = System.currentTimeMillis() - startTime;
-            log.info("&lt;&lt;&lt; 요청 완료: {} {} - {}ms [{}]",
-                method, path, duration, signalType);
-        });
-}
-</code></pre>
-<p>}
-```</p>
+        log.info("&gt;&gt;&gt; 요청 시작: {} {}", method, path);
+
+        return chain.filter(exchange)
+            // === 후처리 ===
+            .doFinally(signalType -&gt; {
+                long duration = System.currentTimeMillis() - startTime;
+                log.info("&lt;&lt;&lt; 요청 완료: {} {} - {}ms [{}]",
+                    method, path, duration, signalType);
+            });
+    }
+}</code></pre>
 <blockquote>
 <p><strong>주의</strong>: <code>then(Mono.fromRunnable(...))</code>은 정상 완료 시에만 실행된다. 에러를 포함한 모든 경우를 처리하려면 위 예시처럼 <code>doFinally</code>를 사용해야 한다.</p>
 </blockquote>
 <h3 id="1013-order">10.1.3 @Order로 필터 실행 순서 지정</h3>
 <p>웹 애플리케이션이 복잡해지면 보안 검사, 로깅, 메트릭 수집 등 여러 필터를 체인 형태로 등록하게 되는데, 이때 실행 순서가 중요하다. <code>@Order</code> 어노테이션으로 간단히 제어할 수 있으며, 숫자가 작을수록 먼저 실행된다.</p>
-<p>```java
-@Component
+<pre class="highlight"><code class="language-java">@Component
 @Order(1)
-public class SecurityCheckFilter implements WebFilter { /<em> 보안 검사 </em>/ }</p>
-<p>@Component
-@Order(2)
-public class LoggingFilter implements WebFilter { /<em> 로깅 </em>/ }</p>
-<p>@Component
-@Order(3)
-public class MetricsFilter implements WebFilter { /<em> 메트릭 수집 </em>/ }
-```</p>
-<p><code>Ordered</code> 인터페이스를 구현하는 방법도 있다.</p>
-<p>```java
+public class SecurityCheckFilter implements WebFilter { /* 보안 검사 */ }
+
 @Component
+@Order(2)
+public class LoggingFilter implements WebFilter { /* 로깅 */ }
+
+@Component
+@Order(3)
+public class MetricsFilter implements WebFilter { /* 메트릭 수집 */ }</code></pre>
+<p><code>Ordered</code> 인터페이스를 구현하는 방법도 있다.</p>
+<pre class="highlight"><code class="language-java">@Component
 public class HighPriorityFilter implements WebFilter, Ordered {
     @Override
-    public int getOrder() { return Ordered.HIGHEST_PRECEDENCE; }</p>
-<pre><code>@Override
-public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
-    return chain.filter(exchange);
-}
-</code></pre>
-<p>}
-```</p>
+    public int getOrder() { return Ordered.HIGHEST_PRECEDENCE; }
+
+    @Override
+    public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
+        return chain.filter(exchange);
+    }
+}</code></pre>
 <h3 id="1014">10.1.4 조건부 필터 적용과 요청 차단</h3>
 <p>실무에서는 모든 요청에 필터를 적용할 필요는 없다. 특정 경로(예: <code>/api/**</code>)에만 필터를 작동시키려면 내부에서 경로를 확인하고 조건부로 동작하면 된다. 필자의 경험상, API 인증 같은 필터는 공개 엔드포인트를 거르는 것이 성능에 도움이 된다.</p>
-<p>```java
-@Slf4j
+<pre class="highlight"><code class="language-java">@Slf4j
 @Component
 @Order(1)
-public class ApiKeyFilter implements WebFilter {</p>
-<pre><code>private static final String API_KEY_HEADER = "X-API-Key";
-private static final String VALID_API_KEY = "my-secret-api-key";
+public class ApiKeyFilter implements WebFilter {
 
-@Override
-public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
-    String path = exchange.getRequest().getURI().getPath();
+    private static final String API_KEY_HEADER = "X-API-Key";
+    private static final String VALID_API_KEY = "my-secret-api-key";
 
-    // /api/** 경로에만 필터 적용
-    if (!path.startsWith("/api/")) {
-        return chain.filter(exchange);
+    @Override
+    public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
+        String path = exchange.getRequest().getURI().getPath();
+
+        // /api/** 경로에만 필터 적용
+        if (!path.startsWith("/api/")) {
+            return chain.filter(exchange);
+        }
+
+        String apiKey = exchange.getRequest().getHeaders().getFirst(API_KEY_HEADER);
+        if (VALID_API_KEY.equals(apiKey)) {
+            return chain.filter(exchange);
+        }
+
+        // 요청 차단: chain.filter()를 호출하지 않고 응답 완료
+        log.warn("유효하지 않은 API Key 요청: {}", path);
+        exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+        return exchange.getResponse().setComplete();
     }
-
-    String apiKey = exchange.getRequest().getHeaders().getFirst(API_KEY_HEADER);
-    if (VALID_API_KEY.equals(apiKey)) {
-        return chain.filter(exchange);
-    }
-
-    // 요청 차단: chain.filter()를 호출하지 않고 응답 완료
-    log.warn("유효하지 않은 API Key 요청: {}", path);
-    exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-    return exchange.getResponse().setComplete();
-}
-</code></pre>
-<p>}
-```</p>
+}</code></pre>
 <h3 id="1015-attribute">10.1.5 요청 속성(Attribute) 전달</h3>
 <p>필터 단계에서 수집한 정보(예: 요청 ID, 사용자 정보)를 컨트롤러까지 전달해야 할 때가 있다. <code>ServerWebExchange</code>의 속성 맵을 활용하면 간단하게 해결된다.</p>
-<p>```java
-@Component
+<pre class="highlight"><code class="language-java">@Component
 @Order(0)
 public class RequestContextFilter implements WebFilter {
     @Override
-    public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+    public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
         String requestId = UUID.randomUUID().toString().substring(0, 8);
         exchange.getAttributes().put("requestId", requestId);
         exchange.getResponse().getHeaders().add("X-Request-Id", requestId);
         return chain.filter(exchange);
     }
-}</p>
-<p>// 컨트롤러에서 속성 사용
+}
+
+// 컨트롤러에서 속성 사용
 @GetMapping("/api/products")
-public Mono<ResponseEntity\<List\<Product>>> getProducts(ServerWebExchange exchange) {
+public Mono&lt;ResponseEntity&lt;List&lt;Product&gt;&gt;&gt; getProducts(ServerWebExchange exchange) {
     String requestId = exchange.getAttribute("requestId");
     log.info("[{}] 상품 목록 조회 요청", requestId);
     // ...
-}
-```</p>
+}</code></pre>
 <hr>
 <h2 id="102-handlerfilterfunction">10.2 HandlerFilterFunction 활용</h2>
 <h3 id="1021-webfilter-handlerfilterfunction">10.2.1 WebFilter와 HandlerFilterFunction 비교</h3>
 <p>WebFilter는 글로벌하게 모든 요청을 잡지만, <code>HandlerFilterFunction</code>은 다르다. 함수형 엔드포인트(RouterFunction) 기반 API에 특화된 필터로, 더 세밀한 제어가 가능하다.</p>
-<p><code>java
-@FunctionalInterface
+<pre class="highlight"><code class="language-java">@FunctionalInterface
 public interface HandlerFilterFunction&lt;T extends ServerResponse, R extends ServerResponse&gt; {
     Mono&lt;R&gt; filter(ServerRequest request, HandlerFunction&lt;T&gt; next);
-}</code></p>
+}</code></pre>
 <table>
 <thead>
 <tr>
@@ -1842,8 +1761,7 @@ public interface HandlerFilterFunction&lt;T extends ServerResponse, R extends Se
 </table>
 <h3 id="1022">10.2.2 기본 사용법</h3>
 <p>가장 간단한 형태부터 보자. <code>RouterFunction</code>의 <code>filter()</code> 메서드에 람다식으로 필터 로직을 끼워 넣으면 된다.</p>
-<p><code>java
-@Configuration
+<pre class="highlight"><code class="language-java">@Configuration
 public class ProductRouter {
     @Bean
     public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
@@ -1858,220 +1776,208 @@ public class ProductRouter {
             return next.handle(request);
         });
     }
-}</code></p>
+}</code></pre>
 <h3 id="1023">10.2.3 인증 필터 구현</h3>
 <p>이제 실제로 쓸 만한 예제를 봐보자. JWT 토큰 검증 같은 인증 필터를 <code>HandlerFilterFunction</code>으로 구현하는 패턴이다.</p>
-<p>```java
-public class AuthFilterFunction
-        implements HandlerFilterFunction<ServerResponse, ServerResponse> {</p>
-<pre><code>private final TokenValidator tokenValidator;
+<pre class="highlight"><code class="language-java">public class AuthFilterFunction
+        implements HandlerFilterFunction&lt;ServerResponse, ServerResponse&gt; {
 
-public AuthFilterFunction(TokenValidator tokenValidator) {
-    this.tokenValidator = tokenValidator;
-}
+    private final TokenValidator tokenValidator;
 
-@Override
-public Mono&lt;ServerResponse&gt; filter(ServerRequest request,
-                                   HandlerFunction&lt;ServerResponse&gt; next) {
-    String authHeader = request.headers().firstHeader("Authorization");
-
-    if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-        return ServerResponse.status(HttpStatus.UNAUTHORIZED)
-            .bodyValue(Map.of("error", "Authorization 헤더가 필요합니다."));
+    public AuthFilterFunction(TokenValidator tokenValidator) {
+        this.tokenValidator = tokenValidator;
     }
 
-    String token = authHeader.substring(7);
+    @Override
+    public Mono&lt;ServerResponse&gt; filter(ServerRequest request,
+                                       HandlerFunction&lt;ServerResponse&gt; next) {
+        String authHeader = request.headers().firstHeader("Authorization");
 
-    return tokenValidator.validate(token)
-        .flatMap(userId -&gt; {
-            ServerRequest modifiedRequest = ServerRequest.from(request)
-                .attribute("userId", userId)
-                .build();
-            return next.handle(modifiedRequest);
-        })
-        .onErrorResume(InvalidTokenException.class, e -&gt;
-            ServerResponse.status(HttpStatus.UNAUTHORIZED)
-                .bodyValue(Map.of("error", e.getMessage()))
-        );
-}
-</code></pre>
-<p>}
-```</p>
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ServerResponse.status(HttpStatus.UNAUTHORIZED)
+                .bodyValue(Map.of("error", "Authorization 헤더가 필요합니다."));
+        }
+
+        String token = authHeader.substring(7);
+
+        return tokenValidator.validate(token)
+            .flatMap(userId -&gt; {
+                ServerRequest modifiedRequest = ServerRequest.from(request)
+                    .attribute("userId", userId)
+                    .build();
+                return next.handle(modifiedRequest);
+            })
+            .onErrorResume(InvalidTokenException.class, e -&gt;
+                ServerResponse.status(HttpStatus.UNAUTHORIZED)
+                    .bodyValue(Map.of("error", e.getMessage()))
+            );
+    }
+}</code></pre>
 <p>핵심은 라우터 정의 단계에서 공개 API와 보호 API를 명확히 분리하는 것이다. 그러면 필터를 선택적으로 적용할 수 있어서 불필요한 오버헤드를 피할 수 있다.</p>
-<p>```java
-@Configuration
-public class AppRouter {</p>
-<pre><code>private final TokenValidator tokenValidator;
+<pre class="highlight"><code class="language-java">@Configuration
+public class AppRouter {
 
-public AppRouter(TokenValidator tokenValidator) {
-    this.tokenValidator = tokenValidator;
-}
+    private final TokenValidator tokenValidator;
 
-@Bean
-public RouterFunction&lt;ServerResponse&gt; routes(
-        ProductHandler productHandler, AuthHandler authHandler) {
+    public AppRouter(TokenValidator tokenValidator) {
+        this.tokenValidator = tokenValidator;
+    }
 
-    // 인증 불필요: 공개 API
-    RouterFunction&lt;ServerResponse&gt; publicRoutes = route(
-        POST("/api/auth/login"), authHandler::login
-    ).andRoute(
-        POST("/api/auth/register"), authHandler::register
-    );
+    @Bean
+    public RouterFunction&lt;ServerResponse&gt; routes(
+            ProductHandler productHandler, AuthHandler authHandler) {
 
-    // 인증 필요: 보호된 API
-    RouterFunction&lt;ServerResponse&gt; protectedRoutes = nest(path("/api/products"),
-        route(GET(""), productHandler::getAll)
-        .andRoute(POST(""), productHandler::create)
-        .andRoute(DELETE("/{id}"), productHandler::delete)
-    ).filter(new AuthFilterFunction(tokenValidator));
+        // 인증 불필요: 공개 API
+        RouterFunction&lt;ServerResponse&gt; publicRoutes = route(
+            POST("/api/auth/login"), authHandler::login
+        ).andRoute(
+            POST("/api/auth/register"), authHandler::register
+        );
 
-    return publicRoutes.and(protectedRoutes);
-}
-</code></pre>
-<p>}
-```</p>
+        // 인증 필요: 보호된 API
+        RouterFunction&lt;ServerResponse&gt; protectedRoutes = nest(path("/api/products"),
+            route(GET(""), productHandler::getAll)
+            .andRoute(POST(""), productHandler::create)
+            .andRoute(DELETE("/{id}"), productHandler::delete)
+        ).filter(new AuthFilterFunction(tokenValidator));
+
+        return publicRoutes.and(protectedRoutes);
+    }
+}</code></pre>
 <h3 id="1024">10.2.4 역할 기반 접근 제어 필터</h3>
 <p>인증 필터만으로 부족하면 역할(Role) 기반 인가를 추가하면 된다. 필터를 여러 개 체이닝하면 인증(Authentication) 이후 인가(Authorization)가 순차적으로 실행되므로, 보안을 이중으로 확보할 수 있다.</p>
-<p>```java
-public class RoleFilterFunction
-        implements HandlerFilterFunction<ServerResponse, ServerResponse> {</p>
-<pre><code>private final Set&lt;String&gt; allowedRoles;
+<pre class="highlight"><code class="language-java">public class RoleFilterFunction
+        implements HandlerFilterFunction&lt;ServerResponse, ServerResponse&gt; {
 
-public RoleFilterFunction(String... roles) {
-    this.allowedRoles = Set.of(roles);
-}
+    private final Set&lt;String&gt; allowedRoles;
 
-@Override
-public Mono&lt;ServerResponse&gt; filter(ServerRequest request,
-                                   HandlerFunction&lt;ServerResponse&gt; next) {
-    String userRole = request.attribute("userRole")
-        .map(Object::toString).orElse("");
-
-    if (allowedRoles.contains(userRole)) {
-        return next.handle(request);
+    public RoleFilterFunction(String... roles) {
+        this.allowedRoles = Set.of(roles);
     }
-    return ServerResponse.status(HttpStatus.FORBIDDEN)
-        .bodyValue(Map.of("error", "접근 권한이 없습니다."));
+
+    @Override
+    public Mono&lt;ServerResponse&gt; filter(ServerRequest request,
+                                       HandlerFunction&lt;ServerResponse&gt; next) {
+        String userRole = request.attribute("userRole")
+            .map(Object::toString).orElse("");
+
+        if (allowedRoles.contains(userRole)) {
+            return next.handle(request);
+        }
+        return ServerResponse.status(HttpStatus.FORBIDDEN)
+            .bodyValue(Map.of("error", "접근 권한이 없습니다."));
+    }
 }
-</code></pre>
-<p>}</p>
-<p>// 관리자 전용 API에 인증 + 역할 필터 체이닝
-RouterFunction<ServerResponse> adminRoutes = nest(path("/api/admin"),
+
+// 관리자 전용 API에 인증 + 역할 필터 체이닝
+RouterFunction&lt;ServerResponse&gt; adminRoutes = nest(path("/api/admin"),
     route(GET("/users"), adminHandler::getAllUsers)
     .andRoute(DELETE("/users/{id}"), adminHandler::deleteUser)
 )
 .filter(new AuthFilterFunction(tokenValidator))
-.filter(new RoleFilterFunction("ADMIN"));
-```</p>
+.filter(new RoleFilterFunction("ADMIN"));</code></pre>
 <hr>
 <h2 id="103">10.3 요청/응답 로깅</h2>
 <h3 id="1031">10.3.1 요청 로깅 필터</h3>
 <p>프로덕션 환경에서는 요청의 생명주기를 추적해야 한다. 요청이 들어오는 순간부터 응답을 내보낼 때까지의 모든 정보를 체계적으로 기록해 놓으면, 나중에 문제 분석이 훨씬 수월하다.</p>
-<p>```java
-@Slf4j
+<pre class="highlight"><code class="language-java">@Slf4j
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
-public class RequestLoggingFilter implements WebFilter {</p>
-<pre><code>@Override
-public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
-    ServerHttpRequest request = exchange.getRequest();
-    String requestId = UUID.randomUUID().toString().substring(0, 8);
-    String method = request.getMethod().name();
-    String path = request.getURI().getPath();
-    String clientIp = extractClientIp(request);
+public class RequestLoggingFilter implements WebFilter {
 
-    log.info("[{}] &gt;&gt;&gt; {} {} ip={}", requestId, method, path, clientIp);
+    @Override
+    public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
+        ServerHttpRequest request = exchange.getRequest();
+        String requestId = UUID.randomUUID().toString().substring(0, 8);
+        String method = request.getMethod().name();
+        String path = request.getURI().getPath();
+        String clientIp = extractClientIp(request);
 
-    long startTime = System.nanoTime();
-    exchange.getResponse().getHeaders().add("X-Request-Id", requestId);
-    exchange.getAttributes().put("requestId", requestId);
+        log.info("[{}] &gt;&gt;&gt; {} {} ip={}", requestId, method, path, clientIp);
 
-    return chain.filter(exchange)
-        .doFinally(signalType -&gt; {
-            long durationMs = (System.nanoTime() - startTime) / 1_000_000;
-            HttpStatusCode status = exchange.getResponse().getStatusCode();
-            log.info("[{}] &lt;&lt;&lt; {} {} -&gt; {} ({}ms)",
-                requestId, method, path, status, durationMs);
-        });
-}
+        long startTime = System.nanoTime();
+        exchange.getResponse().getHeaders().add("X-Request-Id", requestId);
+        exchange.getAttributes().put("requestId", requestId);
 
-private String extractClientIp(ServerHttpRequest request) {
-    String xff = request.getHeaders().getFirst("X-Forwarded-For");
-    if (xff != null &amp;&amp; !xff.isEmpty()) {
-        return xff.split(",")[0].trim();
+        return chain.filter(exchange)
+            .doFinally(signalType -&gt; {
+                long durationMs = (System.nanoTime() - startTime) / 1_000_000;
+                HttpStatusCode status = exchange.getResponse().getStatusCode();
+                log.info("[{}] &lt;&lt;&lt; {} {} -&gt; {} ({}ms)",
+                    requestId, method, path, status, durationMs);
+            });
     }
-    return Optional.ofNullable(request.getRemoteAddress())
-        .map(addr -&gt; addr.getAddress().getHostAddress())
-        .orElse("unknown");
-}
-</code></pre>
-<p>}
-```</p>
+
+    private String extractClientIp(ServerHttpRequest request) {
+        String xff = request.getHeaders().getFirst("X-Forwarded-For");
+        if (xff != null &amp;&amp; !xff.isEmpty()) {
+            return xff.split(",")[0].trim();
+        }
+        return Optional.ofNullable(request.getRemoteAddress())
+            .map(addr -&gt; addr.getAddress().getHostAddress())
+            .orElse("unknown");
+    }
+}</code></pre>
 <h3 id="1032-serverhttpresponsedecorator">10.3.2 응답 바디 로깅 (ServerHttpResponseDecorator)</h3>
 <p>요청만 기록해서는 부족할 때가 많다. 응답 내용도 알고 싶다면? 문제는 응답 바디가 스트림 형태라서 직접 읽을 수 없다는 점이다. <code>ServerHttpResponseDecorator</code>로 감싸면 쓰기 시점에 바이트를 가로챌 수 있다. 필자의 경험상, 디버깅할 때 이 기법이 정말 유용하다.</p>
-<p>```java
-@Slf4j
+<pre class="highlight"><code class="language-java">@Slf4j
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 1)
-public class ResponseBodyLoggingFilter implements WebFilter {</p>
-<pre><code>@Override
-public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
-    if (!log.isDebugEnabled()) return chain.filter(exchange);
+public class ResponseBodyLoggingFilter implements WebFilter {
 
-    String requestId = exchange.getAttribute("requestId");
-    ServerHttpResponse original = exchange.getResponse();
+    @Override
+    public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
+        if (!log.isDebugEnabled()) return chain.filter(exchange);
 
-    ServerHttpResponseDecorator decorated = new ServerHttpResponseDecorator(original) {
-        @Override
-        public Mono&lt;Void&gt; writeWith(Publisher&lt;? extends DataBuffer&gt; body) {
-            if (body instanceof Flux&lt;? extends DataBuffer&gt; fluxBody) {
-                return super.writeWith(fluxBody.buffer().map(dataBuffers -&gt; {
-                    DataBuffer joined = original.bufferFactory().join(dataBuffers);
-                    byte[] content = new byte[joined.readableByteCount()];
-                    joined.read(content);
-                    DataBufferUtils.release(joined);
-                    log.debug("[{}] 응답 바디: {}", requestId,
-                        new String(content, StandardCharsets.UTF_8));
-                    return original.bufferFactory().wrap(content);
-                }));
+        String requestId = exchange.getAttribute("requestId");
+        ServerHttpResponse original = exchange.getResponse();
+
+        ServerHttpResponseDecorator decorated = new ServerHttpResponseDecorator(original) {
+            @Override
+            public Mono&lt;Void&gt; writeWith(Publisher&lt;? extends DataBuffer&gt; body) {
+                if (body instanceof Flux&lt;? extends DataBuffer&gt; fluxBody) {
+                    return super.writeWith(fluxBody.buffer().map(dataBuffers -&gt; {
+                        DataBuffer joined = original.bufferFactory().join(dataBuffers);
+                        byte[] content = new byte[joined.readableByteCount()];
+                        joined.read(content);
+                        DataBufferUtils.release(joined);
+                        log.debug("[{}] 응답 바디: {}", requestId,
+                            new String(content, StandardCharsets.UTF_8));
+                        return original.bufferFactory().wrap(content);
+                    }));
+                }
+                return super.writeWith(body);
             }
-            return super.writeWith(body);
-        }
-    };
-    return chain.filter(exchange.mutate().response(decorated).build());
-}
-</code></pre>
-<p>}
-```</p>
+        };
+        return chain.filter(exchange.mutate().response(decorated).build());
+    }
+}</code></pre>
 <blockquote>
 <p><strong>주의</strong>: 응답 바디 로깅은 메모리와 성능에 영향을 미친다. 반드시 디버그 레벨에서만 활성화하고, 대용량 응답에서는 크기 제한 로직을 추가해야 한다.</p>
 </blockquote>
 <h3 id="1033-id-reactor-context">10.3.3 요청 추적 ID와 Reactor Context</h3>
 <p>여기서 한 가지 까다로운 문제가 발생한다. 리액티브 애플리케이션에서는 스레드가 계속 바뀌기 때문에, 기존의 ThreadLocal 기반 <code>MDC(Mapped Diagnostic Context)</code>가 제대로 작동하지 않는다는 것이다. 대신 Reactor의 <strong>Context</strong>를 활용하면 요청 추적 ID를 전체 리액티브 체인에 걸쳐 전파할 수 있다.</p>
-<p>```java
-@Slf4j
+<pre class="highlight"><code class="language-java">@Slf4j
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
-public class TraceIdFilter implements WebFilter {</p>
-<pre><code>private static final String TRACE_ID_KEY = "traceId";
+public class TraceIdFilter implements WebFilter {
 
-@Override
-public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
-    String traceId = Optional.ofNullable(
-            exchange.getRequest().getHeaders().getFirst("X-Trace-Id")
-        ).orElse(UUID.randomUUID().toString());
+    private static final String TRACE_ID_KEY = "traceId";
 
-    exchange.getResponse().getHeaders().add("X-Trace-Id", traceId);
+    @Override
+    public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
+        String traceId = Optional.ofNullable(
+                exchange.getRequest().getHeaders().getFirst("X-Trace-Id")
+            ).orElse(UUID.randomUUID().toString());
 
-    return chain.filter(exchange)
-        .contextWrite(Context.of(TRACE_ID_KEY, traceId));
-}
-</code></pre>
-<p>}
-```</p>
+        exchange.getResponse().getHeaders().add("X-Trace-Id", traceId);
+
+        return chain.filter(exchange)
+            .contextWrite(Context.of(TRACE_ID_KEY, traceId));
+    }
+}</code></pre>
 <p>서비스 계층에서 Context의 추적 ID를 활용한다.</p>
-<p><code>java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @Slf4j
 public class ProductService {
     public Mono&lt;Product&gt; findById(String id) {
@@ -2081,12 +1987,11 @@ public class ProductService {
             return productRepository.findById(id);
         });
     }
-}</code></p>
+}</code></pre>
 <p>Spring Boot 3.x에서는 Micrometer <strong>Context Propagation</strong>을 사용하면 MDC 자동 전파를 구성할 수 있다.</p>
-<p><code>yaml
-spring:
+<pre class="highlight"><code class="language-yaml">spring:
   reactor:
-    context-propagation: auto</code></p>
+    context-propagation: auto</code></pre>
 <hr>
 <h2 id="104-cors">10.4 CORS 설정</h2>
 <h3 id="1041-cors">10.4.1 CORS 개요</h3>
@@ -2123,84 +2028,74 @@ spring:
 </table>
 <h3 id="1042-webfluxconfigurer">10.4.2 WebFluxConfigurer를 이용한 글로벌 설정</h3>
 <p>CORS를 설정하는 방법은 여러 가지인데, 가장 깔끔한 것은 <code>WebFluxConfigurer</code> 인터페이스를 구현하는 방식이다. 모든 엔드포인트에 일괄 적용되므로 관리가 편하다.</p>
-<p>```java
-@Configuration
-public class CorsConfig implements WebFluxConfigurer {</p>
-<pre><code>@Override
-public void addCorsMappings(CorsRegistry registry) {
-    registry.addMapping("/api/**")
-        .allowedOrigins("http://localhost:3000", "https://myapp.example.com")
-        .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
-        .allowedHeaders("*")
-        .exposedHeaders("X-Request-Id", "X-Trace-Id")
-        .allowCredentials(true)
-        .maxAge(3600);
-}
-</code></pre>
-<p>}
-```</p>
+<pre class="highlight"><code class="language-java">@Configuration
+public class CorsConfig implements WebFluxConfigurer {
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/api/**")
+            .allowedOrigins("http://localhost:3000", "https://myapp.example.com")
+            .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
+            .allowedHeaders("*")
+            .exposedHeaders("X-Request-Id", "X-Trace-Id")
+            .allowCredentials(true)
+            .maxAge(3600);
+    }
+}</code></pre>
 <h3 id="1043-crossorigin">10.4.3 @CrossOrigin 어노테이션</h3>
 <p>전체 설정 대신 특정 컨트롤러나 메서드에만 CORS를 적용하고 싶으면 <code>@CrossOrigin</code>을 사용하면 된다. 클래스 레벨과 메서드 레벨에서 동시에 설정하면 둘이 <strong>병합</strong>되니 주의하자.</p>
-<p>```java
-@RestController
+<pre class="highlight"><code class="language-java">@RestController
 @RequestMapping("/api/products")
 @CrossOrigin(origins = "http://localhost:3000", maxAge = 3600)
-public class ProductController {</p>
-<pre><code>@CrossOrigin(origins = "https://partner.example.com")
-@GetMapping("/{id}")
-public Mono&lt;Product&gt; getById(@PathVariable String id) {
-    return productService.findById(id);
-}
-</code></pre>
-<p>}
-```</p>
+public class ProductController {
+
+    @CrossOrigin(origins = "https://partner.example.com")
+    @GetMapping("/{id}")
+    public Mono&lt;Product&gt; getById(@PathVariable String id) {
+        return productService.findById(id);
+    }
+}</code></pre>
 <h3 id="1044-corswebfilter">10.4.4 CorsWebFilter (프로그래밍 방식)</h3>
 <p>함수형 엔드포인트를 사용하면 <code>@CrossOrigin</code> 어노테이션을 붙일 수 없다는 게 단점이다. 이 경우 <code>CorsWebFilter</code>를 빈으로 등록해서 프로그래매틱하게 설정하면, 어노테이션 기반과 함수형 모두 커버할 수 있다.</p>
-<p>```java
-@Configuration
-public class CorsFilterConfig {</p>
-<pre><code>@Bean
-public CorsWebFilter corsWebFilter() {
-    CorsConfiguration config = new CorsConfiguration();
-    config.addAllowedOrigin("http://localhost:3000");
-    config.addAllowedOrigin("https://myapp.example.com");
-    config.addAllowedMethod("*");
-    config.addAllowedHeader("*");
-    config.addExposedHeader("X-Request-Id");
-    config.setAllowCredentials(true);
-    config.setMaxAge(3600L);
+<pre class="highlight"><code class="language-java">@Configuration
+public class CorsFilterConfig {
 
-    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-    source.registerCorsConfiguration("/api/**", config);
-    return new CorsWebFilter(source);
-}
-</code></pre>
-<p>}
-```</p>
+    @Bean
+    public CorsWebFilter corsWebFilter() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.addAllowedOrigin("http://localhost:3000");
+        config.addAllowedOrigin("https://myapp.example.com");
+        config.addAllowedMethod("*");
+        config.addAllowedHeader("*");
+        config.addExposedHeader("X-Request-Id");
+        config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", config);
+        return new CorsWebFilter(source);
+    }
+}</code></pre>
 <h3 id="1045-cors">10.4.5 환경별 CORS 설정</h3>
 <p>실제로는 개발 환경에서는 어떤 출처든 허용하고, 프로덕션에서는 특정 도메인만 허용하는 식으로 환경별로 다르게 설정해야 한다. <code>application.yml</code> 프로파일을 활용하면 간단히 해결된다.</p>
-<p>```yaml</p>
-<h1 id="applicationyml-appcorsallowed-origins-httplocalhost3000">application.yml             → app.cors.allowed-origins: "http://localhost:3000"</h1>
-<h1 id="application-prodyml-appcorsallowed-origins-httpsmyappexamplecom">application-prod.yml        → app.cors.allowed-origins: "https://myapp.example.com"</h1>
-<p>```</p>
-<p>```java
-@Configuration
-public class CorsConfig implements WebFluxConfigurer {</p>
-<pre><code>@Value("${app.cors.allowed-origins}")
-private String[] allowedOrigins;
+<pre class="highlight"><code class="language-yaml"># application.yml             → app.cors.allowed-origins: "http://localhost:3000"
+# application-prod.yml        → app.cors.allowed-origins: "https://myapp.example.com"</code></pre>
+<pre class="highlight"><code class="language-java">@Configuration
+public class CorsConfig implements WebFluxConfigurer {
 
-@Override
-public void addCorsMappings(CorsRegistry registry) {
-    registry.addMapping("/api/**")
-        .allowedOrigins(allowedOrigins)
-        .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH")
-        .allowedHeaders("*")
-        .allowCredentials(true)
-        .maxAge(3600);
-}
-</code></pre>
-<p>}
-```</p>
+    @Value("${app.cors.allowed-origins}")
+    private String[] allowedOrigins;
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/api/**")
+            .allowedOrigins(allowedOrigins)
+            .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH")
+            .allowedHeaders("*")
+            .allowCredentials(true)
+            .maxAge(3600);
+    }
+}</code></pre>
 <hr>
 <h2 id="105-rate-limiting">10.5 요청 속도 제한(Rate Limiting)</h2>
 <h3 id="1051">10.5.1 토큰 버킷 알고리즘</h3>
@@ -2211,189 +2106,183 @@ public void addCorsMappings(CorsRegistry registry) {
 <li>토큰이 없으면 요청을 거부한다(429 Too Many Requests).</li>
 <li>버킷 크기가 고정되어 순간적인 버스트(burst)를 일정 수준까지 허용한다.</li>
 </ol>
-<p><code>[토큰 생성기] ---(초당 10개)---&gt; [버킷 (최대 20개)]
+<pre class="highlight"><code>[토큰 생성기] ---(초당 10개)---&gt; [버킷 (최대 20개)]
                                        ↓
                                  요청 -&gt; 토큰 1개 소비
-                                 토큰 부족 -&gt; 429 응답</code></p>
+                                 토큰 부족 -&gt; 429 응답</code></pre>
 <h3 id="1052-bucket4j">10.5.2 Bucket4j 의존성</h3>
 <p>알고리즘을 직접 구현할 수도 있지만, <strong>Bucket4j</strong> 라이브러리를 사용하면 편하다. 토큰 버킷 알고리즘을 스레드 안전하게 구현했고, 성능도 검증되었다. <code>build.gradle.kts</code>에 의존성을 추가하자: <code>implementation("com.bucket4j:bucket4j-core:8.10.1")</code></p>
 <h3 id="1053-ip">10.5.3 IP 기반 속도 제한 필터</h3>
 <p>가장 기본적인 구현은 클라이언트 IP를 기준으로 각각 독립적인 버킷을 유지하는 것이다. 필자의 경험상, 공개 API에는 이 정도면 충분하다.</p>
-<p>```java
-@Slf4j
+<pre class="highlight"><code class="language-java">@Slf4j
 @Component
-public class RateLimitFilter implements WebFilter {</p>
-<pre><code>private final Map&lt;String, Bucket&gt; bucketCache = new ConcurrentHashMap&lt;&gt;();
+public class RateLimitFilter implements WebFilter {
 
-@Override
-public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
-    String path = exchange.getRequest().getURI().getPath();
-    if (!path.startsWith("/api/")) {
-        return chain.filter(exchange);
-    }
+    private final Map&lt;String, Bucket&gt; bucketCache = new ConcurrentHashMap&lt;&gt;();
 
-    String clientIp = extractClientIp(exchange);
-    Bucket bucket = bucketCache.computeIfAbsent(clientIp, this::createBucket);
-    ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
-
-    if (probe.isConsumed()) {
-        exchange.getResponse().getHeaders()
-            .add("X-RateLimit-Remaining",
-                String.valueOf(probe.getRemainingTokens()));
-        return chain.filter(exchange);
-    }
-
-    // 속도 제한 초과 -&gt; 429 응답
-    long waitSeconds = probe.getNanosToWaitForRefill() / 1_000_000_000;
-    log.warn("속도 제한 초과: IP={}, 재시도까지 {}초", clientIp, waitSeconds);
-
-    exchange.getResponse().setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
-    exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-    exchange.getResponse().getHeaders().add("Retry-After", String.valueOf(waitSeconds));
-
-    String errorBody = """
-        {
-          "error": "TOO_MANY_REQUESTS",
-          "message": "요청 속도 제한을 초과했습니다.",
-          "retryAfterSeconds": %d
+    @Override
+    public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
+        String path = exchange.getRequest().getURI().getPath();
+        if (!path.startsWith("/api/")) {
+            return chain.filter(exchange);
         }
-        """.formatted(waitSeconds);
 
-    return exchange.getResponse().writeWith(
-        Mono.just(exchange.getResponse().bufferFactory()
-            .wrap(errorBody.getBytes()))
-    );
-}
+        String clientIp = extractClientIp(exchange);
+        Bucket bucket = bucketCache.computeIfAbsent(clientIp, this::createBucket);
+        ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
 
-private Bucket createBucket(String key) {
-    Bandwidth limit = Bandwidth.classic(
-        10,                                      // 버킷 용량 (버스트)
-        Refill.greedy(60, Duration.ofMinutes(1)) // 분당 60개 보충
-    );
-    return Bucket.builder().addLimit(limit).build();
-}
+        if (probe.isConsumed()) {
+            exchange.getResponse().getHeaders()
+                .add("X-RateLimit-Remaining",
+                    String.valueOf(probe.getRemainingTokens()));
+            return chain.filter(exchange);
+        }
 
-private String extractClientIp(ServerWebExchange exchange) {
-    String xff = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
-    if (xff != null &amp;&amp; !xff.isEmpty()) return xff.split(",")[0].trim();
-    return Optional.ofNullable(exchange.getRequest().getRemoteAddress())
-        .map(addr -&gt; addr.getAddress().getHostAddress()).orElse("unknown");
-}
-</code></pre>
-<p>}
-```</p>
+        // 속도 제한 초과 -&gt; 429 응답
+        long waitSeconds = probe.getNanosToWaitForRefill() / 1_000_000_000;
+        log.warn("속도 제한 초과: IP={}, 재시도까지 {}초", clientIp, waitSeconds);
+
+        exchange.getResponse().setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
+        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
+        exchange.getResponse().getHeaders().add("Retry-After", String.valueOf(waitSeconds));
+
+        String errorBody = """
+            {
+              "error": "TOO_MANY_REQUESTS",
+              "message": "요청 속도 제한을 초과했습니다.",
+              "retryAfterSeconds": %d
+            }
+            """.formatted(waitSeconds);
+
+        return exchange.getResponse().writeWith(
+            Mono.just(exchange.getResponse().bufferFactory()
+                .wrap(errorBody.getBytes()))
+        );
+    }
+
+    private Bucket createBucket(String key) {
+        Bandwidth limit = Bandwidth.builder()
+            .capacity(10)                                      // 버킷 용량 (버스트)
+            .refillGreedy(60, Duration.ofMinutes(1))           // 분당 60개 보충
+            .build();
+        return Bucket.builder().addLimit(limit).build();
+    }
+
+    private String extractClientIp(ServerWebExchange exchange) {
+        String xff = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
+        if (xff != null &amp;&amp; !xff.isEmpty()) return xff.split(",")[0].trim();
+        return Optional.ofNullable(exchange.getRequest().getRemoteAddress())
+            .map(addr -&gt; addr.getAddress().getHostAddress()).orElse("unknown");
+    }
+}</code></pre>
 <h3 id="1054">10.5.4 사용자 등급별 차등 속도 제한</h3>
 <p>IP 기반만으로는 부족하면, 인증된 사용자별로 다른 할당량을 줄 수 있다. 무료 사용자는 분당 20건, 프리미엄은 1000건 같은 식으로 계층화할 수 있다. <code>Plan</code> enum으로 정책을 정의하고, 사용자 ID와 등급을 조합한 키로 버킷을 관리하는 게 핵심이다.</p>
-<p>```java
-@Slf4j
+<pre class="highlight"><code class="language-java">@Slf4j
 @Component
 @Order(10)  // 인증 필터 이후에 실행
-public class UserRateLimitFilter implements WebFilter {</p>
-<pre><code>private final Map&lt;String, Bucket&gt; bucketCache = new ConcurrentHashMap&lt;&gt;();
+public class UserRateLimitFilter implements WebFilter {
 
-enum Plan {
-    FREE(20, Duration.ofMinutes(1)),       // 무료: 분당 20건
-    BASIC(100, Duration.ofMinutes(1)),      // 기본: 분당 100건
-    PREMIUM(1000, Duration.ofMinutes(1));   // 프리미엄: 분당 1000건
+    private final Map&lt;String, Bucket&gt; bucketCache = new ConcurrentHashMap&lt;&gt;();
 
-    final int capacity;
-    final Duration period;
-    Plan(int capacity, Duration period) {
-        this.capacity = capacity;
-        this.period = period;
-    }
-}
+    enum Plan {
+        FREE(20, Duration.ofMinutes(1)),       // 무료: 분당 20건
+        BASIC(100, Duration.ofMinutes(1)),      // 기본: 분당 100건
+        PREMIUM(1000, Duration.ofMinutes(1));   // 프리미엄: 분당 1000건
 
-@Override
-public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
-    String userId = exchange.getAttribute("userId");
-    if (userId == null || !exchange.getRequest().getURI()
-            .getPath().startsWith("/api/")) {
-        return chain.filter(exchange);
+        final int capacity;
+        final Duration period;
+        Plan(int capacity, Duration period) {
+            this.capacity = capacity;
+            this.period = period;
+        }
     }
 
-    String userPlan = exchange.getAttribute("userPlan");
-    Plan plan = resolvePlan(userPlan);
-    Bucket bucket = bucketCache.computeIfAbsent(
-        userId + ":" + plan.name(), k -&gt; createBucket(plan));
+    @Override
+    public Mono&lt;Void&gt; filter(ServerWebExchange exchange, WebFilterChain chain) {
+        String userId = exchange.getAttribute("userId");
+        if (userId == null || !exchange.getRequest().getURI()
+                .getPath().startsWith("/api/")) {
+            return chain.filter(exchange);
+        }
 
-    ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
+        String userPlan = exchange.getAttribute("userPlan");
+        Plan plan = resolvePlan(userPlan);
+        Bucket bucket = bucketCache.computeIfAbsent(
+            userId + ":" + plan.name(), k -&gt; createBucket(plan));
 
-    // 남은 호출 횟수를 헤더로 전달
-    exchange.getResponse().getHeaders()
-        .add("X-RateLimit-Limit", String.valueOf(plan.capacity));
-    exchange.getResponse().getHeaders()
-        .add("X-RateLimit-Remaining", String.valueOf(probe.getRemainingTokens()));
+        ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
 
-    if (probe.isConsumed()) return chain.filter(exchange);
+        // 남은 호출 횟수를 헤더로 전달
+        exchange.getResponse().getHeaders()
+            .add("X-RateLimit-Limit", String.valueOf(plan.capacity));
+        exchange.getResponse().getHeaders()
+            .add("X-RateLimit-Remaining", String.valueOf(probe.getRemainingTokens()));
 
-    // 429 응답 (IP 기반 필터와 동일한 패턴)
-    exchange.getResponse().setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
-    String body = """
-        {"error":"TOO_MANY_REQUESTS","plan":"%s","limit":%d}
-        """.formatted(plan.name(), plan.capacity);
-    return exchange.getResponse().writeWith(
-        Mono.just(exchange.getResponse().bufferFactory().wrap(body.getBytes())));
-}
+        if (probe.isConsumed()) return chain.filter(exchange);
 
-private Plan resolvePlan(String planStr) {
-    try { return Plan.valueOf(planStr.toUpperCase()); }
-    catch (Exception e) { return Plan.FREE; }
-}
+        // 429 응답 (IP 기반 필터와 동일한 패턴)
+        exchange.getResponse().setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
+        String body = """
+            {"error":"TOO_MANY_REQUESTS","plan":"%s","limit":%d}
+            """.formatted(plan.name(), plan.capacity);
+        return exchange.getResponse().writeWith(
+            Mono.just(exchange.getResponse().bufferFactory().wrap(body.getBytes())));
+    }
 
-private Bucket createBucket(Plan plan) {
-    return Bucket.builder().addLimit(Bandwidth.classic(
-        plan.capacity, Refill.greedy(plan.capacity, plan.period))).build();
-}
-</code></pre>
-<p>}
-```</p>
+    private Plan resolvePlan(String planStr) {
+        try { return Plan.valueOf(planStr.toUpperCase()); }
+        catch (Exception e) { return Plan.FREE; }
+    }
+
+    private Bucket createBucket(Plan plan) {
+        return Bucket.builder().addLimit(Bandwidth.builder()
+            .capacity(plan.capacity).refillGreedy(plan.capacity, plan.period)
+            .build()).build();
+    }
+}</code></pre>
 <h3 id="1055">10.5.5 엔드포인트별 차등 속도 제한</h3>
 <p>로그인 API나 비밀번호 재설정 같은 민감한 엔드포인트는 각별한 주의가 필요하다. 이런 곳에는 <code>HandlerFilterFunction</code>으로 훨씬 더 엄격한 제한을 개별 적용할 수 있다.</p>
-<p>```java
-@Configuration
-public class RateLimitConfig {</p>
-<pre><code>@Bean
-public RouterFunction&lt;ServerResponse&gt; rateLimitedAuthRoutes(AuthHandler handler) {
-    return route(POST("/api/auth/login"), handler::login)
-        .filter(createRateLimitFilter(5, Duration.ofMinutes(1)))   // 분당 5회
-        .andRoute(POST("/api/auth/register"), handler::register)
-        .filter(createRateLimitFilter(3, Duration.ofHours(1)));    // 시간당 3회
-}
+<pre class="highlight"><code class="language-java">@Configuration
+public class RateLimitConfig {
 
-private HandlerFilterFunction&lt;ServerResponse, ServerResponse&gt;
-        createRateLimitFilter(int capacity, Duration period) {
-    Map&lt;String, Bucket&gt; buckets = new ConcurrentHashMap&lt;&gt;();
-    return (request, next) -&gt; {
-        String ip = request.remoteAddress()
-            .map(a -&gt; a.getAddress().getHostAddress()).orElse("unknown");
-        Bucket bucket = buckets.computeIfAbsent(ip, k -&gt;
-            Bucket.builder().addLimit(
-                Bandwidth.classic(capacity, Refill.greedy(capacity, period))
-            ).build());
+    @Bean
+    public RouterFunction&lt;ServerResponse&gt; rateLimitedAuthRoutes(AuthHandler handler) {
+        RouterFunction&lt;ServerResponse&gt; loginRoute = route(POST("/api/auth/login"), handler::login)
+            .filter(createRateLimitFilter(5, Duration.ofMinutes(1)));   // 분당 5회
+        RouterFunction&lt;ServerResponse&gt; registerRoute = route(POST("/api/auth/register"), handler::register)
+            .filter(createRateLimitFilter(3, Duration.ofHours(1)));    // 시간당 3회
+        return loginRoute.and(registerRoute);
+    }
 
-        if (bucket.tryConsume(1)) return next.handle(request);
+    private HandlerFilterFunction&lt;ServerResponse, ServerResponse&gt;
+            createRateLimitFilter(int capacity, Duration period) {
+        Map&lt;String, Bucket&gt; buckets = new ConcurrentHashMap&lt;&gt;();
+        return (request, next) -&gt; {
+            String ip = request.remoteAddress()
+                .map(a -&gt; a.getAddress().getHostAddress()).orElse("unknown");
+            Bucket bucket = buckets.computeIfAbsent(ip, k -&gt;
+                Bucket.builder().addLimit(
+                    Bandwidth.builder().capacity(capacity).refillGreedy(capacity, period).build()
+                ).build());
 
-        return ServerResponse.status(HttpStatus.TOO_MANY_REQUESTS)
-            .bodyValue(Map.of("error", "요청이 너무 많습니다."));
-    };
-}
-</code></pre>
-<p>}
-```</p>
+            if (bucket.tryConsume(1)) return next.handle(request);
+
+            return ServerResponse.status(HttpStatus.TOO_MANY_REQUESTS)
+                .bodyValue(Map.of("error", "요청이 너무 많습니다."));
+        };
+    }
+}</code></pre>
 <h3 id="1056">10.5.6 버킷 캐시 메모리 관리</h3>
 <p>여기서 놓치기 쉬운 점이 있다. <code>ConcurrentHashMap</code>에 IP별 버킷이 계속 쌓이면 언젠가는 메모리를 다 써버린다. 실제 운영 환경에서 이 문제를 겪었던 개발자는 Caffeine 캐시로 자동 만료를 구현하는 방법을 안다.</p>
-<p><code>kotlin
-dependencies {
+<pre class="highlight"><code class="language-kotlin">dependencies {
     implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
-}</code></p>
-<p>```java
-private final Cache<String, Bucket> bucketCache = Caffeine.newBuilder()
+}</code></pre>
+<pre class="highlight"><code class="language-java">private final Cache&lt;String, Bucket&gt; bucketCache = Caffeine.newBuilder()
     .maximumSize(100_000)
     .expireAfterAccess(Duration.ofMinutes(10))
-    .build();</p>
-<p>// 사용: bucketCache.get(clientIp, this::createBucket)
-```</p>
+    .build();
+
+// 사용: bucketCache.get(clientIp, this::createBucket)</code></pre>
 <hr>
 <h2 id="106">10.6 정리</h2>
 <table>
@@ -2444,22 +2333,20 @@ private final Cache<String, Bucket> bucketCache = Caffeine.newBuilder()
 <h2 id="111-spring-security-reactive">11.1 Spring Security Reactive 설정</h2>
 <h3 id="1111">11.1.1 의존성 추가</h3>
 <p>먼저 <code>build.gradle</code>에 필요한 Spring Security 의존성들을 넣어야 한다.</p>
-<p>```groovy
-dependencies {
+<pre class="highlight"><code class="language-groovy">dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'org.springframework.boot:spring-boot-starter-security'
-    implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'</p>
-<pre><code>// JWT (11.4절), OAuth2 (11.6절)
-implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
-runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
-runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
-implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
-implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+    implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'
 
-testImplementation 'org.springframework.security:spring-security-test'
-</code></pre>
-<p>}
-```</p>
+    // JWT (11.4절), OAuth2 (11.6절)
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+
+    testImplementation 'org.springframework.security:spring-security-test'
+}</code></pre>
 <p>재미있는 점은 이 의존성들을 추가하는 것만으로 자동으로 Spring Security가 활성화된다는 것이다. 모든 엔드포인트가 기본 인증으로 보호되기 시작한다.</p>
 <h3 id="1112">11.1.2 서블릿 기반과의 차이</h3>
 <table>
@@ -2506,30 +2393,27 @@ testImplementation 'org.springframework.security:spring-security-test'
 <p>가장 크리티컬한 차이는 <strong>인증 정보를 어디에 저장하는가</strong> 하는 문제다. 전통적인 서블릿 환경에서는 <code>ThreadLocal</code>을 이용하는데, 리액티브는 한 요청이 여러 스레드를 타고 처리되므로 이 방식이 작동하지 않는다. 대신 <strong>Reactor의 Context</strong> 메커니즘을 활용해야 한다.</p>
 <h3 id="1113">11.1.3 기본 보안 설정 클래스</h3>
 <p>이제 실제로 보안을 구성해 보자. <code>@EnableWebFluxSecurity</code> 어노테이션으로 리액티브 보안을 켜고 <code>SecurityWebFilterChain</code> 빈을 정의하면 된다.</p>
-<p>```java
-@Configuration
+<pre class="highlight"><code class="language-java">@Configuration
 @EnableWebFluxSecurity
-public class SecurityConfig {</p>
-<pre><code>@Bean
-public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
-    return http
-        .authorizeExchange(exchanges -&gt; exchanges
-            .anyExchange().authenticated()
-        )
-        .httpBasic(Customizer.withDefaults())
-        .formLogin(Customizer.withDefaults())
-        .build();
-}
-</code></pre>
-<p>}
-```</p>
+public class SecurityConfig {
+
+    @Bean
+    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
+        return http
+            .authorizeExchange(exchanges -&gt; exchanges
+                .anyExchange().authenticated()
+            )
+            .httpBasic(Customizer.withDefaults())
+            .formLogin(Customizer.withDefaults())
+            .build();
+    }
+}</code></pre>
 <p><code>Customizer.withDefaults()</code>는 Spring Security 6.1 이상에서 권장되는 설정 패턴이다.</p>
 <hr>
 <h2 id="112-securitywebfilterchain">11.2 SecurityWebFilterChain 구성</h2>
 <h3 id="1121-serverhttpsecurity">11.2.1 ServerHttpSecurity 주요 설정</h3>
 <p><code>ServerHttpSecurity</code>라는 빌더를 통해 리액티브 보안을 상세하게 설정한다. 어떤 경로를 누구에게 열어줄지, CORS는 어떻게 할지 등을 여기서 결정한다.</p>
-<p><code>java
-@Bean
+<pre class="highlight"><code class="language-java">@Bean
 public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
     return http
         .authorizeExchange(exchanges -&gt; exchanges
@@ -2544,61 +2428,55 @@ public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
         .cors(cors -&gt; cors.configurationSource(corsConfigurationSource()))
         .formLogin(formLogin -&gt; formLogin.disable())
         .build();
-}</code></p>
+}</code></pre>
 <h3 id="1122-authorizeexchange">11.2.2 authorizeExchange 상세 설정</h3>
 <p><code>authorizeExchange</code> 내에서 쓸 수 있는 여러 매처와 권한 검증 규칙들을 정리해 보면 다음과 같다.</p>
-<p>```java
-.authorizeExchange(exchanges -&gt; exchanges
+<pre class="highlight"><code class="language-java">.authorizeExchange(exchanges -&gt; exchanges
     // HTTP 메서드 + 경로 조합
-    .pathMatchers(HttpMethod.GET, "/api/products/<strong>").permitAll()
-    .pathMatchers(HttpMethod.DELETE, "/api/</strong>").hasRole("ADMIN")</p>
-<pre><code>// 역할/권한 기반 인가
-.pathMatchers("/api/manager/**").hasAnyRole("ADMIN", "MANAGER")
-.pathMatchers("/api/reports/**").hasAuthority("REPORT_READ")
+    .pathMatchers(HttpMethod.GET, "/api/products/**").permitAll()
+    .pathMatchers(HttpMethod.DELETE, "/api/**").hasRole("ADMIN")
 
-// 커스텀 인가 로직
-.pathMatchers("/api/users/{userId}/**")
-    .access((authentication, context) -&gt; {
-        String userId = context.getVariables().get("userId");
-        return authentication
-            .map(auth -&gt; auth.getName().equals(userId))
-            .map(AuthorizationDecision::new);
-    })
+    // 역할/권한 기반 인가
+    .pathMatchers("/api/manager/**").hasAnyRole("ADMIN", "MANAGER")
+    .pathMatchers("/api/reports/**").hasAuthority("REPORT_READ")
 
-.anyExchange().authenticated()
-</code></pre>
-<p>)
-```</p>
+    // 커스텀 인가 로직
+    .pathMatchers("/api/users/{userId}/**")
+        .access((authentication, context) -&gt; {
+            String userId = context.getVariables().get("userId");
+            return authentication
+                .map(auth -&gt; auth.getName().equals(userId))
+                .map(AuthorizationDecision::new);
+        })
+
+    .anyExchange().authenticated()
+)</code></pre>
 <h3 id="1123-csrf-cors">11.2.3 CSRF와 CORS 설정</h3>
 <p>API 서버를 만들 때는 보통 CSRF를 꺼둔다. 쿠키 기반 토큰이 필요하지 않기 때문이다. 다만 SPA 같은 브라우저 기반 애플리케이션이라면 쿠키에 저장된 CSRF 토큰을 검증해야 한다.</p>
-<p>```java
-// REST API: CSRF 비활성화
-.csrf(csrf -&gt; csrf.disable())</p>
-<p>// 브라우저 기반: 쿠키 CSRF 토큰
+<pre class="highlight"><code class="language-java">// REST API: CSRF 비활성화
+.csrf(csrf -&gt; csrf.disable())
+
+// 브라우저 기반: 쿠키 CSRF 토큰
 .csrf(csrf -&gt; csrf
-    .csrfTokenRepository(CookieServerCsrfTokenRepository.withHttpOnlyFalse()))
-```</p>
+    .csrfTokenRepository(CookieServerCsrfTokenRepository.withHttpOnlyFalse()))</code></pre>
 <p>CORS 정책은 <code>CorsConfigurationSource</code> 빈을 통해 설정하는 것이 일반적이다.</p>
-<p>```java
-@Bean
+<pre class="highlight"><code class="language-java">@Bean
 public CorsConfigurationSource corsConfigurationSource() {
     CorsConfiguration config = new CorsConfiguration();
     config.setAllowedOrigins(List.of("http://localhost:3000"));
     config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
     config.setAllowedHeaders(List.of("*"));
-    config.setAllowCredentials(true);</p>
-<pre><code>UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-source.registerCorsConfiguration("/api/**", config);
-return source;
-</code></pre>
-<p>}
-```</p>
+    config.setAllowCredentials(true);
+
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/api/**", config);
+    return source;
+}</code></pre>
 <hr>
 <h2 id="113">11.3 인증과 인가 구현</h2>
 <h3 id="1131-reactiveuserdetailsservice">11.3.1 ReactiveUserDetailsService</h3>
 <p>리액티브 환경에서는 당연히 <code>ReactiveUserDetailsService</code>를 사용해야 한다. 비동기로 사용자 정보를 조회해서 <code>Mono&lt;UserDetails&gt;</code>로 반환하는 방식이다. 먼저 사용자 도메인과 MongoDB 리포지토리를 먼저 만들어 보자.</p>
-<p><code>java
-@Document(collection = "users")
+<pre class="highlight"><code class="language-java">@Document(collection = "users")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -2612,335 +2490,316 @@ public class User {
     private List&lt;String&gt; roles;
     private boolean enabled;
     private LocalDateTime createdAt;
-}</code></p>
-<p><code>java
-public interface UserRepository extends ReactiveMongoRepository&lt;User, String&gt; {
+}</code></pre>
+<pre class="highlight"><code class="language-java">public interface UserRepository extends ReactiveMongoRepository&lt;User, String&gt; {
     Mono&lt;User&gt; findByUsername(String username);
+    Mono&lt;User&gt; findByEmail(String email);
     Mono&lt;Boolean&gt; existsByUsername(String username);
-}</code></p>
+}</code></pre>
 <p>이제 MongoDB에서 사용자를 조회하는 <code>ReactiveUserDetailsService</code>를 구현해 보자.</p>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
-public class MongoUserDetailsService implements ReactiveUserDetailsService {</p>
-<pre><code>private final UserRepository userRepository;
+public class MongoUserDetailsService implements ReactiveUserDetailsService {
 
-@Override
-public Mono&lt;UserDetails&gt; findByUsername(String username) {
-    return userRepository.findByUsername(username)
-        .map(user -&gt; org.springframework.security.core.userdetails.User.builder()
-            .username(user.getUsername())
-            .password(user.getPassword())
-            .roles(user.getRoles().toArray(new String[0]))
-            .disabled(!user.isEnabled())
-            .build()
-        )
-        .switchIfEmpty(Mono.error(
-            new UsernameNotFoundException("사용자를 찾을 수 없습니다: " + username)
-        ));
-}
-</code></pre>
-<p>}
-```</p>
+    private final UserRepository userRepository;
+
+    @Override
+    public Mono&lt;UserDetails&gt; findByUsername(String username) {
+        return userRepository.findByUsername(username)
+            .map(user -&gt; org.springframework.security.core.userdetails.User.builder()
+                .username(user.getUsername())
+                .password(user.getPassword())
+                .roles(user.getRoles().toArray(new String[0]))
+                .disabled(!user.isEnabled())
+                .build()
+            )
+            .switchIfEmpty(Mono.error(
+                new UsernameNotFoundException("사용자를 찾을 수 없습니다: " + username)
+            ));
+    }
+}</code></pre>
 <h3 id="1132-passwordencoder">11.3.2 PasswordEncoder와 회원가입</h3>
 <p>비밀번호는 절대 평문으로 저장하면 안 되고, BCrypt 같은 해시 알고리즘으로 암호화해서 저장해야 한다.</p>
-<p><code>java
-@Bean
+<pre class="highlight"><code class="language-java">@Bean
 public PasswordEncoder passwordEncoder() {
     return new BCryptPasswordEncoder();
-}</code></p>
-<p>```java
-@Service
+}</code></pre>
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
-public class UserService {</p>
-<pre><code>private final UserRepository userRepository;
-private final PasswordEncoder passwordEncoder;
+public class UserService {
 
-public Mono&lt;User&gt; signup(SignupRequest request) {
-    return userRepository.existsByUsername(request.getUsername())
-        .flatMap(exists -&gt; {
-            if (exists) {
-                return Mono.error(new DuplicateException("이미 사용 중인 사용자명입니다."));
-            }
-            User user = User.builder()
-                .username(request.getUsername())
-                .password(passwordEncoder.encode(request.getPassword()))
-                .email(request.getEmail())
-                .roles(List.of("USER"))
-                .enabled(true)
-                .createdAt(LocalDateTime.now())
-                .build();
-            return userRepository.save(user);
-        });
-}
-</code></pre>
-<p>}
-```</p>
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    public Mono&lt;User&gt; signup(SignupRequest request) {
+        return userRepository.existsByUsername(request.getUsername())
+            .flatMap(exists -&gt; {
+                if (exists) {
+                    return Mono.error(new DuplicateException("이미 사용 중인 사용자명입니다."));
+                }
+                User user = User.builder()
+                    .username(request.getUsername())
+                    .password(passwordEncoder.encode(request.getPassword()))
+                    .email(request.getEmail())
+                    .roles(List.of("USER"))
+                    .enabled(true)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+                return userRepository.save(user);
+            });
+    }
+}</code></pre>
 <h3 id="1133-preauthorize">11.3.3 @PreAuthorize 메서드 보안</h3>
 <p><code>@EnableReactiveMethodSecurity</code>를 켜면 서비스 메서드 단위에서 세분화된 권한 검증을 할 수 있다. 이건 정말 유용한 기능이다.</p>
-<p><code>java
-@Configuration
+<pre class="highlight"><code class="language-java">@Configuration
 @EnableWebFluxSecurity
 @EnableReactiveMethodSecurity
 public class SecurityConfig {
     // SecurityWebFilterChain 빈 정의
-}</code></p>
-<p>```java
-@Service
+}</code></pre>
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
-public class ProductService {</p>
-<pre><code>private final ProductRepository productRepository;
+public class ProductService {
 
-@PreAuthorize("hasRole('ADMIN')")
-public Mono&lt;Product&gt; create(Product product) {
-    product.setCreatedAt(LocalDateTime.now());
-    return productRepository.save(product);
-}
+    private final ProductRepository productRepository;
 
-@PreAuthorize("hasRole('ADMIN') or hasRole('MANAGER')")
-public Mono&lt;Product&gt; update(String id, Product product) {
-    return productRepository.findById(id)
-        .map(existing -&gt; {
-            existing.setName(product.getName());
-            existing.setPrice(product.getPrice());
-            existing.setUpdatedAt(LocalDateTime.now());
-            return existing;
-        })
-        .flatMap(productRepository::save);
-}
+    @PreAuthorize("hasRole('ADMIN')")
+    public Mono&lt;Product&gt; create(Product product) {
+        product.setCreatedAt(LocalDateTime.now());
+        return productRepository.save(product);
+    }
 
-// 현재 사용자 본인의 데이터만 조회 허용
-@PreAuthorize("#username == authentication.name or hasRole('ADMIN')")
-public Mono&lt;User&gt; findByUsername(String username) {
-    return userRepository.findByUsername(username);
-}
-</code></pre>
-<p>}
-```</p>
+    @PreAuthorize("hasRole('ADMIN') or hasRole('MANAGER')")
+    public Mono&lt;Product&gt; update(String id, Product product) {
+        return productRepository.findById(id)
+            .map(existing -&gt; {
+                existing.setName(product.getName());
+                existing.setPrice(product.getPrice());
+                existing.setUpdatedAt(LocalDateTime.now());
+                return existing;
+            })
+            .flatMap(productRepository::save);
+    }
+
+    // 현재 사용자 본인의 데이터만 조회 허용
+    @PreAuthorize("#username == authentication.name or hasRole('ADMIN')")
+    public Mono&lt;User&gt; findByUsername(String username) {
+        return userRepository.findByUsername(username);
+    }
+}</code></pre>
 <p>필자의 경험상 리액티브 환경에서도 <code>@PreAuthorize</code>는 <code>Mono</code>/<code>Flux</code> 반환 타입을 문제없이 처리한다. 권한이 없으면 <code>AccessDeniedException</code>이 던져지는데, 이를 적절히 핸들링해야 한다.</p>
 <hr>
 <h2 id="114-jwt">11.4 JWT 기반 인증 구현</h2>
 <p>요즘 REST API 서버에서는 세션을 쓰지 않고 JWT(JSON Web Token)로 무상태 인증을 한다. JWT는 Header(헤더-알고리즘/타입), Payload(페이로드-클레임), Signature(서명) 이렇게 세 부분으로 나뉜다. 이 방식은 확장성이 좋고, 마이크로서비스 환경에 잘 맞는다.</p>
 <h3 id="1141-jwt">11.4.1 JWT 유틸리티 클래스</h3>
 <p>jjwt 라이브러리는 JWT를 쉽게 다루기 위한 라이브러리인데, 이걸 활용해서 토큰을 생성하고 검증하고 파싱하는 유틸리티를 만들어 보자.</p>
-<p>```java
-@Component
-public class JwtTokenProvider {</p>
-<pre><code>@Value("${jwt.secret}")
-private String secretKey;
+<pre class="highlight"><code class="language-java">@Component
+public class JwtTokenProvider {
 
-@Value("${jwt.access-token-expiration}")
-private long accessTokenExpiration;
+    @Value("${jwt.secret}")
+    private String secretKey;
 
-@Value("${jwt.refresh-token-expiration}")
-private long refreshTokenExpiration;
+    @Value("${jwt.access-token-expiration}")
+    private long accessTokenExpiration;
 
-private SecretKey key;
+    @Value("${jwt.refresh-token-expiration}")
+    private long refreshTokenExpiration;
 
-@PostConstruct
-public void init() {
-    this.key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secretKey));
-}
+    private SecretKey key;
 
-public String generateAccessToken(UserDetails userDetails) {
-    Map&lt;String, Object&gt; claims = Map.of("roles",
-        userDetails.getAuthorities().stream()
-            .map(GrantedAuthority::getAuthority).toList());
-    return createToken(claims, userDetails.getUsername(), accessTokenExpiration);
-}
+    @PostConstruct
+    public void init() {
+        this.key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secretKey));
+    }
 
-public String generateRefreshToken(UserDetails userDetails) {
-    return createToken(Map.of(), userDetails.getUsername(), refreshTokenExpiration);
-}
+    public String generateAccessToken(UserDetails userDetails) {
+        Map&lt;String, Object&gt; claims = Map.of("roles",
+            userDetails.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority).toList());
+        return createToken(claims, userDetails.getUsername(), accessTokenExpiration);
+    }
 
-private String createToken(Map&lt;String, Object&gt; claims, String subject,
-                           long expiration) {
-    Date now = new Date();
-    return Jwts.builder()
-        .claims(claims).subject(subject).issuedAt(now)
-        .expiration(new Date(now.getTime() + expiration))
-        .signWith(key).compact();
-}
+    public String generateRefreshToken(UserDetails userDetails) {
+        return createToken(Map.of(), userDetails.getUsername(), refreshTokenExpiration);
+    }
 
-public String getUsernameFromToken(String token) {
-    return getClaims(token).getSubject();
-}
+    private String createToken(Map&lt;String, Object&gt; claims, String subject,
+                               long expiration) {
+        Date now = new Date();
+        return Jwts.builder()
+            .claims(claims).subject(subject).issuedAt(now)
+            .expiration(new Date(now.getTime() + expiration))
+            .signWith(key).compact();
+    }
 
-@SuppressWarnings("unchecked")
-public List&lt;String&gt; getRolesFromToken(String token) {
-    return getClaims(token).get("roles", List.class);
-}
+    public String getUsernameFromToken(String token) {
+        return getClaims(token).getSubject();
+    }
 
-public boolean validateToken(String token) {
-    try { getClaims(token); return true; }
-    catch (JwtException | IllegalArgumentException e) { return false; }
-}
+    @SuppressWarnings("unchecked")
+    public List&lt;String&gt; getRolesFromToken(String token) {
+        return getClaims(token).get("roles", List.class);
+    }
 
-private Claims getClaims(String token) {
-    return Jwts.parser().verifyWith(key).build()
-        .parseSignedClaims(token).getPayload();
-}
-</code></pre>
-<p>}
-```</p>
+    public boolean validateToken(String token) {
+        try { getClaims(token); return true; }
+        catch (JwtException | IllegalArgumentException e) { return false; }
+    }
+
+    private Claims getClaims(String token) {
+        return Jwts.parser().verifyWith(key).build()
+            .parseSignedClaims(token).getPayload();
+    }
+}</code></pre>
 <p><code>application.yml</code> 설정을 추가한다.</p>
-<p><code>yaml
-jwt:
+<pre class="highlight"><code class="language-yaml">jwt:
   secret: "dGhpcyBpcyBhIHZlcnkgbG9uZyBzZWNyZXQga2V5IGZvciBIUzI1NiBhbGdvcml0aG0="
   access-token-expiration: 3600000     # 1시간
-  refresh-token-expiration: 604800000  # 7일</code></p>
+  refresh-token-expiration: 604800000  # 7일</code></pre>
 <h3 id="1142-jwt">11.4.2 JWT 인증 필터</h3>
 <p>Authorization 헤더에서 JWT를 추출해서 검증하고 <code>Authentication</code> 객체로 변환하는 컨버터와 매니저를 만들어야 한다.</p>
-<p>```java
-@Component
+<pre class="highlight"><code class="language-java">@Component
 @RequiredArgsConstructor
-public class JwtAuthenticationConverter implements ServerAuthenticationConverter {</p>
-<pre><code>private final JwtTokenProvider jwtTokenProvider;
+public class JwtAuthenticationConverter implements ServerAuthenticationConverter {
 
-@Override
-public Mono&lt;Authentication&gt; convert(ServerWebExchange exchange) {
-    return Mono.justOrEmpty(
-            exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
-        .filter(header -&gt; header.startsWith("Bearer "))
-        .map(header -&gt; header.substring(7))
-        .filter(jwtTokenProvider::validateToken)
-        .map(token -&gt; {
-            String username = jwtTokenProvider.getUsernameFromToken(token);
-            List&lt;GrantedAuthority&gt; authorities = jwtTokenProvider
-                .getRolesFromToken(token).stream()
-                .map(SimpleGrantedAuthority::new)
-                .collect(Collectors.toList());
-            return new UsernamePasswordAuthenticationToken(
-                username, null, authorities);
-        });
-}
-</code></pre>
-<p>}
-```</p>
-<p>```java
-@Component
+    private final JwtTokenProvider jwtTokenProvider;
+
+    @Override
+    public Mono&lt;Authentication&gt; convert(ServerWebExchange exchange) {
+        return Mono.justOrEmpty(
+                exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
+            .filter(header -&gt; header.startsWith("Bearer "))
+            .map(header -&gt; header.substring(7))
+            .filter(jwtTokenProvider::validateToken)
+            .map(token -&gt; {
+                String username = jwtTokenProvider.getUsernameFromToken(token);
+                List&lt;GrantedAuthority&gt; authorities = jwtTokenProvider
+                    .getRolesFromToken(token).stream()
+                    .map(SimpleGrantedAuthority::new)
+                    .collect(Collectors.toList());
+                return new UsernamePasswordAuthenticationToken(
+                    username, null, authorities);
+            });
+    }
+}</code></pre>
+<pre class="highlight"><code class="language-java">@Component
 @RequiredArgsConstructor
-public class JwtReactiveAuthenticationManager implements ReactiveAuthenticationManager {</p>
-<pre><code>private final ReactiveUserDetailsService userDetailsService;
+public class JwtReactiveAuthenticationManager implements ReactiveAuthenticationManager {
 
-@Override
-public Mono&lt;Authentication&gt; authenticate(Authentication authentication) {
-    return userDetailsService.findByUsername(authentication.getName())
-        .map(userDetails -&gt; new UsernamePasswordAuthenticationToken(
-            userDetails, null, authentication.getAuthorities()));
-}
-</code></pre>
-<p>}
-```</p>
+    private final ReactiveUserDetailsService userDetailsService;
+
+    @Override
+    public Mono&lt;Authentication&gt; authenticate(Authentication authentication) {
+        return userDetailsService.findByUsername(authentication.getName())
+            .map(userDetails -&gt; new UsernamePasswordAuthenticationToken(
+                userDetails, null, authentication.getAuthorities()));
+    }
+}</code></pre>
 <h3 id="1143-jwt-securitywebfilterchain">11.4.3 JWT SecurityWebFilterChain 구성</h3>
 <p>위에서 만든 컨버터와 매니저를 사용해서 JWT 기반의 완전한 보안 설정을 구성해 보자.</p>
-<p>```java
-@Configuration
+<pre class="highlight"><code class="language-java">@Configuration
 @EnableWebFluxSecurity
 @EnableReactiveMethodSecurity
 @RequiredArgsConstructor
-public class SecurityConfig {</p>
-<pre><code>private final JwtReactiveAuthenticationManager authenticationManager;
-private final JwtAuthenticationConverter authenticationConverter;
+public class SecurityConfig {
 
-@Bean
-public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
-    AuthenticationWebFilter jwtFilter =
-        new AuthenticationWebFilter(authenticationManager);
-    jwtFilter.setServerAuthenticationConverter(authenticationConverter);
+    private final JwtReactiveAuthenticationManager authenticationManager;
+    private final JwtAuthenticationConverter authenticationConverter;
 
-    return http
-        .authorizeExchange(exchanges -&gt; exchanges
-            .pathMatchers("/api/auth/**").permitAll()
-            .pathMatchers(HttpMethod.GET, "/api/products/**").permitAll()
-            .pathMatchers("/api/admin/**").hasRole("ADMIN")
-            .anyExchange().authenticated()
-        )
-        .addFilterAt(jwtFilter, SecurityWebFiltersOrder.AUTHENTICATION)
-        .httpBasic(httpBasic -&gt; httpBasic.disable())
-        .formLogin(formLogin -&gt; formLogin.disable())
-        .csrf(csrf -&gt; csrf.disable())
-        .exceptionHandling(ex -&gt; ex
-            .authenticationEntryPoint((exchange, e) -&gt; Mono.fromRunnable(
-                () -&gt; exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED)))
-            .accessDeniedHandler((exchange, denied) -&gt; Mono.fromRunnable(
-                () -&gt; exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN)))
-        )
-        .securityContextRepository(NoOpServerSecurityContextRepository.getInstance())
-        .build();
-}
+    @Bean
+    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
+        AuthenticationWebFilter jwtFilter =
+            new AuthenticationWebFilter(authenticationManager);
+        jwtFilter.setServerAuthenticationConverter(authenticationConverter);
 
-@Bean
-public PasswordEncoder passwordEncoder() {
-    return new BCryptPasswordEncoder();
-}
-</code></pre>
-<p>}
-```</p>
+        return http
+            .authorizeExchange(exchanges -&gt; exchanges
+                .pathMatchers("/api/auth/**").permitAll()
+                .pathMatchers(HttpMethod.GET, "/api/products/**").permitAll()
+                .pathMatchers("/api/admin/**").hasRole("ADMIN")
+                .anyExchange().authenticated()
+            )
+            .addFilterAt(jwtFilter, SecurityWebFiltersOrder.AUTHENTICATION)
+            .httpBasic(httpBasic -&gt; httpBasic.disable())
+            .formLogin(formLogin -&gt; formLogin.disable())
+            .csrf(csrf -&gt; csrf.disable())
+            .exceptionHandling(ex -&gt; ex
+                .authenticationEntryPoint((exchange, e) -&gt; Mono.fromRunnable(
+                    () -&gt; exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED)))
+                .accessDeniedHandler((exchange, denied) -&gt; Mono.fromRunnable(
+                    () -&gt; exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN)))
+            )
+            .securityContextRepository(NoOpServerSecurityContextRepository.getInstance())
+            .build();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+}</code></pre>
 <p><code>NoOpServerSecurityContextRepository</code>를 설정하면 서버에서 세션을 전혀 생성하지 않는 완전한 stateless 구조가 완성된다.</p>
 <h3 id="1144">11.4.4 인증 컨트롤러</h3>
 <p>이제 클라이언트가 회원가입하고 로그인하고 토큰을 갱신할 수 있도록 엔드포인트들을 만들어 보자.</p>
-<p>```java
-@RestController
+<pre class="highlight"><code class="language-java">@RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
-public class AuthController {</p>
-<pre><code>private final UserService userService;
-private final ReactiveUserDetailsService userDetailsService;
-private final PasswordEncoder passwordEncoder;
-private final JwtTokenProvider jwtTokenProvider;
+public class AuthController {
 
-@PostMapping("/signup")
-@ResponseStatus(HttpStatus.CREATED)
-public Mono&lt;UserResponse&gt; signup(@Valid @RequestBody SignupRequest request) {
-    return userService.signup(request).map(UserResponse::from);
-}
+    private final UserService userService;
+    private final ReactiveUserDetailsService userDetailsService;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtTokenProvider jwtTokenProvider;
 
-@PostMapping("/login")
-public Mono&lt;TokenResponse&gt; login(@Valid @RequestBody LoginRequest request) {
-    return userDetailsService.findByUsername(request.getUsername())
-        .filter(ud -&gt; passwordEncoder.matches(
-            request.getPassword(), ud.getPassword()))
-        .map(ud -&gt; new TokenResponse(
-            jwtTokenProvider.generateAccessToken(ud),
-            jwtTokenProvider.generateRefreshToken(ud)))
-        .switchIfEmpty(Mono.error(
-            new BadCredentialsException("잘못된 사용자명 또는 비밀번호입니다.")));
-}
-
-@PostMapping("/refresh")
-public Mono&lt;TokenResponse&gt; refresh(@RequestBody RefreshTokenRequest request) {
-    String refreshToken = request.getRefreshToken();
-    if (!jwtTokenProvider.validateToken(refreshToken)) {
-        return Mono.error(
-            new BadCredentialsException("유효하지 않은 리프레시 토큰입니다."));
+    @PostMapping("/signup")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Mono&lt;UserResponse&gt; signup(@Valid @RequestBody SignupRequest request) {
+        return userService.signup(request).map(UserResponse::from);
     }
-    String username = jwtTokenProvider.getUsernameFromToken(refreshToken);
-    return userDetailsService.findByUsername(username)
-        .map(ud -&gt; new TokenResponse(
-            jwtTokenProvider.generateAccessToken(ud), refreshToken));
-}
-</code></pre>
-<p>}
-```</p>
+
+    @PostMapping("/login")
+    public Mono&lt;TokenResponse&gt; login(@Valid @RequestBody LoginRequest request) {
+        return userDetailsService.findByUsername(request.getUsername())
+            .filter(ud -&gt; passwordEncoder.matches(
+                request.getPassword(), ud.getPassword()))
+            .map(ud -&gt; new TokenResponse(
+                jwtTokenProvider.generateAccessToken(ud),
+                jwtTokenProvider.generateRefreshToken(ud)))
+            .switchIfEmpty(Mono.error(
+                new BadCredentialsException("잘못된 사용자명 또는 비밀번호입니다.")));
+    }
+
+    @PostMapping("/refresh")
+    public Mono&lt;TokenResponse&gt; refresh(@RequestBody RefreshTokenRequest request) {
+        String refreshToken = request.getRefreshToken();
+        if (!jwtTokenProvider.validateToken(refreshToken)) {
+            return Mono.error(
+                new BadCredentialsException("유효하지 않은 리프레시 토큰입니다."));
+        }
+        String username = jwtTokenProvider.getUsernameFromToken(refreshToken);
+        return userDetailsService.findByUsername(username)
+            .map(ud -&gt; new TokenResponse(
+                jwtTokenProvider.generateAccessToken(ud), refreshToken));
+    }
+}</code></pre>
 <p>컨트롤러에서 사용할 요청/응답 DTO도 정의해야 한다.</p>
-<p>```java
-@Data
+<pre class="highlight"><code class="language-java">@Data
 public class LoginRequest {
     @NotBlank private String username;
     @NotBlank private String password;
-}</p>
-<p>@Data
+}
+
+@Data
 public class RefreshTokenRequest {
     @NotBlank private String refreshToken;
-}</p>
-<p>@Data
+}
+
+@Data
 @AllArgsConstructor
 public class TokenResponse {
     private String accessToken;
     private String refreshToken;
-}
-```</p>
+}</code></pre>
 <h3 id="1145">11.4.5 전체 인증 흐름</h3>
 <p>JWT 기반 인증이 어떻게 흘러가는지 정리하면 다음과 같다.</p>
 <ol>
@@ -2953,74 +2812,68 @@ public class TokenResponse {
 <h2 id="115-securitycontext">11.5 리액티브 환경에서의 SecurityContext 관리</h2>
 <h3 id="1151-reactivesecuritycontextholder">11.5.1 ReactiveSecurityContextHolder</h3>
 <p>서블릿 환경의 <code>SecurityContextHolder.getContext()</code>는 ThreadLocal 기반인데, 리액티브 환경에서는 이걸 쓰면 안 된다.</p>
-<p><code>java
-// 리액티브 환경에서의 올바른 방식
+<pre class="highlight"><code class="language-java">// 리액티브 환경에서의 올바른 방식
 Mono&lt;String&gt; username = ReactiveSecurityContextHolder.getContext()
     .map(SecurityContext::getAuthentication)
-    .map(Authentication::getName);</code></p>
+    .map(Authentication::getName);</code></pre>
 <h3 id="1152">11.5.2 현재 사용자 정보 가져오기</h3>
 <p>서비스 계층에서 현재 로그인한 사용자 정보를 어떻게 가져오는지 살펴보자.</p>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
-public class OrderService {</p>
-<pre><code>private final OrderRepository orderRepository;
+public class OrderService {
 
-public Flux&lt;Order&gt; getMyOrders() {
-    return ReactiveSecurityContextHolder.getContext()
-        .map(ctx -&gt; ctx.getAuthentication().getName())
-        .flatMapMany(orderRepository::findByUsername);
-}
+    private final OrderRepository orderRepository;
 
-public Mono&lt;Order&gt; createOrder(OrderRequest request) {
-    return ReactiveSecurityContextHolder.getContext()
-        .map(ctx -&gt; ctx.getAuthentication().getName())
-        .flatMap(username -&gt; {
-            Order order = Order.builder()
-                .username(username)
-                .items(request.getItems())
-                .totalAmount(request.getTotalAmount())
-                .createdAt(LocalDateTime.now())
-                .build();
-            return orderRepository.save(order);
-        });
-}
-</code></pre>
-<p>}
-```</p>
+    public Flux&lt;Order&gt; getMyOrders() {
+        return ReactiveSecurityContextHolder.getContext()
+            .map(ctx -&gt; ctx.getAuthentication().getName())
+            .flatMapMany(orderRepository::findByUsername);
+    }
+
+    public Mono&lt;Order&gt; createOrder(OrderRequest request) {
+        return ReactiveSecurityContextHolder.getContext()
+            .map(ctx -&gt; ctx.getAuthentication().getName())
+            .flatMap(username -&gt; {
+                Order order = Order.builder()
+                    .username(username)
+                    .items(request.getItems())
+                    .totalAmount(request.getTotalAmount())
+                    .createdAt(LocalDateTime.now())
+                    .build();
+                return orderRepository.save(order);
+            });
+    }
+}</code></pre>
 <h3 id="1153">11.5.3 컨트롤러에서 인증 정보 접근</h3>
 <p>컨트롤러의 핸들러 메서드에서는 <code>@AuthenticationPrincipal</code>이나 <code>Mono&lt;Principal&gt;</code>을 주입받는 방식이 더 편하다.</p>
-<p>```java
-@GetMapping("/me")
-public Mono<UserResponse> getMyProfile(
-        @AuthenticationPrincipal Mono<UserDetails> principal) {
+<pre class="highlight"><code class="language-java">@GetMapping("/me")
+public Mono&lt;UserResponse&gt; getMyProfile(
+        @AuthenticationPrincipal Mono&lt;UserDetails&gt; principal) {
     return principal
         .flatMap(user -&gt; userService.findByUsername(user.getUsername()))
         .map(UserResponse::from);
-}</p>
-<p>@GetMapping("/me/orders")
-public Flux<Order> getMyOrders(Mono<Principal> principal) {
+}
+
+@GetMapping("/me/orders")
+public Flux&lt;Order&gt; getMyOrders(Mono&lt;Principal&gt; principal) {
     return principal.map(Principal::getName)
         .flatMapMany(orderService::findByUsername);
-}
-```</p>
+}</code></pre>
 <h3 id="1154-securitycontext">11.5.4 SecurityContext 주의사항</h3>
 <p><code>ReactiveSecurityContextHolder.getContext()</code>의 반환값은 반드시 리액티브 체인 내부에서 <code>map</code>/<code>flatMap</code>으로 계속 연결해야 한다. Reactor의 Context는 구독할 때 전파되는데, 체인이 끊기면 SecurityContext를 더 이상 읽을 수 없기 때문이다. 필자의 경험상 이것 때문에 생기는 버그가 많다.</p>
-<p>```java
-// 잘못된 사용: context를 구독하지 않으므로 SecurityContext 접근 불가
-Mono<SecurityContext> context = ReactiveSecurityContextHolder.getContext();
-return orderRepository.save(order);</p>
-<p>// 올바른 사용: 체인 내부에서 연결
+<pre class="highlight"><code class="language-java">// 잘못된 사용: context를 구독하지 않으므로 SecurityContext 접근 불가
+Mono&lt;SecurityContext&gt; context = ReactiveSecurityContextHolder.getContext();
+return orderRepository.save(order);
+
+// 올바른 사용: 체인 내부에서 연결
 return ReactiveSecurityContextHolder.getContext()
     .map(ctx -&gt; ctx.getAuthentication().getName())
-    .flatMap(username -&gt; orderRepository.save(buildOrder(request, username)));
-```</p>
+    .flatMap(username -&gt; orderRepository.save(buildOrder(request, username)));</code></pre>
 <hr>
 <h2 id="116-oauth2-openid-connect">11.6 OAuth2 / OpenID Connect 연동</h2>
 <h3 id="1161-oauth2-login">11.6.1 OAuth2 Login 설정</h3>
 <p>구글이나 깃허브 같은 소셜 로그인을 지원하려면 <code>application.yml</code>에 OAuth2 클라이언트 정보를 등록해야 한다.</p>
-<p><code>yaml
-spring:
+<pre class="highlight"><code class="language-yaml">spring:
   security:
     oauth2:
       client:
@@ -3035,106 +2888,102 @@ spring:
             scope: read:user, user:email
         provider:
           github:
-            user-name-attribute: login</code></p>
+            user-name-attribute: login</code></pre>
 <p>구글은 OpenID Connect를 지원해서 provider 설정이 자동으로 적용되지만, 깃허브는 <code>user-name-attribute</code>를 직접 지정해 줘야 한다.</p>
 <h3 id="1162-oauth2-securitywebfilterchain">11.6.2 OAuth2 SecurityWebFilterChain 설정</h3>
 <p>OAuth2 로그인을 활성화하는 보안 설정은 매우 간단하다.</p>
-<p>```java
-@Configuration
+<pre class="highlight"><code class="language-java">@Configuration
 @EnableWebFluxSecurity
-public class OAuth2SecurityConfig {</p>
-<pre><code>@Bean
-public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
-    return http
-        .authorizeExchange(exchanges -&gt; exchanges
-            .pathMatchers("/", "/login/**", "/oauth2/**").permitAll()
-            .anyExchange().authenticated()
-        )
-        .oauth2Login(Customizer.withDefaults())
-        .csrf(csrf -&gt; csrf.disable())
-        .build();
-}
-</code></pre>
-<p>}
-```</p>
+public class OAuth2SecurityConfig {
+
+    @Bean
+    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
+        return http
+            .authorizeExchange(exchanges -&gt; exchanges
+                .pathMatchers("/", "/login/**", "/oauth2/**").permitAll()
+                .anyExchange().authenticated()
+            )
+            .oauth2Login(Customizer.withDefaults())
+            .csrf(csrf -&gt; csrf.disable())
+            .build();
+    }
+}</code></pre>
 <p><code>oauth2Login(Customizer.withDefaults())</code>라는 한 줄의 설정만으로 <code>/oauth2/authorization/{registrationId}</code> 엔드포인트와 리다이렉트 콜백이 자동으로 준비된다. 정말 편하다.</p>
 <h3 id="1163-oauth2">11.6.3 OAuth2 사용자 정보 커스터마이징</h3>
 <p>소셜 로그인이 성공한 후에 사용자 정보를 우리 MongoDB에 저장하고 싶다면 <code>ReactiveOAuth2UserService</code>를 커스터마이징해야 한다.</p>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
 public class CustomOAuth2UserService
-        implements ReactiveOAuth2UserService<OidcUserRequest, OidcUser> {</p>
-<pre><code>private final UserRepository userRepository;
-private final ReactiveOidcUserService delegate = new ReactiveOidcUserService();
+        implements ReactiveOAuth2UserService&lt;OidcUserRequest, OidcUser&gt; {
 
-@Override
-public Mono&lt;OidcUser&gt; loadUser(OidcUserRequest userRequest) {
-    return delegate.loadUser(userRequest)
-        .flatMap(oidcUser -&gt; {
-            String email = oidcUser.getEmail();
-            String provider = userRequest.getClientRegistration()
-                .getRegistrationId();
-            return userRepository.findByEmail(email)
-                .switchIfEmpty(createOAuth2User(email, oidcUser.getFullName(),
-                                                 provider))
-                .thenReturn(oidcUser);
-        });
-}
+    private final UserRepository userRepository;
+    private final ReactiveOidcUserService delegate = new ReactiveOidcUserService();
 
-private Mono&lt;User&gt; createOAuth2User(String email, String name, String provider) {
-    User user = User.builder()
-        .username(email).email(email).password("")
-        .roles(List.of("USER")).enabled(true)
-        .createdAt(LocalDateTime.now()).build();
-    return userRepository.save(user);
-}
-</code></pre>
-<p>}
-```</p>
+    @Override
+    public Mono&lt;OidcUser&gt; loadUser(OidcUserRequest userRequest) {
+        return delegate.loadUser(userRequest)
+            .flatMap(oidcUser -&gt; {
+                String email = oidcUser.getEmail();
+                String provider = userRequest.getClientRegistration()
+                    .getRegistrationId();
+                return userRepository.findByEmail(email)
+                    .switchIfEmpty(createOAuth2User(email, oidcUser.getFullName(),
+                                                     provider))
+                    .thenReturn(oidcUser);
+            });
+    }
+
+    private Mono&lt;User&gt; createOAuth2User(String email, String name, String provider) {
+        User user = User.builder()
+            .username(email).email(email).password("")
+            .roles(List.of("USER")).enabled(true)
+            .createdAt(LocalDateTime.now()).build();
+        return userRepository.save(user);
+    }
+}</code></pre>
+<blockquote>
+<p><strong>참고</strong>: 이 서비스는 OIDC를 지원하는 프로바이더(Google 등)에만 적용됩니다. GitHub 등 비-OIDC 프로바이더를 위해서는 <code>ReactiveOAuth2UserService&lt;OAuth2UserRequest, OAuth2User&gt;</code>를 별도로 구현해야 합니다.</p>
+</blockquote>
 <h3 id="1164-resource-server">11.6.4 Resource Server 설정</h3>
 <p>Keycloak이나 Auth0 같은 외부 인증 서버에서 발급받은 JWT를 검증해야 하는 경우가 있다. 이 경우 우리 애플리케이션은 Resource Server가 되는데, 그 설정 방법을 살펴보자.</p>
-<p><code>yaml
-spring:
+<pre class="highlight"><code class="language-yaml">spring:
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: https://auth.example.com/realms/my-realm</code></p>
-<p>```java
-@Configuration
+          issuer-uri: https://auth.example.com/realms/my-realm</code></pre>
+<pre class="highlight"><code class="language-java">@Configuration
 @EnableWebFluxSecurity
-public class ResourceServerConfig {</p>
-<pre><code>@Bean
-public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
-    return http
-        .authorizeExchange(exchanges -&gt; exchanges
-            .pathMatchers(HttpMethod.GET, "/api/products/**").permitAll()
-            .pathMatchers("/api/admin/**").hasAuthority("SCOPE_admin")
-            .anyExchange().authenticated()
-        )
-        .oauth2ResourceServer(oauth2 -&gt; oauth2.jwt(Customizer.withDefaults()))
-        .csrf(csrf -&gt; csrf.disable())
-        .build();
-}
+public class ResourceServerConfig {
 
-@Bean
-public ReactiveJwtAuthenticationConverter jwtAuthenticationConverter() {
-    JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter =
-        new JwtGrantedAuthoritiesConverter();
-    grantedAuthoritiesConverter.setAuthorityPrefix("ROLE_");
-    grantedAuthoritiesConverter.setAuthoritiesClaimName("roles");
+    @Bean
+    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
+        return http
+            .authorizeExchange(exchanges -&gt; exchanges
+                .pathMatchers(HttpMethod.GET, "/api/products/**").permitAll()
+                .pathMatchers("/api/admin/**").hasAuthority("SCOPE_admin")
+                .anyExchange().authenticated()
+            )
+            .oauth2ResourceServer(oauth2 -&gt; oauth2.jwt(Customizer.withDefaults()))
+            .csrf(csrf -&gt; csrf.disable())
+            .build();
+    }
 
-    ReactiveJwtAuthenticationConverter converter =
-        new ReactiveJwtAuthenticationConverter();
-    converter.setJwtGrantedAuthoritiesConverter(
-        new ReactiveJwtGrantedAuthoritiesConverterAdapter(
-            grantedAuthoritiesConverter));
-    return converter;
-}
-</code></pre>
-<p>}
-```</p>
+    @Bean
+    public ReactiveJwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter =
+            new JwtGrantedAuthoritiesConverter();
+        grantedAuthoritiesConverter.setAuthorityPrefix("ROLE_");
+        grantedAuthoritiesConverter.setAuthoritiesClaimName("roles");
+
+        ReactiveJwtAuthenticationConverter converter =
+            new ReactiveJwtAuthenticationConverter();
+        converter.setJwtGrantedAuthoritiesConverter(
+            new ReactiveJwtGrantedAuthoritiesConverterAdapter(
+                grantedAuthoritiesConverter));
+        return converter;
+    }
+}</code></pre>
 <h3 id="1165-jwt-oauth2">11.6.5 JWT와 OAuth2의 선택 기준</h3>
 <table>
 <thead>

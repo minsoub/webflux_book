@@ -149,6 +149,7 @@ public Flux<ServerSentEvent<Map<String, Object>>> streamEventsAuto() {
 실제 SSE 구현에서는 타이머 같은 구조가 자주 나온다. `Flux.interval()`이 바로 그 도구다. 지정된 간격으로 0부터 시작하는 `Long` 값을 계속 내보내는 Hot Publisher다. 주기적으로 데이터를 보내야 하는 SSE 엔드포인트에 딱 맞다.
 
 ```java
+@Slf4j
 @RestController
 @RequestMapping("/api/sse")
 @RequiredArgsConstructor
@@ -615,15 +616,15 @@ public class ProductSseController {
             changeStreamService.watchProducts()
                 .map(event -> {
                     ProductChangeEvent payload = ProductChangeEvent.builder()
-                        .operationType(event.getOperationType().getValue())
+                        .operationType(event.getOperationType().name())
                         .product(event.getBody())
                         .timestamp(Instant.now())
                         .build();
 
                     return ServerSentEvent.<ProductChangeEvent>builder()
-                        .id(event.getResumeToken() != null
-                            ? event.getResumeToken().toJson() : null)
-                        .event("product-" + event.getOperationType().getValue())
+                        .id(event.getRaw() != null && event.getRaw().getResumeToken() != null
+                            ? event.getRaw().getResumeToken().toJson() : null)
+                        .event("product-" + event.getOperationType().name())
                         .data(payload)
                         .build();
                 });
@@ -684,11 +685,11 @@ public Flux<ServerSentEvent<ProductChangeEvent>> streamResumable(
 
     return resumableChangeStreamService.watchProducts(lastEventId)
         .map(event -> {
-            String tokenJson = event.getResumeToken() != null
-                ? event.getResumeToken().toJson() : null;
+            String tokenJson = event.getRaw() != null && event.getRaw().getResumeToken() != null
+                ? event.getRaw().getResumeToken().toJson() : null;
 
             ProductChangeEvent payload = ProductChangeEvent.builder()
-                .operationType(event.getOperationType().getValue())
+                .operationType(event.getOperationType().name())
                 .product(event.getBody())
                 .timestamp(Instant.now())
                 .build();
@@ -1442,6 +1443,14 @@ public class WebSocketSessionRegistry {
             .collect(Collectors.toSet());
     }
 
+    public Map<String, WebSocketSession> getSessions(String roomId) {
+        return roomSessions.getOrDefault(roomId, new ConcurrentHashMap<>());
+    }
+
+    public String getUsername(String sessionId) {
+        return sessionUserMap.getOrDefault(sessionId, "unknown");
+    }
+
     public Map<String, WebSocketSession> getAllSessions() {
         Map<String, WebSocketSession> all = new ConcurrentHashMap<>();
         roomSessions.values().forEach(all::putAll);
@@ -2090,13 +2099,13 @@ public class WeatherClientService {
                                 @Value("${weather.api.key}") String apiKey) {
         this.webClient = builder
             .baseUrl("https://api.openweathermap.org/data/2.5")
-            .defaultUriVariables(Map.of("appid", apiKey)).build();
+            .build();
     }
 
     public Mono<WeatherResponse> getCurrentWeather(String city) {
         return webClient.get()
             .uri(uriBuilder -> uriBuilder.path("/weather")
-                .queryParam("q", city).queryParam("appid", "{appid}")
+                .queryParam("q", city).queryParam("appid", apiKey)
                 .queryParam("units", "metric").build())
             .retrieve()
             .onStatus(HttpStatusCode::is4xxClientError, response ->
@@ -2682,6 +2691,8 @@ CREATE INDEX idx_order_items_order_id ON order_items(order_id);
 
 두 데이터소스를 독립적으로 관리하려면 각각의 설정 클래스가 필요합니다. 리포지토리 스캔 경로를 분리하는 것이 핵심입니다.
 
+> **참고**: Spring Boot의 R2DBC 자동 설정을 비활성화(`@SpringBootApplication(exclude = R2dbcAutoConfiguration.class)`)하거나, 자동 설정을 사용하는 경우 이 설정 클래스를 제거하세요.
+
 ```java
 @Configuration
 @EnableR2dbcRepositories(basePackages = "com.example.shop.repository.r2dbc")
@@ -3073,7 +3084,7 @@ public class OrderSagaService {
     }
 
     private Mono<Void> processPayment(OrderEntity order, OrderRequest request) {
-        PaymentEntity payment = PaymentEntity.builder()
+        Payment payment = Payment.builder()
             .orderId(order.getId())
             .paymentMethod(request.getPaymentMethod())
             .amount(order.getTotalAmount())
@@ -3267,7 +3278,7 @@ public class MultiDataSourceHealthIndicator
             .flatMap(conn -> Mono.from(conn.createStatement("SELECT 1")
                 .execute())
                 .flatMap(result -> Mono.from(result.map((row, meta) -> "UP")))
-                .doFinally(signal -> conn.close()))
+                .doFinally(signal -> Mono.from(conn.close()).subscribe()))
             .onErrorReturn("DOWN");
 
         Mono<String> mongoHealth = mongoTemplate.executeCommand("{ ping: 1 }")

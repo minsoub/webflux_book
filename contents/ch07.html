@@ -58,30 +58,26 @@
 </table>
 <h3 id="712-handlerfunction">7.1.2 HandlerFunction 인터페이스</h3>
 <p><code>HandlerFunction&lt;T extends ServerResponse&gt;</code>를 먼저 살펴보자. 이것은 <code>ServerRequest</code>를 받아 <code>Mono&lt;T&gt;</code>를 반환하는 함수형 인터페이스이기 때문에</p>
-<p><code>java
-@FunctionalInterface
+<pre class="highlight"><code class="language-java">@FunctionalInterface
 public interface HandlerFunction&lt;T extends ServerResponse&gt; {
     Mono&lt;T&gt; handle(ServerRequest request);
-}</code></p>
+}</code></pre>
 <p>개념상으로는 <code>Function&lt;ServerRequest, Mono&lt;ServerResponse&gt;&gt;</code>와 다를 바 없다. 그래서 이 단순한 시그니처 덕분에 람다로 아주 간결하게 핸들러를 작성할 수 있는 장점이 생기는 거다.</p>
-<p><code>java
-// 람다로 작성한 간단한 핸들러
+<pre class="highlight"><code class="language-java">// 람다로 작성한 간단한 핸들러
 HandlerFunction&lt;ServerResponse&gt; helloHandler = request -&gt;
     ServerResponse.ok()
         .contentType(MediaType.TEXT_PLAIN)
-        .bodyValue("Hello, WebFlux!");</code></p>
+        .bodyValue("Hello, WebFlux!");</code></pre>
 <h3 id="713-routerfunction">7.1.3 RouterFunction 인터페이스</h3>
 <p>한편 <code>RouterFunction&lt;T extends ServerResponse&gt;</code>는 들어오는 요청을 분석해서 적절한 <code>HandlerFunction</code>으로 보내주는 역할을 담당한다.</p>
-<p><code>java
-@FunctionalInterface
+<pre class="highlight"><code class="language-java">@FunctionalInterface
 public interface RouterFunction&lt;T extends ServerResponse&gt; {
     Mono&lt;HandlerFunction&lt;T&gt;&gt; route(ServerRequest request);
-}</code></p>
+}</code></pre>
 <p>물론 직접 구현할 수도 있지만, 보통은 <code>RouterFunctions.route()</code> 같은 헬퍼 메서드를 사용해서 선언적으로 라우팅을 정의하는 방식을 선호한다.</p>
 <h3 id="714-serverrequest-serverresponse">7.1.4 ServerRequest와 ServerResponse</h3>
 <p><strong>ServerRequest</strong>는 불변 객체인데, HTTP 메서드, URI, 헤더, 쿼리 파라미터, 요청 바디 등 필요한 모든 정보에 접근할 수 있는 메서드들을 제공한다.</p>
-<p><code>java
-// ServerRequest 주요 메서드
+<pre class="highlight"><code class="language-java">// ServerRequest 주요 메서드
 request.method();                          // HTTP 메서드
 request.uri();                             // 전체 URI
 request.path();                            // 경로
@@ -89,113 +85,111 @@ request.pathVariable("id");               // 경로 변수
 request.queryParam("name");               // 쿼리 파라미터 (Optional)
 request.headers();                         // 헤더 접근
 request.bodyToMono(Product.class);        // 바디를 Mono로 변환
-request.bodyToFlux(Product.class);        // 바디를 Flux로 변환</code></p>
+request.bodyToFlux(Product.class);        // 바디를 Flux로 변환</code></pre>
 <p>한편 <strong>ServerResponse</strong>는 빌더 패턴을 사용해서 HTTP 응답을 유연하게 구성할 수 있도록 해준다.</p>
-<p>```java
-// 200 OK + JSON 바디
+<pre class="highlight"><code class="language-java">// 200 OK + JSON 바디
 ServerResponse.ok()
     .contentType(MediaType.APPLICATION_JSON)
-    .bodyValue(product);</p>
-<p>// 201 Created + Location 헤더
+    .bodyValue(product);
+
+// 201 Created + Location 헤더
 ServerResponse.created(URI.create("/api/products/" + id))
-    .bodyValue(savedProduct);</p>
-<p>// 204 No Content
-ServerResponse.noContent().build();</p>
-<p>// 404 Not Found
-ServerResponse.notFound().build();</p>
-<p>// Mono/Flux를 바디로 설정
+    .bodyValue(savedProduct);
+
+// 204 No Content
+ServerResponse.noContent().build();
+
+// 404 Not Found
+ServerResponse.notFound().build();
+
+// Mono/Flux를 바디로 설정
 ServerResponse.ok().body(productMono, Product.class);
-ServerResponse.ok().body(productFlux, Product.class);
-```</p>
+ServerResponse.ok().body(productFlux, Product.class);</code></pre>
 <hr>
 <h2 id="72-routerfunction">7.2 RouterFunction으로 라우팅 정의하기</h2>
 <h3 id="721">7.2.1 기본 라우팅 정의</h3>
 <p>실제로 라우팅을 정의할 때는 <code>RouterFunctions.route()</code>와 <code>RequestPredicates</code>를 조합해서 사용한다. 어렵지 않으니 바로 코드로 살펴보자.</p>
-<p>```java
-import static org.springframework.web.reactive.function.server.RouterFunctions.route;
-import static org.springframework.web.reactive.function.server.RequestPredicates.*;</p>
-<p>@Configuration
-public class ProductRouter {</p>
-<pre><code>@Bean
-public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
-    return route(GET("/api/products"), handler::getAll)
-        .andRoute(GET("/api/products/{id}"), handler::getById)
-        .andRoute(POST("/api/products"), handler::create)
-        .andRoute(PUT("/api/products/{id}"), handler::update)
-        .andRoute(DELETE("/api/products/{id}"), handler::delete);
-}
-</code></pre>
-<p>}
-```</p>
+<pre class="highlight"><code class="language-java">import static org.springframework.web.reactive.function.server.RouterFunctions.route;
+import static org.springframework.web.reactive.function.server.RequestPredicates.*;
+
+@Configuration
+public class ProductRouter {
+
+    @Bean
+    public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
+        return route(GET("/api/products"), handler::getAll)
+            .andRoute(GET("/api/products/{id}"), handler::getById)
+            .andRoute(POST("/api/products"), handler::create)
+            .andRoute(PUT("/api/products/{id}"), handler::update)
+            .andRoute(DELETE("/api/products/{id}"), handler::delete);
+    }
+}</code></pre>
 <p><code>RequestPredicates</code>는 요청 조건을 표현하는 유틸리티 클래스다. HTTP 메서드, 경로, 콘텐츠 타입 등 다양한 조건을 조합할 수 있다.</p>
-<p>```java
-// 메서드 + 경로
+<pre class="highlight"><code class="language-java">// 메서드 + 경로
 GET("/api/products")
-POST("/api/products")</p>
-<p>// 경로만
-path("/api/products")</p>
-<p>// 콘텐츠 타입 조건 추가
-POST("/api/products").and(contentType(MediaType.APPLICATION_JSON))</p>
-<p>// Accept 헤더 조건
-GET("/api/products").and(accept(MediaType.APPLICATION_JSON))</p>
-<p>// 조건 결합
-method(HttpMethod.GET).and(path("/api/products")).and(accept(MediaType.APPLICATION_JSON))
-```</p>
+POST("/api/products")
+
+// 경로만
+path("/api/products")
+
+// 콘텐츠 타입 조건 추가
+POST("/api/products").and(contentType(MediaType.APPLICATION_JSON))
+
+// Accept 헤더 조건
+GET("/api/products").and(accept(MediaType.APPLICATION_JSON))
+
+// 조건 결합
+method(HttpMethod.GET).and(path("/api/products")).and(accept(MediaType.APPLICATION_JSON))</code></pre>
 <h3 id="722-nest">7.2.2 nest()로 라우팅 그룹화</h3>
 <p>같은 경로 접두사를 쓰는 라우트들이 많을 때는 <code>nest()</code>를 사용해서 그룹화하면 중복 코드를 줄일 수 있다. 또한 코드도 훨씬 읽기 쉬워진다.</p>
-<p>```java
-@Configuration
-public class ProductRouter {</p>
-<pre><code>@Bean
-public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
-    return nest(path("/api/products"),
-        route(GET(""), handler::getAll)
-        .andRoute(GET("/{id}"), handler::getById)
-        .andRoute(POST("").and(contentType(MediaType.APPLICATION_JSON)), handler::create)
-        .andRoute(PUT("/{id}").and(contentType(MediaType.APPLICATION_JSON)), handler::update)
-        .andRoute(DELETE("/{id}"), handler::delete)
-    );
-}
-</code></pre>
-<p>}
-```</p>
-<p>당연히 여러 리소스를 함께 관리하는 것도 가능하다. 한 설정 클래스에서 <code>products</code>, <code>categories</code>, <code>orders</code> 같은 여러 엔드포인트를 한 번에 정의할 수 있다.</p>
-<p>```java
-@Configuration
-public class AppRouter {</p>
-<pre><code>@Bean
-public RouterFunction&lt;ServerResponse&gt; routes(
-        ProductHandler productHandler,
-        CategoryHandler categoryHandler,
-        OrderHandler orderHandler) {
+<pre class="highlight"><code class="language-java">@Configuration
+public class ProductRouter {
 
-    return nest(path("/api"),
-        nest(path("/products"),
-            route(GET(""), productHandler::getAll)
-            .andRoute(GET("/{id}"), productHandler::getById)
-            .andRoute(POST(""), productHandler::create)
-            .andRoute(PUT("/{id}"), productHandler::update)
-            .andRoute(DELETE("/{id}"), productHandler::delete)
-        )
-        .andNest(path("/categories"),
-            route(GET(""), categoryHandler::getAll)
-            .andRoute(GET("/{id}"), categoryHandler::getById)
-            .andRoute(POST(""), categoryHandler::create)
-        )
-        .andNest(path("/orders"),
-            route(GET(""), orderHandler::getAll)
-            .andRoute(POST(""), orderHandler::create)
-        )
-    );
-}
-</code></pre>
-<p>}
-```</p>
+    @Bean
+    public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
+        return nest(path("/api/products"),
+            route(GET(""), handler::getAll)
+            .andRoute(GET("/{id}"), handler::getById)
+            .andRoute(POST("").and(contentType(MediaType.APPLICATION_JSON)), handler::create)
+            .andRoute(PUT("/{id}").and(contentType(MediaType.APPLICATION_JSON)), handler::update)
+            .andRoute(DELETE("/{id}"), handler::delete)
+        );
+    }
+}</code></pre>
+<p>당연히 여러 리소스를 함께 관리하는 것도 가능하다. 한 설정 클래스에서 <code>products</code>, <code>categories</code>, <code>orders</code> 같은 여러 엔드포인트를 한 번에 정의할 수 있다.</p>
+<pre class="highlight"><code class="language-java">@Configuration
+public class AppRouter {
+
+    @Bean
+    public RouterFunction&lt;ServerResponse&gt; routes(
+            ProductHandler productHandler,
+            CategoryHandler categoryHandler,
+            OrderHandler orderHandler) {
+
+        return nest(path("/api"),
+            nest(path("/products"),
+                route(GET(""), productHandler::getAll)
+                .andRoute(GET("/{id}"), productHandler::getById)
+                .andRoute(POST(""), productHandler::create)
+                .andRoute(PUT("/{id}"), productHandler::update)
+                .andRoute(DELETE("/{id}"), productHandler::delete)
+            )
+            .andNest(path("/categories"),
+                route(GET(""), categoryHandler::getAll)
+                .andRoute(GET("/{id}"), categoryHandler::getById)
+                .andRoute(POST(""), categoryHandler::create)
+            )
+            .andNest(path("/orders"),
+                route(GET(""), orderHandler::getAll)
+                .andRoute(POST(""), orderHandler::create)
+            )
+        );
+    }
+}</code></pre>
 <h3 id="723">7.2.3 필터 적용</h3>
 <p><code>RouterFunction</code>에 <code>filter()</code>를 적용해서 요청과 응답을 가로채고 공통 로직을 추가할 수 있다. 어노테이션 방식의 <code>WebFilter</code>나 <code>HandlerInterceptor</code>와 비슷한 역할을 한다고 생각하면 된다.</p>
-<p>```java
-@Bean
-public RouterFunction<ServerResponse> productRoutes(ProductHandler handler) {
+<pre class="highlight"><code class="language-java">@Bean
+public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
     return nest(path("/api/products"),
         route(GET(""), handler::getAll)
         .andRoute(GET("/{id}"), handler::getById)
@@ -203,20 +197,18 @@ public RouterFunction<ServerResponse> productRoutes(ProductHandler handler) {
     )
     .filter((request, next) -&gt; {
         long startTime = System.currentTimeMillis();
-        log.info("Request: {} {}", request.method(), request.path());</p>
-<pre><code>    return next.handle(request)
-        .doOnSuccess(response -&gt; {
-            long duration = System.currentTimeMillis() - startTime;
-            log.info("Response: {} ({}ms)", response.statusCode(), duration);
-        });
-});
-</code></pre>
-<p>}
-```</p>
+        log.info("Request: {} {}", request.method(), request.path());
+
+        return next.handle(request)
+            .doOnSuccess(response -&gt; {
+                long duration = System.currentTimeMillis() - startTime;
+                log.info("Response: {} ({}ms)", response.statusCode(), duration);
+            });
+    });
+}</code></pre>
 <h3 id="724-before-after">7.2.4 before()와 after()</h3>
 <p>만약 요청 전/후 처리를 좀 더 깔끔하게 분리하고 싶다면, <code>filter()</code> 대신 <code>before()</code>와 <code>after()</code>를 사용할 수 있다.</p>
-<p><code>java
-@Bean
+<pre class="highlight"><code class="language-java">@Bean
 public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
     return route(GET("/api/products"), handler::getAll)
         .andRoute(POST("/api/products"), handler::create)
@@ -228,247 +220,235 @@ public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler
             log.info("[After] {} -&gt; {}", request.path(), response.statusCode());
             return response;
         });
-}</code></p>
+}</code></pre>
 <hr>
 <h2 id="73-handlerfunction">7.3 HandlerFunction 구현</h2>
 <h3 id="731-handler">7.3.1 Handler 클래스 구조</h3>
 <p>실제 프로젝트에서는 핸들러를 별도의 클래스로 빼서 관리한다. 어노테이션 방식의 컨트롤러처럼 생각하면 된다.</p>
-<p>```java
-@Component
+<pre class="highlight"><code class="language-java">@Component
 @RequiredArgsConstructor
-public class ProductHandler {</p>
-<pre><code>private final ProductService productService;
+public class ProductHandler {
 
-/**
- * 전체 상품 조회
- */
-public Mono&lt;ServerResponse&gt; getAll(ServerRequest request) {
-    Flux&lt;Product&gt; products = productService.findAll();
-    return ServerResponse.ok()
-        .contentType(MediaType.APPLICATION_JSON)
-        .body(products, Product.class);
-}
+    private final ProductService productService;
 
-/**
- * 단일 상품 조회
- */
-public Mono&lt;ServerResponse&gt; getById(ServerRequest request) {
-    String id = request.pathVariable("id");
-    return productService.findById(id)
-        .flatMap(product -&gt; ServerResponse.ok()
+    /**
+     * 전체 상품 조회
+     */
+    public Mono&lt;ServerResponse&gt; getAll(ServerRequest request) {
+        Flux&lt;Product&gt; products = productService.findAll();
+        return ServerResponse.ok()
             .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(product))
-        .switchIfEmpty(ServerResponse.notFound().build());
-}
+            .body(products, Product.class);
+    }
 
-/**
- * 상품 생성
- */
-public Mono&lt;ServerResponse&gt; create(ServerRequest request) {
-    return request.bodyToMono(Product.class)
-        .flatMap(productService::save)
-        .flatMap(saved -&gt; ServerResponse
-            .created(URI.create("/api/products/" + saved.getId()))
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(saved));
-}
+    /**
+     * 단일 상품 조회
+     */
+    public Mono&lt;ServerResponse&gt; getById(ServerRequest request) {
+        String id = request.pathVariable("id");
+        return productService.findById(id)
+            .flatMap(product -&gt; ServerResponse.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(product))
+            .switchIfEmpty(ServerResponse.notFound().build());
+    }
 
-/**
- * 상품 수정
- */
-public Mono&lt;ServerResponse&gt; update(ServerRequest request) {
-    String id = request.pathVariable("id");
-    return request.bodyToMono(Product.class)
-        .flatMap(product -&gt; productService.update(id, product))
-        .flatMap(updated -&gt; ServerResponse.ok()
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(updated))
-        .switchIfEmpty(ServerResponse.notFound().build());
-}
+    /**
+     * 상품 생성
+     */
+    public Mono&lt;ServerResponse&gt; create(ServerRequest request) {
+        return request.bodyToMono(Product.class)
+            .flatMap(productService::save)
+            .flatMap(saved -&gt; ServerResponse
+                .created(URI.create("/api/products/" + saved.getId()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(saved));
+    }
 
-/**
- * 상품 삭제
- */
-public Mono&lt;ServerResponse&gt; delete(ServerRequest request) {
-    String id = request.pathVariable("id");
-    return productService.deleteById(id)
-        .then(ServerResponse.noContent().build());
-}
-</code></pre>
-<p>}
-```</p>
+    /**
+     * 상품 수정
+     */
+    public Mono&lt;ServerResponse&gt; update(ServerRequest request) {
+        String id = request.pathVariable("id");
+        return request.bodyToMono(Product.class)
+            .flatMap(product -&gt; productService.update(id, product))
+            .flatMap(updated -&gt; ServerResponse.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(updated))
+            .switchIfEmpty(ServerResponse.notFound().build());
+    }
+
+    /**
+     * 상품 삭제
+     */
+    public Mono&lt;ServerResponse&gt; delete(ServerRequest request) {
+        String id = request.pathVariable("id");
+        return productService.deleteById(id)
+            .then(ServerResponse.noContent().build());
+    }
+}</code></pre>
 <h3 id="732">7.3.2 도메인 모델과 서비스 계층</h3>
 <p>핸들러를 위한 도메인 모델과 서비스 계층은 어노테이션 방식과 완전히 같은 방식으로 작성할 수 있다. 결국 비즈니스 로직은 바뀌지 않으니까.</p>
-<p>```java
-@Document(collection = "products")
+<pre class="highlight"><code class="language-java">@Document(collection = "products")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Product {</p>
-<pre><code>@Id
-private String id;
-private String name;
-private String description;
-private BigDecimal price;
-private String category;
-private LocalDateTime createdAt;
-private LocalDateTime updatedAt;
-</code></pre>
-<p>}
-```</p>
-<p>```java
-@Service
+public class Product {
+
+    @Id
+    private String id;
+    private String name;
+    private String description;
+    private BigDecimal price;
+    private String category;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+}</code></pre>
+<pre class="highlight"><code class="language-java">public interface ProductRepository extends ReactiveMongoRepository&lt;Product, String&gt; {
+}</code></pre>
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
-public class ProductService {</p>
-<pre><code>private final ReactiveMongoRepository&lt;Product, String&gt; productRepository;
+public class ProductService {
 
-public Flux&lt;Product&gt; findAll() { return productRepository.findAll(); }
-public Mono&lt;Product&gt; findById(String id) { return productRepository.findById(id); }
+    private final ProductRepository productRepository;
 
-public Mono&lt;Product&gt; save(Product product) {
-    product.setCreatedAt(LocalDateTime.now());
-    product.setUpdatedAt(LocalDateTime.now());
-    return productRepository.save(product);
-}
+    public Flux&lt;Product&gt; findAll() { return productRepository.findAll(); }
+    public Mono&lt;Product&gt; findById(String id) { return productRepository.findById(id); }
 
-public Mono&lt;Product&gt; update(String id, Product product) {
-    return productRepository.findById(id)
-        .map(existing -&gt; {
-            existing.setName(product.getName());
-            existing.setPrice(product.getPrice());
-            existing.setCategory(product.getCategory());
-            existing.setUpdatedAt(LocalDateTime.now());
-            return existing;
-        })
-        .flatMap(productRepository::save);
-}
+    public Mono&lt;Product&gt; save(Product product) {
+        product.setCreatedAt(LocalDateTime.now());
+        product.setUpdatedAt(LocalDateTime.now());
+        return productRepository.save(product);
+    }
 
-public Mono&lt;Void&gt; deleteById(String id) { return productRepository.deleteById(id); }
-</code></pre>
-<p>```</p>
+    public Mono&lt;Product&gt; update(String id, Product product) {
+        return productRepository.findById(id)
+            .map(existing -&gt; {
+                existing.setName(product.getName());
+                existing.setPrice(product.getPrice());
+                existing.setCategory(product.getCategory());
+                existing.setUpdatedAt(LocalDateTime.now());
+                return existing;
+            })
+            .flatMap(productRepository::save);
+    }
+
+    public Mono&lt;Void&gt; deleteById(String id) { return productRepository.deleteById(id); }
+}</code></pre>
 <h3 id="733">7.3.3 에러 처리가 포함된 핸들러</h3>
 <p>실무에서는 입력값 검증, 리소스 없음 등 여러 가지 에러 상황을 처리해야 한다. 함수형 방식에서는 이를 어떻게 다룰까.</p>
-<p>```java
-@Component
+<pre class="highlight"><code class="language-java">@Component
 @RequiredArgsConstructor
-public class ProductHandler {</p>
-<pre><code>private final ProductService productService;
-private final Validator validator;
+public class ProductHandler {
 
-public Mono&lt;ServerResponse&gt; create(ServerRequest request) {
-    return request.bodyToMono(Product.class)
-        .doOnNext(this::validate)
-        .flatMap(productService::save)
-        .flatMap(saved -&gt; ServerResponse
-            .created(URI.create("/api/products/" + saved.getId()))
-            .bodyValue(saved))
-        .onErrorResume(ValidationException.class, e -&gt;
-            ServerResponse.badRequest()
-                .bodyValue(new ErrorResponse("VALIDATION_ERROR", e.getMessage())))
-        .onErrorResume(e -&gt;
-            ServerResponse.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .bodyValue(new ErrorResponse("INTERNAL_ERROR", "서버 내부 오류가 발생했습니다.")));
-}
+    private final ProductService productService;
+    private final Validator validator;
 
-private void validate(Product product) {
-    Errors errors = new BeanPropertyBindingResult(product, "product");
-    validator.validate(product, errors);
-    if (errors.hasErrors()) {
-        String message = errors.getFieldErrors().stream()
-            .map(e -&gt; e.getField() + ": " + e.getDefaultMessage())
-            .collect(Collectors.joining(", "));
-        throw new ValidationException(message);
+    public Mono&lt;ServerResponse&gt; create(ServerRequest request) {
+        return request.bodyToMono(Product.class)
+            .doOnNext(this::validate)
+            .flatMap(productService::save)
+            .flatMap(saved -&gt; ServerResponse
+                .created(URI.create("/api/products/" + saved.getId()))
+                .bodyValue(saved))
+            .onErrorResume(ValidationException.class, e -&gt;
+                ServerResponse.badRequest()
+                    .bodyValue(new ErrorResponse("VALIDATION_ERROR", e.getMessage())))
+            .onErrorResume(e -&gt;
+                ServerResponse.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .bodyValue(new ErrorResponse("INTERNAL_ERROR", "서버 내부 오류가 발생했습니다.")));
     }
-}
-</code></pre>
-<p>}
-```</p>
-<p><code>java
-@Data
+
+    private void validate(Product product) {
+        Errors errors = new BeanPropertyBindingResult(product, "product");
+        validator.validate(product, errors);
+        if (errors.hasErrors()) {
+            String message = errors.getFieldErrors().stream()
+                .map(e -&gt; e.getField() + ": " + e.getDefaultMessage())
+                .collect(Collectors.joining(", "));
+            throw new ValidationException(message);
+        }
+    }
+}</code></pre>
+<pre class="highlight"><code class="language-java">@Data
 @AllArgsConstructor
 public class ErrorResponse {
     private String code;
     private String message;
-}</code></p>
+}</code></pre>
 <hr>
 <h2 id="74">7.4 요청 파라미터 및 바디 처리</h2>
 <h3 id="741-path-variable">7.4.1 경로 변수 (Path Variable)</h3>
 <p>경로에서 값을 추출하려면 <code>{변수명}</code> 형태로 선언해야 하고, 핸들러에서 <code>ServerRequest.pathVariable()</code>로 꺼내면 된다.</p>
-<p>```java
-// Router 정의
-route(GET("/api/products/{id}"), handler::getById)</p>
-<p>// Handler에서 추출
-public Mono<ServerResponse> getById(ServerRequest request) {
+<pre class="highlight"><code class="language-java">// Router 정의
+route(GET("/api/products/{id}"), handler::getById)
+
+// Handler에서 추출
+public Mono&lt;ServerResponse&gt; getById(ServerRequest request) {
     String id = request.pathVariable("id");
     return productService.findById(id)
         .flatMap(product -&gt; ServerResponse.ok().bodyValue(product))
         .switchIfEmpty(ServerResponse.notFound().build());
-}
-```</p>
+}</code></pre>
 <p>경로 변수가 여러 개인 경우도 마찬가지다. 각각 <code>pathVariable()</code>로 꺼내면 된다.</p>
-<p>```java
-// 중첩 리소스 라우팅
-route(GET("/api/categories/{categoryId}/products/{productId}"), handler::getProductInCategory)</p>
-<p>// Handler
-public Mono<ServerResponse> getProductInCategory(ServerRequest request) {
+<pre class="highlight"><code class="language-java">// 중첩 리소스 라우팅
+route(GET("/api/categories/{categoryId}/products/{productId}"), handler::getProductInCategory)
+
+// Handler
+public Mono&lt;ServerResponse&gt; getProductInCategory(ServerRequest request) {
     String categoryId = request.pathVariable("categoryId");
     String productId = request.pathVariable("productId");
     return productService.findByCategoryAndId(categoryId, productId)
         .flatMap(product -&gt; ServerResponse.ok().bodyValue(product))
         .switchIfEmpty(ServerResponse.notFound().build());
-}
-```</p>
+}</code></pre>
 <h3 id="742-query-parameter">7.4.2 쿼리 파라미터 (Query Parameter)</h3>
 <p>쿼리 파라미터는 <code>ServerRequest.queryParam()</code>으로 꺼내는데, 이 메서드는 <code>Optional&lt;String&gt;</code>을 반환한다기 때문에 존재 여부 확인을 명시적으로 해야 한다. 필요하면 <code>queryParams()</code>로 전체 파라미터 맵을 받을 수도 있다.</p>
-<p>```java
-// GET /api/products?category=electronics&amp;minPrice=10000&amp;page=0&amp;size=20
-public Mono<ServerResponse> search(ServerRequest request) {
-    Optional<String> category = request.queryParam("category");
-    Optional<String> minPrice = request.queryParam("minPrice");
+<pre class="highlight"><code class="language-java">// GET /api/products?category=electronics&amp;minPrice=10000&amp;page=0&amp;size=20
+public Mono&lt;ServerResponse&gt; search(ServerRequest request) {
+    Optional&lt;String&gt; category = request.queryParam("category");
+    Optional&lt;String&gt; minPrice = request.queryParam("minPrice");
     int page = request.queryParam("page")
         .map(Integer::parseInt)
         .orElse(0);
     int size = request.queryParam("size")
         .map(Integer::parseInt)
-        .orElse(20);</p>
-<pre><code>Flux&lt;Product&gt; results = productService.search(
-    category.orElse(null),
-    minPrice.map(BigDecimal::new).orElse(null),
-    PageRequest.of(page, size)
-);
+        .orElse(20);
 
-return ServerResponse.ok()
-    .contentType(MediaType.APPLICATION_JSON)
-    .body(results, Product.class);
-</code></pre>
-<p>}
-```</p>
+    Flux&lt;Product&gt; results = productService.search(
+        category.orElse(null),
+        minPrice.map(BigDecimal::new).orElse(null),
+        PageRequest.of(page, size)
+    );
+
+    return ServerResponse.ok()
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(results, Product.class);
+}</code></pre>
 <h3 id="743-bodytomono-bodytoflux">7.4.3 요청 바디 처리: bodyToMono / bodyToFlux</h3>
 <p>요청 바디는 포함된 데이터의 특성에 따라 다르게 처리하면 된다. 단일 객체면 <code>bodyToMono()</code>, 여러 개의 스트리밍 데이터면 <code>bodyToFlux()</code>를 쓰자.</p>
-<p>```java
-// 단일 객체 수신
-public Mono<ServerResponse> create(ServerRequest request) {
+<pre class="highlight"><code class="language-java">// 단일 객체 수신
+public Mono&lt;ServerResponse&gt; create(ServerRequest request) {
     return request.bodyToMono(Product.class)
         .flatMap(productService::save)
         .flatMap(saved -&gt; ServerResponse.created(
             URI.create("/api/products/" + saved.getId()))
             .bodyValue(saved));
-}</p>
-<p>// 여러 객체 일괄 수신
-public Mono<ServerResponse> createBatch(ServerRequest request) {
-    Flux<Product> products = request.bodyToFlux(Product.class);
+}
+
+// 여러 객체 일괄 수신
+public Mono&lt;ServerResponse&gt; createBatch(ServerRequest request) {
+    Flux&lt;Product&gt; products = request.bodyToFlux(Product.class);
     return productService.saveAll(products)
         .collectList()
         .flatMap(savedList -&gt; ServerResponse.ok()
             .contentType(MediaType.APPLICATION_JSON)
             .bodyValue(savedList));
-}
-```</p>
+}</code></pre>
 <h3 id="744-parameterizedtypereference">7.4.4 ParameterizedTypeReference 활용</h3>
 <p>복잡한 제네릭 타입이 포함된 데이터를 역직렬화해야 할 때가 있다. 이 경우 <code>ParameterizedTypeReference</code>를 사용해야 하기 때문에 알아두면 유용하다.</p>
-<p><code>java
-// Map&lt;String, Object&gt; 형태의 바디 수신
+<pre class="highlight"><code class="language-java">// Map&lt;String, Object&gt; 형태의 바디 수신
 public Mono&lt;ServerResponse&gt; handleDynamic(ServerRequest request) {
     return request.bodyToMono(new ParameterizedTypeReference&lt;Map&lt;String, Object&gt;&gt;() {})
         .flatMap(body -&gt; {
@@ -476,169 +456,161 @@ public Mono&lt;ServerResponse&gt; handleDynamic(ServerRequest request) {
             // 동적 처리
             return ServerResponse.ok().bodyValue(Map.of("received", name));
         });
-}</code></p>
+}</code></pre>
 <h3 id="745">7.4.5 헤더 및 쿠키 접근</h3>
 <p>요청에 포함된 헤더와 쿠키도 당연히 접근할 수 있다. 다음과 같이 처리한다.</p>
-<p>```java
-public Mono<ServerResponse> withHeaders(ServerRequest request) {
+<pre class="highlight"><code class="language-java">public Mono&lt;ServerResponse&gt; withHeaders(ServerRequest request) {
     // 헤더 접근
     ServerRequest.Headers headers = request.headers();
-    List<MediaType> acceptTypes = headers.accept();
-    Optional<String> authHeader = headers.firstHeader("Authorization");
-    OptionalLong contentLength = headers.contentLength();</p>
-<pre><code>// 쿠키 접근
-MultiValueMap&lt;String, HttpCookie&gt; cookies = request.cookies();
-HttpCookie sessionCookie = cookies.getFirst("SESSION_ID");
+    List&lt;MediaType&gt; acceptTypes = headers.accept();
+    Optional&lt;String&gt; authHeader = headers.firstHeader("Authorization");
+    OptionalLong contentLength = headers.contentLength();
 
-return ServerResponse.ok()
-    .bodyValue(Map.of(
-        "accept", acceptTypes.toString(),
-        "hasAuth", authHeader.isPresent()
-    ));
-</code></pre>
-<p>}
-```</p>
+    // 쿠키 접근
+    MultiValueMap&lt;String, HttpCookie&gt; cookies = request.cookies();
+    HttpCookie sessionCookie = cookies.getFirst("SESSION_ID");
+
+    return ServerResponse.ok()
+        .bodyValue(Map.of(
+            "accept", acceptTypes.toString(),
+            "hasAuth", authHeader.isPresent()
+        ));
+}</code></pre>
 <h3 id="746">7.4.6 멀티파트 파일 업로드</h3>
 <p>파일 업로드 같은 멀티파트 요청도 함수형 방식에서 충분히 처리할 수 있다. 어렵지도 않다.</p>
-<p><code>java
-// Router 정의
+<pre class="highlight"><code class="language-java">// Router 정의
 route(POST("/api/products/{id}/image")
-    .and(contentType(MediaType.MULTIPART_FORM_DATA)), handler::uploadImage)</code></p>
-<p>```java
-// Handler 구현
-public Mono<ServerResponse> uploadImage(ServerRequest request) {
-    String productId = request.pathVariable("id");</p>
-<pre><code>return request.multipartData()
-    .flatMap(parts -&gt; {
-        Part filePart = parts.getFirst("file");
-        if (filePart instanceof FilePart fp) {
-            String filename = fp.filename();
-            Path destination = Path.of("/uploads", productId + "_" + filename);
-            return fp.transferTo(destination)
-                .then(productService.updateImagePath(productId, destination.toString()))
-                .flatMap(updated -&gt; ServerResponse.ok().bodyValue(updated));
-        }
-        return ServerResponse.badRequest()
-            .bodyValue(new ErrorResponse("INVALID_FILE", "파일이 전송되지 않았습니다."));
-    });
-</code></pre>
-<p>}
-```</p>
+    .and(contentType(MediaType.MULTIPART_FORM_DATA)), handler::uploadImage)</code></pre>
+<pre class="highlight"><code class="language-java">// Handler 구현
+public Mono&lt;ServerResponse&gt; uploadImage(ServerRequest request) {
+    String productId = request.pathVariable("id");
+
+    return request.multipartData()
+        .flatMap(parts -&gt; {
+            Part filePart = parts.getFirst("file");
+            if (filePart instanceof FilePart fp) {
+                String filename = fp.filename();
+                Path destination = Path.of("/uploads", productId + "_" + filename);
+                return fp.transferTo(destination)
+                    .then(productService.updateImagePath(productId, destination.toString()))
+                    .flatMap(updated -&gt; ServerResponse.ok().bodyValue(updated));
+            }
+            return ServerResponse.badRequest()
+                .bodyValue(new ErrorResponse("INVALID_FILE", "파일이 전송되지 않았습니다."));
+        });
+}</code></pre>
 <p>만약 여러 파트를 세분화해서 처리해야 하면 <code>BodyExtractors.toMultipartData()</code>를 쓰면 텍스트 필드(<code>FormFieldPart</code>)와 파일(<code>FilePart</code>)을 구분해서 다룰 수 있다.</p>
 <hr>
 <h2 id="75">7.5 어노테이션 방식과 함수형 방식 비교</h2>
 <h3 id="751-api">7.5.1 같은 API를 두 방식으로 구현</h3>
 <p>이제 실제로 같은 기능을 하는 API를 어노테이션 방식과 함수형 방식으로 각각 만들어보고, 어떤 차이가 있는지 살펴보자. 상품 CRUD API를 예로 든다.</p>
 <p><strong>어노테이션 방식 (@RestController)</strong></p>
-<p>```java
-@RestController
+<pre class="highlight"><code class="language-java">@RestController
 @RequestMapping("/api/products")
 @RequiredArgsConstructor
-public class ProductController {</p>
-<pre><code>private final ProductService productService;
+public class ProductController {
 
-@GetMapping
-public Flux&lt;Product&gt; getAll() {
-    return productService.findAll();
-}
+    private final ProductService productService;
 
-@GetMapping("/{id}")
-public Mono&lt;ResponseEntity&lt;Product&gt;&gt; getById(@PathVariable String id) {
-    return productService.findById(id)
-        .map(ResponseEntity::ok)
-        .defaultIfEmpty(ResponseEntity.notFound().build());
-}
+    @GetMapping
+    public Flux&lt;Product&gt; getAll() {
+        return productService.findAll();
+    }
 
-@PostMapping
-@ResponseStatus(HttpStatus.CREATED)
-public Mono&lt;Product&gt; create(@Valid @RequestBody Product product) {
-    return productService.save(product);
-}
+    @GetMapping("/{id}")
+    public Mono&lt;ResponseEntity&lt;Product&gt;&gt; getById(@PathVariable String id) {
+        return productService.findById(id)
+            .map(ResponseEntity::ok)
+            .defaultIfEmpty(ResponseEntity.notFound().build());
+    }
 
-@PutMapping("/{id}")
-public Mono&lt;ResponseEntity&lt;Product&gt;&gt; update(
-        @PathVariable String id,
-        @Valid @RequestBody Product product) {
-    return productService.update(id, product)
-        .map(ResponseEntity::ok)
-        .defaultIfEmpty(ResponseEntity.notFound().build());
-}
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public Mono&lt;Product&gt; create(@Valid @RequestBody Product product) {
+        return productService.save(product);
+    }
 
-@DeleteMapping("/{id}")
-@ResponseStatus(HttpStatus.NO_CONTENT)
-public Mono&lt;Void&gt; delete(@PathVariable String id) {
-    return productService.deleteById(id);
-}
-</code></pre>
-<p>}
-```</p>
+    @PutMapping("/{id}")
+    public Mono&lt;ResponseEntity&lt;Product&gt;&gt; update(
+            @PathVariable String id,
+            @Valid @RequestBody Product product) {
+        return productService.update(id, product)
+            .map(ResponseEntity::ok)
+            .defaultIfEmpty(ResponseEntity.notFound().build());
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public Mono&lt;Void&gt; delete(@PathVariable String id) {
+        return productService.deleteById(id);
+    }
+}</code></pre>
 <p><strong>함수형 방식 (RouterFunction + HandlerFunction)</strong></p>
-<p>```java
-// Router
+<pre class="highlight"><code class="language-java">// Router
 @Configuration
-public class ProductRouter {</p>
-<pre><code>@Bean
-public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
-    return nest(path("/api/products"),
-        route(GET(""), handler::getAll)
-        .andRoute(GET("/{id}"), handler::getById)
-        .andRoute(POST("").and(contentType(MediaType.APPLICATION_JSON)),
-                  handler::create)
-        .andRoute(PUT("/{id}").and(contentType(MediaType.APPLICATION_JSON)),
-                  handler::update)
-        .andRoute(DELETE("/{id}"), handler::delete)
-    );
+public class ProductRouter {
+
+    @Bean
+    public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
+        return nest(path("/api/products"),
+            route(GET(""), handler::getAll)
+            .andRoute(GET("/{id}"), handler::getById)
+            .andRoute(POST("").and(contentType(MediaType.APPLICATION_JSON)),
+                      handler::create)
+            .andRoute(PUT("/{id}").and(contentType(MediaType.APPLICATION_JSON)),
+                      handler::update)
+            .andRoute(DELETE("/{id}"), handler::delete)
+        );
+    }
 }
-</code></pre>
-<p>}</p>
-<p>// Handler
+
+// Handler
 @Component
 @RequiredArgsConstructor
-public class ProductHandler {</p>
-<pre><code>private final ProductService productService;
+public class ProductHandler {
 
-public Mono&lt;ServerResponse&gt; getAll(ServerRequest request) {
-    return ServerResponse.ok()
-        .contentType(MediaType.APPLICATION_JSON)
-        .body(productService.findAll(), Product.class);
-}
+    private final ProductService productService;
 
-public Mono&lt;ServerResponse&gt; getById(ServerRequest request) {
-    String id = request.pathVariable("id");
-    return productService.findById(id)
-        .flatMap(product -&gt; ServerResponse.ok()
+    public Mono&lt;ServerResponse&gt; getAll(ServerRequest request) {
+        return ServerResponse.ok()
             .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(product))
-        .switchIfEmpty(ServerResponse.notFound().build());
-}
+            .body(productService.findAll(), Product.class);
+    }
 
-public Mono&lt;ServerResponse&gt; create(ServerRequest request) {
-    return request.bodyToMono(Product.class)
-        .flatMap(productService::save)
-        .flatMap(saved -&gt; ServerResponse
-            .created(URI.create("/api/products/" + saved.getId()))
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(saved));
-}
+    public Mono&lt;ServerResponse&gt; getById(ServerRequest request) {
+        String id = request.pathVariable("id");
+        return productService.findById(id)
+            .flatMap(product -&gt; ServerResponse.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(product))
+            .switchIfEmpty(ServerResponse.notFound().build());
+    }
 
-public Mono&lt;ServerResponse&gt; update(ServerRequest request) {
-    String id = request.pathVariable("id");
-    return request.bodyToMono(Product.class)
-        .flatMap(product -&gt; productService.update(id, product))
-        .flatMap(updated -&gt; ServerResponse.ok()
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(updated))
-        .switchIfEmpty(ServerResponse.notFound().build());
-}
+    public Mono&lt;ServerResponse&gt; create(ServerRequest request) {
+        return request.bodyToMono(Product.class)
+            .flatMap(productService::save)
+            .flatMap(saved -&gt; ServerResponse
+                .created(URI.create("/api/products/" + saved.getId()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(saved));
+    }
 
-public Mono&lt;ServerResponse&gt; delete(ServerRequest request) {
-    String id = request.pathVariable("id");
-    return productService.deleteById(id)
-        .then(ServerResponse.noContent().build());
-}
-</code></pre>
-<p>}
-```</p>
+    public Mono&lt;ServerResponse&gt; update(ServerRequest request) {
+        String id = request.pathVariable("id");
+        return request.bodyToMono(Product.class)
+            .flatMap(product -&gt; productService.update(id, product))
+            .flatMap(updated -&gt; ServerResponse.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(updated))
+            .switchIfEmpty(ServerResponse.notFound().build());
+    }
+
+    public Mono&lt;ServerResponse&gt; delete(ServerRequest request) {
+        String id = request.pathVariable("id");
+        return productService.deleteById(id)
+            .then(ServerResponse.noContent().build());
+    }
+}</code></pre>
 <h3 id="752">7.5.2 핵심 차이점 분석</h3>
 <p>두 방식을 찬찬히 비교해보면 여러 차이점이 눈에 띈다.</p>
 <p><strong>라우팅 정의</strong>: 어노테이션 방식에서는 라우팅 정보(<code>@GetMapping</code>)와 비즈니스 로직이 같은 클래스, 같은 메서드에 있다. 함수형 방식은 Router에서 라우팅을 정의하고, Handler에서 로직을 구현하기 때문에 역할이 명확히 분리된다는 게 큰 특징이다.</p>
@@ -725,37 +697,35 @@ public Mono&lt;ServerResponse&gt; delete(ServerRequest request) {
 </ul>
 <p><strong>혼합 사용 예시</strong></p>
 <p>필자의 경험상, 실제 프로젝트에서는 두 방식을 함께 쓰는 게 가장 실용적이다. 예를 들어, 표준 CRUD는 어노테이션으로 빠르게 구현하고, 복잡한 라우팅이 필요한 부분만 함수형으로 구현하는 식이다.</p>
-<p>```java
-// 어노테이션 방식 — 일반 CRUD API
+<pre class="highlight"><code class="language-java">// 어노테이션 방식 — 일반 CRUD API
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
     // 표준적인 CRUD 엔드포인트
-}</p>
-<p>// 함수형 방식 — 동적 라우팅이 필요한 특수 API
-@Configuration
-public class WebhookRouter {</p>
-<pre><code>@Bean
-public RouterFunction&lt;ServerResponse&gt; webhookRoutes(WebhookHandler handler) {
-    return nest(path("/api/webhooks"),
-        route(POST("/{provider}"), handler::handle)
-        .filter((request, next) -&gt; {
-            // 웹훅 제공자별 서명 검증
-            String provider = request.pathVariable("provider");
-            return verifySignature(request, provider)
-                .flatMap(valid -&gt; valid
-                    ? next.handle(request)
-                    : ServerResponse.status(HttpStatus.UNAUTHORIZED).build());
-        })
-    );
 }
-</code></pre>
-<p>}
-```</p>
+
+// 함수형 방식 — 동적 라우팅이 필요한 특수 API
+@Configuration
+public class WebhookRouter {
+
+    @Bean
+    public RouterFunction&lt;ServerResponse&gt; webhookRoutes(WebhookHandler handler) {
+        return nest(path("/api/webhooks"),
+            route(POST("/{provider}"), handler::handle)
+            .filter((request, next) -&gt; {
+                // 웹훅 제공자별 서명 검증
+                String provider = request.pathVariable("provider");
+                return verifySignature(request, provider)
+                    .flatMap(valid -&gt; valid
+                        ? next.handle(request)
+                        : ServerResponse.status(HttpStatus.UNAUTHORIZED).build());
+            })
+        );
+    }
+}</code></pre>
 <h3 id="755-openapi">7.5.5 함수형 엔드포인트에서 OpenAPI 문서화</h3>
 <p>함수형 방식의 유일한 단점을 꼽으라면, SpringDoc 라이브러리가 라우팅을 자동으로 감지하지 못한다는 것이다. OpenAPI 문서를 원하면 <code>@RouterOperation</code>으로 수동 추가해야 한다.</p>
-<p><code>java
-@Bean
+<pre class="highlight"><code class="language-java">@Bean
 @RouterOperations({
     @RouterOperation(path = "/api/products", method = RequestMethod.GET,
         beanClass = ProductHandler.class, beanMethod = "getAll",
@@ -772,7 +742,7 @@ public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler
         route(GET(""), handler::getAll)
         .andRoute(GET("/{id}"), handler::getById)
     );
-}</code></p>
+}</code></pre>
 <hr>
 <h2 id="_1">요약</h2>
 <p>이번 장에서 배운 핵심 내용을 간단히 정리해보자.</p>

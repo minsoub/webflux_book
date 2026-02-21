@@ -553,8 +553,8 @@ Mono<Response> safeCall = webClient.get()
     .uri("/api/data").retrieve().bodyToMono(Response.class)
     .timeout(Duration.ofSeconds(5))
     .retryWhen(Retry.backoff(3, Duration.ofSeconds(1)))
-    .onErrorResume(e -> Mono.just(Response.fallback()))
-    .doOnError(e -> log.error("API 호출 최종 실패", e));
+    .doOnError(e -> log.error("API 호출 최종 실패", e))
+    .onErrorResume(e -> Mono.just(Response.fallback()));
 ```
 
 ### 패턴 2: 병렬 호출 후 결합

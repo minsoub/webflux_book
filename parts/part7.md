@@ -307,10 +307,10 @@ public class PostController {
 
     @PostMapping @ResponseStatus(HttpStatus.CREATED)
     public Mono<PostResponse> createPost(@Valid @RequestBody PostRequest request,
-            @AuthenticationPrincipal Mono<String> principalId) {
-        return principalId.flatMap(uid -> userRepository.findById(uid)
-            .flatMap(u -> postService.createPost(request, uid, u.getNickname()))
-            .map(PostResponse::from));
+            @AuthenticationPrincipal String principalId) {
+        return userRepository.findById(principalId)
+            .flatMap(u -> postService.createPost(request, principalId, u.getNickname()))
+            .map(PostResponse::from);
     }
 
     @GetMapping("/{postId}")
@@ -321,15 +321,15 @@ public class PostController {
     @PutMapping("/{postId}")
     public Mono<PostResponse> updatePost(@PathVariable String postId,
             @Valid @RequestBody PostRequest request,
-            @AuthenticationPrincipal Mono<String> principalId) {
-        return principalId.flatMap(uid ->
-            postService.updatePost(postId, request, uid).map(PostResponse::from));
+            @AuthenticationPrincipal String principalId) {
+        return postService.updatePost(postId, request, principalId)
+            .map(PostResponse::from);
     }
 
     @DeleteMapping("/{postId}") @ResponseStatus(HttpStatus.NO_CONTENT)
     public Mono<Void> deletePost(@PathVariable String postId,
-            @AuthenticationPrincipal Mono<String> principalId) {
-        return principalId.flatMap(uid -> postService.deletePost(postId, uid));
+            @AuthenticationPrincipal String principalId) {
+        return postService.deletePost(postId, principalId);
     }
 
     @GetMapping
@@ -625,8 +625,7 @@ public class FileController {
 public abstract class IntegrationTestBase {
 
     @Container
-    static MongoDBContainer mongo = new MongoDBContainer("mongo:7.0")
-        .withCommand("--replSet", "rs0");
+    static MongoDBContainer mongo = new MongoDBContainer("mongo:7.0");
 
     @DynamicPropertySource
     static void mongoProps(DynamicPropertyRegistry registry) {

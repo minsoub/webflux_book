@@ -55,17 +55,17 @@
 <h3 id="1312-http">13.1.2 HTTP 핸드셰이크</h3>
 <p>흥미롭게도, WebSocket 연결은 일반 HTTP 요청으로 시작된다. 프로토콜을 업그레이드하는 과정을 거치는 것이다.</p>
 <p><strong>클라이언트 요청:</strong></p>
-<p><code>GET /ws/chat HTTP/1.1
+<pre class="highlight"><code>GET /ws/chat HTTP/1.1
 Host: localhost:8080
 Upgrade: websocket
 Connection: Upgrade
 Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
-Sec-WebSocket-Version: 13</code></p>
+Sec-WebSocket-Version: 13</code></pre>
 <p><strong>서버 응답:</strong></p>
-<p><code>HTTP/1.1 101 Switching Protocols
+<pre class="highlight"><code>HTTP/1.1 101 Switching Protocols
 Upgrade: websocket
 Connection: Upgrade
-Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=</code></p>
+Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=</code></pre>
 <p>구체적으로는 이렇게 진행된다:</p>
 <ol>
 <li>클라이언트가 <code>Upgrade: websocket</code> 헤더를 포함한 HTTP GET 요청을 보낸다</li>
@@ -154,144 +154,129 @@ Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=</code></p>
 <h2 id="132-webflux-websocket">13.2 WebFlux에서 WebSocket 핸들러 구현</h2>
 <h3 id="1321">13.2.1 의존성 설정</h3>
 <p>좋은 소식은 Spring WebFlux에 WebSocket 지원이 이미 포함되어 있다는 것이다. 별도로 추가할 게 없다.</p>
-<p><code>groovy
-dependencies {
+<pre class="highlight"><code class="language-groovy">dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
-}</code></p>
+}</code></pre>
 <h3 id="1322-websockethandler">13.2.2 WebSocketHandler 인터페이스</h3>
 <p>Spring WebFlux에서 WebSocket을 다루는 핵심은 <code>WebSocketHandler</code> 인터페이스다.</p>
-<p><code>java
-public interface WebSocketHandler {
+<pre class="highlight"><code class="language-java">public interface WebSocketHandler {
     Mono&lt;Void&gt; handle(WebSocketSession session);
-}</code></p>
+}</code></pre>
 <p><code>handle()</code> 메서드가 연결이 수립되면 호출되고, 이 메서드가 반환하는 <code>Mono&lt;Void&gt;</code>가 완료되면 연결이 끝난다. <code>WebSocketSession</code> 객체는 <code>receive()</code>로 들어오는 메시지 스트림을 얻고, <code>send()</code>로 메시지를 보낸다.</p>
 <p>이해를 돕기 위해 간단한 에코 핸들러를 만들어보자.</p>
-<p>```java
-@Component
+<pre class="highlight"><code class="language-java">@Component
 @Slf4j
-public class EchoWebSocketHandler implements WebSocketHandler {</p>
-<pre><code>@Override
-public Mono&lt;Void&gt; handle(WebSocketSession session) {
-    log.info("WebSocket 연결 수립: sessionId={}", session.getId());
+public class EchoWebSocketHandler implements WebSocketHandler {
 
-    Flux&lt;WebSocketMessage&gt; output = session.receive()
-        .map(message -&gt; {
-            String payload = message.getPayloadAsText();
-            log.info("수신 메시지: {}", payload);
-            return session.textMessage("Echo: " + payload);
-        });
+    @Override
+    public Mono&lt;Void&gt; handle(WebSocketSession session) {
+        log.info("WebSocket 연결 수립: sessionId={}", session.getId());
 
-    return session.send(output)
-        .doFinally(signal -&gt;
-            log.info("WebSocket 연결 종료: sessionId={}", session.getId()));
-}
-</code></pre>
-<p>}
-```</p>
+        Flux&lt;WebSocketMessage&gt; output = session.receive()
+            .map(message -&gt; {
+                String payload = message.getPayloadAsText();
+                log.info("수신 메시지: {}", payload);
+                return session.textMessage("Echo: " + payload);
+            });
+
+        return session.send(output)
+            .doFinally(signal -&gt;
+                log.info("WebSocket 연결 종료: sessionId={}", session.getId()));
+    }
+}</code></pre>
 <h3 id="1323-handlermapping">13.2.3 HandlerMapping 설정</h3>
 <p>이제 이 핸들러를 특정 URL 경로에 연결해야 한다. <code>HandlerMapping</code>과 <code>WebSocketHandlerAdapter</code>를 설정하면 된다.</p>
-<p>```java
-@Configuration
-public class WebSocketConfig {</p>
-<pre><code>@Bean
-public HandlerMapping webSocketHandlerMapping(EchoWebSocketHandler echoHandler) {
-    Map&lt;String, WebSocketHandler&gt; handlerMap = Map.of("/ws/echo", echoHandler);
+<pre class="highlight"><code class="language-java">@Configuration
+public class WebSocketConfig {
 
-    SimpleUrlHandlerMapping mapping = new SimpleUrlHandlerMapping();
-    mapping.setUrlMap(handlerMap);
-    mapping.setOrder(Ordered.HIGHEST_PRECEDENCE);
-    return mapping;
-}
+    @Bean
+    public HandlerMapping webSocketHandlerMapping(EchoWebSocketHandler echoHandler) {
+        Map&lt;String, WebSocketHandler&gt; handlerMap = Map.of("/ws/echo", echoHandler);
 
-@Bean
-public WebSocketHandlerAdapter webSocketHandlerAdapter() {
-    return new WebSocketHandlerAdapter();
-}
-</code></pre>
-<p>}
-```</p>
+        SimpleUrlHandlerMapping mapping = new SimpleUrlHandlerMapping();
+        mapping.setUrlMap(handlerMap);
+        mapping.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return mapping;
+    }
+
+    @Bean
+    public WebSocketHandlerAdapter webSocketHandlerAdapter() {
+        return new WebSocketHandlerAdapter();
+    }
+}</code></pre>
 <p><code>order</code>를 <code>Ordered.HIGHEST_PRECEDENCE</code>로 설정하여 다른 핸들러 매핑보다 먼저 WebSocket 요청을 처리한다.</p>
 <h3 id="1324">13.2.4 메시지 송수신 패턴</h3>
 <p>실제 구현할 때는 상황에 따라 다른 패턴을 쓴다. 기본적으로 세 가지를 생각해볼 수 있다.</p>
 <p><strong>패턴 1: 수신 전용</strong> — 클라이언트에서 오는 메시지를 받아서 처리하기만 한다</p>
-<p><code>java
-public Mono&lt;Void&gt; handle(WebSocketSession session) {
+<pre class="highlight"><code class="language-java">public Mono&lt;Void&gt; handle(WebSocketSession session) {
     return session.receive()
         .doOnNext(msg -&gt; log.info("수신: {}", msg.getPayloadAsText()))
         .then();
-}</code></p>
+}</code></pre>
 <p><strong>패턴 2: 송신 전용</strong> — 서버에서 클라이언트로 계속 데이터를 보낸다</p>
-<p><code>java
-public Mono&lt;Void&gt; handle(WebSocketSession session) {
+<pre class="highlight"><code class="language-java">public Mono&lt;Void&gt; handle(WebSocketSession session) {
     Flux&lt;WebSocketMessage&gt; output = Flux.interval(Duration.ofSeconds(1))
         .map(tick -&gt; session.textMessage("서버 시간: " + LocalDateTime.now()));
     return session.send(output);
-}</code></p>
+}</code></pre>
 <p><strong>패턴 3: 양방향</strong> — 수신과 송신을 동시에 처리한다</p>
-<p>```java
-public Mono<Void> handle(WebSocketSession session) {
-    Mono<Void> input = session.receive()
+<pre class="highlight"><code class="language-java">public Mono&lt;Void&gt; handle(WebSocketSession session) {
+    Mono&lt;Void&gt; input = session.receive()
         .doOnNext(msg -&gt; processMessage(msg.getPayloadAsText()))
-        .then();</p>
-<pre><code>Mono&lt;Void&gt; output = session.send(
-    externalEventSource().map(event -&gt; session.textMessage(event)));
+        .then();
 
-return Mono.zip(input, output).then();
-</code></pre>
-<p>}
-```</p>
+    Mono&lt;Void&gt; output = session.send(
+        externalEventSource().map(event -&gt; session.textMessage(event)));
+
+    return Mono.zip(input, output).then();
+}</code></pre>
 <h3 id="1325-json">13.2.5 JSON 메시지 처리</h3>
 <p>실무에서는 평문보다는 JSON 형식의 메시지를 주고받는다. 구조가 명확해서 다루기 훨씬 편하기 때문이다.</p>
-<p><code>java
-@Data @Builder @NoArgsConstructor @AllArgsConstructor
+<pre class="highlight"><code class="language-java">@Data @Builder @NoArgsConstructor @AllArgsConstructor
 public class ChatMessage {
     private String type;       // MESSAGE, JOIN, LEAVE
     private String roomId;
     private String sender;
     private String content;
     private LocalDateTime timestamp;
-}</code></p>
-<p>```java
-@Component
+}</code></pre>
+<pre class="highlight"><code class="language-java">@Component
 @RequiredArgsConstructor @Slf4j
-public class JsonWebSocketHandler implements WebSocketHandler {</p>
-<pre><code>private final ObjectMapper objectMapper;
+public class JsonWebSocketHandler implements WebSocketHandler {
 
-@Override
-public Mono&lt;Void&gt; handle(WebSocketSession session) {
-    Flux&lt;WebSocketMessage&gt; output = session.receive()
-        .map(WebSocketMessage::getPayloadAsText)
-        .flatMap(payload -&gt; {
-            try {
-                ChatMessage msg = objectMapper.readValue(payload, ChatMessage.class);
-                msg.setTimestamp(LocalDateTime.now());
-                return Mono.just(session.textMessage(
-                    objectMapper.writeValueAsString(msg)));
-            } catch (JsonProcessingException e) {
-                log.error("JSON 파싱 오류: {}", e.getMessage());
-                return Mono.empty();
-            }
-        });
-    return session.send(output);
-}
-</code></pre>
-<p>}
-```</p>
+    private final ObjectMapper objectMapper;
+
+    @Override
+    public Mono&lt;Void&gt; handle(WebSocketSession session) {
+        Flux&lt;WebSocketMessage&gt; output = session.receive()
+            .map(WebSocketMessage::getPayloadAsText)
+            .flatMap(payload -&gt; {
+                try {
+                    ChatMessage msg = objectMapper.readValue(payload, ChatMessage.class);
+                    msg.setTimestamp(LocalDateTime.now());
+                    return Mono.just(session.textMessage(
+                        objectMapper.writeValueAsString(msg)));
+                } catch (JsonProcessingException e) {
+                    log.error("JSON 파싱 오류: {}", e.getMessage());
+                    return Mono.empty();
+                }
+            });
+        return session.send(output);
+    }
+}</code></pre>
 <p>브라우저의 JavaScript로 동작을 테스트하면 다음과 같이 한다.</p>
-<p><code>javascript
-const ws = new WebSocket('ws://localhost:8080/ws/echo');
+<pre class="highlight"><code class="language-javascript">const ws = new WebSocket('ws://localhost:8080/ws/echo');
 ws.onopen = () =&gt; ws.send('Hello WebSocket!');
 ws.onmessage = (event) =&gt; console.log('수신:', event.data);
-ws.onclose = (event) =&gt; console.log('종료:', event.code);</code></p>
+ws.onclose = (event) =&gt; console.log('종료:', event.code);</code></pre>
 <hr>
 <h2 id="133">13.3 실시간 채팅 애플리케이션 구축</h2>
 <p>이제 WebSocket의 진정한 가치가 나오는 부분이다. WebSocket과 MongoDB를 결합해서 여러 채팅방을 지원하는 실시간 채팅 애플리케이션을 만들어보자.</p>
 <h3 id="1331">13.3.1 도메인 모델과 리포지토리</h3>
-<p><code>java
-@Document(collection = "chat_rooms")
+<pre class="highlight"><code class="language-java">@Document(collection = "chat_rooms")
 @Data @Builder @NoArgsConstructor @AllArgsConstructor
 public class ChatRoom {
     @Id private String id;
@@ -300,9 +285,8 @@ public class ChatRoom {
     private String createdBy;
     private Set&lt;String&gt; participants;
     private LocalDateTime createdAt;
-}</code></p>
-<p>```java
-@Document(collection = "chat_messages")
+}</code></pre>
+<pre class="highlight"><code class="language-java">@Document(collection = "chat_messages")
 @Data @Builder @NoArgsConstructor @AllArgsConstructor
 public class ChatMessageDocument {
     @Id private String id;
@@ -310,212 +294,201 @@ public class ChatMessageDocument {
     private String sender;
     private String content;
     private MessageType type;
-    private LocalDateTime timestamp;</p>
-<pre><code>public enum MessageType { MESSAGE, JOIN, LEAVE, SYSTEM }
-</code></pre>
-<p>}
-```</p>
-<p>```java
-public interface ChatRoomRepository extends ReactiveMongoRepository<ChatRoom, String> {
-    Flux<ChatRoom> findByParticipantsContaining(String username);
-}</p>
-<p>public interface ChatMessageRepository
-        extends ReactiveMongoRepository<ChatMessageDocument, String> {
-    Flux<ChatMessageDocument> findByRoomIdOrderByTimestampDesc(
+    private LocalDateTime timestamp;
+
+    public enum MessageType { MESSAGE, JOIN, LEAVE, SYSTEM }
+}</code></pre>
+<pre class="highlight"><code class="language-java">public interface ChatRoomRepository extends ReactiveMongoRepository&lt;ChatRoom, String&gt; {
+    Flux&lt;ChatRoom&gt; findByParticipantsContaining(String username);
+}
+
+public interface ChatMessageRepository
+        extends ReactiveMongoRepository&lt;ChatMessageDocument, String&gt; {
+    Flux&lt;ChatMessageDocument&gt; findByRoomIdOrderByTimestampDesc(
         String roomId, Pageable pageable);
-    Flux<ChatMessageDocument> findByRoomIdAndTimestampAfterOrderByTimestampAsc(
+    Flux&lt;ChatMessageDocument&gt; findByRoomIdAndTimestampAfterOrderByTimestampAsc(
         String roomId, LocalDateTime after);
-}
-```</p>
+}</code></pre>
 <h3 id="1332">13.3.2 채팅방 관리 서비스</h3>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor
-public class ChatRoomService {</p>
-<pre><code>private final ChatRoomRepository chatRoomRepository;
+public class ChatRoomService {
 
-public Mono&lt;ChatRoom&gt; createRoom(String name, String description,
-                                  String createdBy) {
-    ChatRoom room = ChatRoom.builder()
-        .name(name).description(description).createdBy(createdBy)
-        .participants(new HashSet&lt;&gt;(Set.of(createdBy)))
-        .createdAt(LocalDateTime.now()).build();
-    return chatRoomRepository.save(room);
-}
+    private final ChatRoomRepository chatRoomRepository;
 
-public Flux&lt;ChatRoom&gt; getAllRooms() {
-    return chatRoomRepository.findAll();
-}
+    public Mono&lt;ChatRoom&gt; createRoom(String name, String description,
+                                      String createdBy) {
+        ChatRoom room = ChatRoom.builder()
+            .name(name).description(description).createdBy(createdBy)
+            .participants(new HashSet&lt;&gt;(Set.of(createdBy)))
+            .createdAt(LocalDateTime.now()).build();
+        return chatRoomRepository.save(room);
+    }
 
-public Mono&lt;ChatRoom&gt; joinRoom(String roomId, String username) {
-    return chatRoomRepository.findById(roomId)
-        .flatMap(room -&gt; {
-            room.getParticipants().add(username);
-            return chatRoomRepository.save(room);
-        });
-}
+    public Flux&lt;ChatRoom&gt; getAllRooms() {
+        return chatRoomRepository.findAll();
+    }
 
-public Mono&lt;ChatRoom&gt; leaveRoom(String roomId, String username) {
-    return chatRoomRepository.findById(roomId)
-        .flatMap(room -&gt; {
-            room.getParticipants().remove(username);
-            return chatRoomRepository.save(room);
-        });
-}
-</code></pre>
-<p>}
-```</p>
+    public Mono&lt;ChatRoom&gt; joinRoom(String roomId, String username) {
+        return chatRoomRepository.findById(roomId)
+            .flatMap(room -&gt; {
+                room.getParticipants().add(username);
+                return chatRoomRepository.save(room);
+            });
+    }
+
+    public Mono&lt;ChatRoom&gt; leaveRoom(String roomId, String username) {
+        return chatRoomRepository.findById(roomId)
+            .flatMap(room -&gt; {
+                room.getParticipants().remove(username);
+                return chatRoomRepository.save(room);
+            });
+    }
+}</code></pre>
 <h3 id="1333">13.3.3 메시지 브로드캐스팅</h3>
 <p>이제 핵심 부분이다. 한 사용자가 메시지를 보내면 같은 채팅방의 모든 다른 사용자들에게 전달해야 한다. Reactor의 <code>Sinks</code>라는 기능을 사용하면 이를 깔끔하게 구현할 수 있다. 한쪽에서 메시지를 발행하면 여러 세션이 이를 구독하는 구조인데, 필자의 경험상 채팅처럼 다대다 통신이 필요한 경우 <code>Sinks</code>가 정말 유용하다.</p>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @Slf4j
-public class ChatMessageBroker {</p>
-<pre><code>private final Map&lt;String, Sinks.Many&lt;ChatMessageDocument&gt;&gt; roomSinks =
-    new ConcurrentHashMap&lt;&gt;();
+public class ChatMessageBroker {
 
-public Sinks.Many&lt;ChatMessageDocument&gt; getRoomSink(String roomId) {
-    return roomSinks.computeIfAbsent(roomId,
-        id -&gt; Sinks.many().multicast().onBackpressureBuffer(256));
-}
+    private final Map&lt;String, Sinks.Many&lt;ChatMessageDocument&gt;&gt; roomSinks =
+        new ConcurrentHashMap&lt;&gt;();
 
-public void publish(String roomId, ChatMessageDocument message) {
-    Sinks.EmitResult result = getRoomSink(roomId).tryEmitNext(message);
-    if (result.isFailure()) {
-        log.warn("메시지 발행 실패: roomId={}, result={}", roomId, result);
+    public Sinks.Many&lt;ChatMessageDocument&gt; getRoomSink(String roomId) {
+        return roomSinks.computeIfAbsent(roomId,
+            id -&gt; Sinks.many().multicast().onBackpressureBuffer(256));
     }
-}
 
-public Flux&lt;ChatMessageDocument&gt; subscribe(String roomId) {
-    return getRoomSink(roomId).asFlux();
-}
+    public void publish(String roomId, ChatMessageDocument message) {
+        Sinks.EmitResult result = getRoomSink(roomId).tryEmitNext(message);
+        if (result.isFailure()) {
+            log.warn("메시지 발행 실패: roomId={}, result={}", roomId, result);
+        }
+    }
 
-public void removeRoom(String roomId) {
-    Sinks.Many&lt;ChatMessageDocument&gt; removed = roomSinks.remove(roomId);
-    if (removed != null) removed.tryEmitComplete();
-}
-</code></pre>
-<p>}
-```</p>
+    public Flux&lt;ChatMessageDocument&gt; subscribe(String roomId) {
+        return getRoomSink(roomId).asFlux();
+    }
+
+    public void removeRoom(String roomId) {
+        Sinks.Many&lt;ChatMessageDocument&gt; removed = roomSinks.remove(roomId);
+        if (removed != null) removed.tryEmitComplete();
+    }
+}</code></pre>
 <p><code>Sinks.many().multicast().onBackpressureBuffer(256)</code>는 여러 구독자에게 동시에 메시지를 전달하는 Hot Publisher를 만든다. 만약 어떤 클라이언트가 느려서 메시지를 처리하지 못하면, 최대 256개까지 버퍼에 보관했다가 추후에 보낸다. 이렇게 하면 느린 클라이언트 때문에 빠른 클라이언트까지 영향을 받지 않는다.</p>
 <h3 id="1334">13.3.4 채팅 메시지 서비스</h3>
 <p>메시지를 저장하고 브로드캐스팅하는 로직을 한 곳에 모으자.</p>
-<p>```java
-@Service
+<pre class="highlight"><code class="language-java">@Service
 @RequiredArgsConstructor @Slf4j
-public class ChatMessageService {</p>
-<pre><code>private final ChatMessageRepository chatMessageRepository;
-private final ChatMessageBroker messageBroker;
+public class ChatMessageService {
 
-public Mono&lt;ChatMessageDocument&gt; saveAndBroadcast(ChatMessageDocument message) {
-    message.setTimestamp(LocalDateTime.now());
-    return chatMessageRepository.save(message)
-        .doOnSuccess(saved -&gt; messageBroker.publish(saved.getRoomId(), saved));
-}
+    private final ChatMessageRepository chatMessageRepository;
+    private final ChatMessageBroker messageBroker;
 
-public Flux&lt;ChatMessageDocument&gt; getRecentMessages(String roomId, int limit) {
-    return chatMessageRepository.findByRoomIdOrderByTimestampDesc(
-        roomId, PageRequest.of(0, limit));
-}
+    public Mono&lt;ChatMessageDocument&gt; saveAndBroadcast(ChatMessageDocument message) {
+        message.setTimestamp(LocalDateTime.now());
+        return chatMessageRepository.save(message)
+            .doOnSuccess(saved -&gt; messageBroker.publish(saved.getRoomId(), saved));
+    }
 
-public Flux&lt;ChatMessageDocument&gt; getMessagesSince(
-        String roomId, LocalDateTime since) {
-    return chatMessageRepository
-        .findByRoomIdAndTimestampAfterOrderByTimestampAsc(roomId, since);
-}
-</code></pre>
-<p>}
-```</p>
+    public Flux&lt;ChatMessageDocument&gt; getRecentMessages(String roomId, int limit) {
+        return chatMessageRepository.findByRoomIdOrderByTimestampDesc(
+            roomId, PageRequest.of(0, limit));
+    }
+
+    public Flux&lt;ChatMessageDocument&gt; getMessagesSince(
+            String roomId, LocalDateTime since) {
+        return chatMessageRepository
+            .findByRoomIdAndTimestampAfterOrderByTimestampAsc(roomId, since);
+    }
+}</code></pre>
 <h3 id="1335-websocket">13.3.5 채팅 WebSocket 핸들러</h3>
 <p>지금까지 만든 서비스들을 모두 조합해서 실제 채팅을 처리할 WebSocket 핸들러를 만든다.</p>
-<p>```java
-@Component
+<pre class="highlight"><code class="language-java">@Component
 @RequiredArgsConstructor @Slf4j
-public class ChatWebSocketHandler implements WebSocketHandler {</p>
-<pre><code>private final ChatMessageService chatMessageService;
-private final ChatMessageBroker messageBroker;
-private final ObjectMapper objectMapper;
+public class ChatWebSocketHandler implements WebSocketHandler {
 
-@Override
-public Mono&lt;Void&gt; handle(WebSocketSession session) {
-    URI uri = session.getHandshakeInfo().getUri();
-    Map&lt;String, String&gt; params = parseQueryParams(uri);
-    String roomId = params.get("roomId");
-    String username = params.get("username");
+    private final ChatMessageService chatMessageService;
+    private final ChatMessageBroker messageBroker;
+    private final ObjectMapper objectMapper;
 
-    if (roomId == null || username == null) {
-        return session.close(CloseStatus.POLICY_VIOLATION);
+    @Override
+    public Mono&lt;Void&gt; handle(WebSocketSession session) {
+        URI uri = session.getHandshakeInfo().getUri();
+        Map&lt;String, String&gt; params = parseQueryParams(uri);
+        String roomId = params.get("roomId");
+        String username = params.get("username");
+
+        if (roomId == null || username == null) {
+            return session.close(CloseStatus.POLICY_VIOLATION);
+        }
+
+        log.info("채팅 연결: roomId={}, username={}", roomId, username);
+
+        // 입장 알림
+        Mono&lt;Void&gt; joinNotification = createSystemMessage(
+            roomId, username + "님이 입장했습니다.",
+            ChatMessageDocument.MessageType.JOIN);
+
+        // 수신: 클라이언트 메시지를 저장 및 브로드캐스트
+        Mono&lt;Void&gt; input = session.receive()
+            .flatMap(msg -&gt; handleIncoming(msg.getPayloadAsText(), roomId, username))
+            .doFinally(signal -&gt; createSystemMessage(roomId,
+                username + "님이 퇴장했습니다.",
+                ChatMessageDocument.MessageType.LEAVE).subscribe())
+            .then();
+
+        // 송신: 채팅방 브로드캐스트 스트림 구독
+        Flux&lt;WebSocketMessage&gt; output = messageBroker.subscribe(roomId)
+            .mapNotNull(chatMsg -&gt; toWebSocketMessage(session, chatMsg));
+
+        return joinNotification
+            .then(Mono.zip(input, session.send(output)).then());
     }
 
-    log.info("채팅 연결: roomId={}, username={}", roomId, username);
-
-    // 입장 알림
-    Mono&lt;Void&gt; joinNotification = createSystemMessage(
-        roomId, username + "님이 입장했습니다.",
-        ChatMessageDocument.MessageType.JOIN);
-
-    // 수신: 클라이언트 메시지를 저장 및 브로드캐스트
-    Mono&lt;Void&gt; input = session.receive()
-        .flatMap(msg -&gt; handleIncoming(msg.getPayloadAsText(), roomId, username))
-        .doFinally(signal -&gt; createSystemMessage(roomId,
-            username + "님이 퇴장했습니다.",
-            ChatMessageDocument.MessageType.LEAVE).subscribe())
-        .then();
-
-    // 송신: 채팅방 브로드캐스트 스트림 구독
-    Flux&lt;WebSocketMessage&gt; output = messageBroker.subscribe(roomId)
-        .mapNotNull(chatMsg -&gt; toWebSocketMessage(session, chatMsg));
-
-    return joinNotification
-        .then(Mono.zip(input, session.send(output)).then());
-}
-
-private Mono&lt;ChatMessageDocument&gt; handleIncoming(
-        String payload, String roomId, String sender) {
-    try {
-        ChatMessage incoming = objectMapper.readValue(payload, ChatMessage.class);
-        ChatMessageDocument doc = ChatMessageDocument.builder()
-            .roomId(roomId).sender(sender).content(incoming.getContent())
-            .type(ChatMessageDocument.MessageType.MESSAGE).build();
-        return chatMessageService.saveAndBroadcast(doc);
-    } catch (JsonProcessingException e) {
-        log.error("메시지 파싱 오류: {}", e.getMessage());
-        return Mono.empty();
+    private Mono&lt;ChatMessageDocument&gt; handleIncoming(
+            String payload, String roomId, String sender) {
+        try {
+            ChatMessage incoming = objectMapper.readValue(payload, ChatMessage.class);
+            ChatMessageDocument doc = ChatMessageDocument.builder()
+                .roomId(roomId).sender(sender).content(incoming.getContent())
+                .type(ChatMessageDocument.MessageType.MESSAGE).build();
+            return chatMessageService.saveAndBroadcast(doc);
+        } catch (JsonProcessingException e) {
+            log.error("메시지 파싱 오류: {}", e.getMessage());
+            return Mono.empty();
+        }
     }
-}
 
-private Mono&lt;Void&gt; createSystemMessage(String roomId, String content,
-                                        ChatMessageDocument.MessageType type) {
-    ChatMessageDocument msg = ChatMessageDocument.builder()
-        .roomId(roomId).sender("SYSTEM").content(content).type(type).build();
-    return chatMessageService.saveAndBroadcast(msg).then();
-}
-
-private WebSocketMessage toWebSocketMessage(
-        WebSocketSession session, ChatMessageDocument msg) {
-    try {
-        return session.textMessage(objectMapper.writeValueAsString(msg));
-    } catch (JsonProcessingException e) {
-        return null;
+    private Mono&lt;Void&gt; createSystemMessage(String roomId, String content,
+                                            ChatMessageDocument.MessageType type) {
+        ChatMessageDocument msg = ChatMessageDocument.builder()
+            .roomId(roomId).sender("SYSTEM").content(content).type(type).build();
+        return chatMessageService.saveAndBroadcast(msg).then();
     }
-}
 
-private Map&lt;String, String&gt; parseQueryParams(URI uri) {
-    Map&lt;String, String&gt; params = new HashMap&lt;&gt;();
-    String query = uri.getQuery();
-    if (query == null) return params;
-    for (String param : query.split("&amp;")) {
-        String[] pair = param.split("=", 2);
-        if (pair.length == 2) params.put(pair[0], pair[1]);
+    private WebSocketMessage toWebSocketMessage(
+            WebSocketSession session, ChatMessageDocument msg) {
+        try {
+            return session.textMessage(objectMapper.writeValueAsString(msg));
+        } catch (JsonProcessingException e) {
+            return null;
+        }
     }
-    return params;
-}
-</code></pre>
-<p>}
-```</p>
+
+    private Map&lt;String, String&gt; parseQueryParams(URI uri) {
+        Map&lt;String, String&gt; params = new HashMap&lt;&gt;();
+        String query = uri.getQuery();
+        if (query == null) return params;
+        for (String param : query.split("&amp;")) {
+            String[] pair = param.split("=", 2);
+            if (pair.length == 2) params.put(pair[0], pair[1]);
+        }
+        return params;
+    }
+}</code></pre>
 <p>WebSocket 라우팅에 등록한다.</p>
-<p>```java
-@Configuration
+<pre class="highlight"><code class="language-java">@Configuration
 public class WebSocketConfig {
     @Bean
     public HandlerMapping webSocketHandlerMapping(ChatWebSocketHandler chatHandler) {
@@ -523,186 +496,180 @@ public class WebSocketConfig {
         mapping.setUrlMap(Map.of("/ws/chat", chatHandler));
         mapping.setOrder(Ordered.HIGHEST_PRECEDENCE);
         return mapping;
-    }</p>
-<pre><code>@Bean
-public WebSocketHandlerAdapter webSocketHandlerAdapter() {
-    return new WebSocketHandlerAdapter();
-}
-</code></pre>
-<p>}
-```</p>
+    }
+
+    @Bean
+    public WebSocketHandlerAdapter webSocketHandlerAdapter() {
+        return new WebSocketHandlerAdapter();
+    }
+}</code></pre>
 <h3 id="1336-rest-api">13.3.6 채팅방 REST API</h3>
 <p>WebSocket 연결이 시작되기 전에 채팅방을 만들고 관리해야 한다. 이를 위한 REST API를 준비하자.</p>
-<p>```java
-@RestController
+<pre class="highlight"><code class="language-java">@RestController
 @RequestMapping("/api/chat/rooms")
 @RequiredArgsConstructor
-public class ChatRoomController {</p>
-<pre><code>private final ChatRoomService chatRoomService;
-private final ChatMessageService chatMessageService;
+public class ChatRoomController {
 
-@PostMapping
-@ResponseStatus(HttpStatus.CREATED)
-public Mono&lt;ChatRoom&gt; createRoom(@RequestBody CreateRoomRequest request) {
-    return chatRoomService.createRoom(
-        request.getName(), request.getDescription(), request.getCreatedBy());
-}
+    private final ChatRoomService chatRoomService;
+    private final ChatMessageService chatMessageService;
 
-@GetMapping
-public Flux&lt;ChatRoom&gt; getAllRooms() {
-    return chatRoomService.getAllRooms();
-}
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public Mono&lt;ChatRoom&gt; createRoom(@RequestBody CreateRoomRequest request) {
+        return chatRoomService.createRoom(
+            request.getName(), request.getDescription(), request.getCreatedBy());
+    }
 
-@GetMapping("/{roomId}/messages")
-public Flux&lt;ChatMessageDocument&gt; getRecentMessages(
-        @PathVariable String roomId,
-        @RequestParam(defaultValue = "50") int limit) {
-    return chatMessageService.getRecentMessages(roomId, limit);
-}
+    @GetMapping
+    public Flux&lt;ChatRoom&gt; getAllRooms() {
+        return chatRoomService.getAllRooms();
+    }
 
-@PostMapping("/{roomId}/join")
-public Mono&lt;ChatRoom&gt; joinRoom(@PathVariable String roomId,
-                                @RequestParam String username) {
-    return chatRoomService.joinRoom(roomId, username);
-}
-</code></pre>
-<p>}
-```</p>
+    @GetMapping("/{roomId}/messages")
+    public Flux&lt;ChatMessageDocument&gt; getRecentMessages(
+            @PathVariable String roomId,
+            @RequestParam(defaultValue = "50") int limit) {
+        return chatMessageService.getRecentMessages(roomId, limit);
+    }
+
+    @PostMapping("/{roomId}/join")
+    public Mono&lt;ChatRoom&gt; joinRoom(@PathVariable String roomId,
+                                    @RequestParam String username) {
+        return chatRoomService.joinRoom(roomId, username);
+    }
+}</code></pre>
 <h3 id="1337">13.3.7 이전 메시지 로드</h3>
 <p>채팅에서 중요한 부분 중 하나는 사용자가 입장했을 때 기존 메시지를 보여주는 것이다. 이를 하는 방법은 크게 두 가지가 있다.</p>
 <p><strong>전략 1: REST API를 통한 초기 로드</strong> — WebSocket 연결을 맺기 전에 REST API로 최근 메시지를 미리 가져온다</p>
-<p><code>``javascript
-async function joinChatRoom(roomId, username) {
-    const res = await fetch(</code>/api/chat/rooms/${roomId}/messages?limit=50`);
+<pre class="highlight"><code class="language-javascript">async function joinChatRoom(roomId, username) {
+    const res = await fetch(`/api/chat/rooms/${roomId}/messages?limit=50`);
     const history = await res.json();
-    history.reverse().forEach(msg =&gt; displayMessage(msg));</p>
-<pre><code>const ws = new WebSocket(
-    `ws://localhost:8080/ws/chat?roomId=${roomId}&amp;username=${username}`);
-ws.onmessage = (e) =&gt; displayMessage(JSON.parse(e.data));
-</code></pre>
-<p>}
-```</p>
+    history.reverse().forEach(msg =&gt; displayMessage(msg));
+
+    const ws = new WebSocket(
+        `ws://localhost:8080/ws/chat?roomId=${roomId}&amp;username=${username}`);
+    ws.onmessage = (e) =&gt; displayMessage(JSON.parse(e.data));
+}</code></pre>
 <p><strong>전략 2: WebSocket 내 히스토리 전송</strong> — 연결 직후 과거 메시지를 먼저 보낸 다음, 실시간 메시지로 전환한다</p>
-<p>```java
-Flux<WebSocketMessage> history = chatMessageService.getRecentMessages(roomId, 50)
+<pre class="highlight"><code class="language-java">Flux&lt;WebSocketMessage&gt; history = chatMessageService.getRecentMessages(roomId, 50)
     .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));
-Flux<WebSocketMessage> live = messageBroker.subscribe(roomId)
-    .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));</p>
-<p>Flux<WebSocketMessage> output = history.concatWith(live);
-```</p>
+Flux&lt;WebSocketMessage&gt; live = messageBroker.subscribe(roomId)
+    .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));
+
+Flux&lt;WebSocketMessage&gt; output = history.concatWith(live);</code></pre>
 <p>일반적으로는 전략 1이 더 간단하고, 과거 메시지와 실시간 메시지 사이에 누락될 위험도 적다. 필자의 경험상 프로덕션 환경에서는 전략 1을 쓰는 것이 더 안정적이다.</p>
 <h3 id="1338-mongodb">13.3.8 MongoDB 인덱스 설정</h3>
 <p>채팅방별로 시간 순서대로 메시지를 자주 조회하므로, 성능을 위해 복합 인덱스를 만들어두자.</p>
-<p>```java
-@Configuration
+<pre class="highlight"><code class="language-java">@Configuration
 @RequiredArgsConstructor
 public class MongoIndexConfig {
-    private final ReactiveMongoTemplate mongoTemplate;</p>
-<pre><code>@PostConstruct
-public void initIndexes() {
-    mongoTemplate.indexOps(ChatMessageDocument.class)
-        .ensureIndex(new Index()
-            .on("roomId", Sort.Direction.ASC)
-            .on("timestamp", Sort.Direction.DESC))
-        .subscribe();
-}
-</code></pre>
-<p>}
-```</p>
+    private final ReactiveMongoTemplate mongoTemplate;
+
+    @PostConstruct
+    public void initIndexes() {
+        mongoTemplate.indexOps(ChatMessageDocument.class)
+            .ensureIndex(new Index()
+                .on("roomId", Sort.Direction.ASC)
+                .on("timestamp", Sort.Direction.DESC))
+            .subscribe();
+    }
+}</code></pre>
 <hr>
 <h2 id="134-websocket">13.4 WebSocket 세션 관리</h2>
 <h3 id="1341">13.4.1 세션 라이프사이클</h3>
 <p>WebSocket 세션도 생명주기가 있다: <code>CONNECTING -&gt; OPEN -&gt; CLOSING -&gt; CLOSED</code>. 여러 세션을 추적하고 필요할 때 제어하려면 세션을 중앙에서 관리해야 한다.</p>
-<p>```java
-@Component @Slf4j
-public class WebSocketSessionRegistry {</p>
-<pre><code>private final Map&lt;String, Map&lt;String, WebSocketSession&gt;&gt; roomSessions =
-    new ConcurrentHashMap&lt;&gt;();
-private final Map&lt;String, String&gt; sessionUserMap = new ConcurrentHashMap&lt;&gt;();
+<pre class="highlight"><code class="language-java">@Component @Slf4j
+public class WebSocketSessionRegistry {
 
-public void register(String roomId, String username, WebSocketSession session) {
-    roomSessions.computeIfAbsent(roomId, k -&gt; new ConcurrentHashMap&lt;&gt;())
-        .put(session.getId(), session);
-    sessionUserMap.put(session.getId(), username);
-    log.info("세션 등록: roomId={}, username={}, 현재 인원={}",
-        roomId, username, getSessionCount(roomId));
-}
+    private final Map&lt;String, Map&lt;String, WebSocketSession&gt;&gt; roomSessions =
+        new ConcurrentHashMap&lt;&gt;();
+    private final Map&lt;String, String&gt; sessionUserMap = new ConcurrentHashMap&lt;&gt;();
 
-public void unregister(String roomId, WebSocketSession session) {
-    Map&lt;String, WebSocketSession&gt; sessions = roomSessions.get(roomId);
-    if (sessions != null) {
-        sessions.remove(session.getId());
-        if (sessions.isEmpty()) roomSessions.remove(roomId);
+    public void register(String roomId, String username, WebSocketSession session) {
+        roomSessions.computeIfAbsent(roomId, k -&gt; new ConcurrentHashMap&lt;&gt;())
+            .put(session.getId(), session);
+        sessionUserMap.put(session.getId(), username);
+        log.info("세션 등록: roomId={}, username={}, 현재 인원={}",
+            roomId, username, getSessionCount(roomId));
     }
-    sessionUserMap.remove(session.getId());
-}
 
-public int getSessionCount(String roomId) {
-    Map&lt;String, WebSocketSession&gt; s = roomSessions.get(roomId);
-    return s != null ? s.size() : 0;
-}
+    public void unregister(String roomId, WebSocketSession session) {
+        Map&lt;String, WebSocketSession&gt; sessions = roomSessions.get(roomId);
+        if (sessions != null) {
+            sessions.remove(session.getId());
+            if (sessions.isEmpty()) roomSessions.remove(roomId);
+        }
+        sessionUserMap.remove(session.getId());
+    }
 
-public Set&lt;String&gt; getOnlineUsers(String roomId) {
-    Map&lt;String, WebSocketSession&gt; sessions = roomSessions.get(roomId);
-    if (sessions == null) return Collections.emptySet();
-    return sessions.keySet().stream()
-        .map(sessionUserMap::get).filter(Objects::nonNull)
-        .collect(Collectors.toSet());
-}
+    public int getSessionCount(String roomId) {
+        Map&lt;String, WebSocketSession&gt; s = roomSessions.get(roomId);
+        return s != null ? s.size() : 0;
+    }
 
-public Map&lt;String, WebSocketSession&gt; getAllSessions() {
-    Map&lt;String, WebSocketSession&gt; all = new ConcurrentHashMap&lt;&gt;();
-    roomSessions.values().forEach(all::putAll);
-    return all;
-}
-</code></pre>
-<p>}
-```</p>
+    public Set&lt;String&gt; getOnlineUsers(String roomId) {
+        Map&lt;String, WebSocketSession&gt; sessions = roomSessions.get(roomId);
+        if (sessions == null) return Collections.emptySet();
+        return sessions.keySet().stream()
+            .map(sessionUserMap::get).filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+    }
+
+    public Map&lt;String, WebSocketSession&gt; getSessions(String roomId) {
+        return roomSessions.getOrDefault(roomId, new ConcurrentHashMap&lt;&gt;());
+    }
+
+    public String getUsername(String sessionId) {
+        return sessionUserMap.getOrDefault(sessionId, "unknown");
+    }
+
+    public Map&lt;String, WebSocketSession&gt; getAllSessions() {
+        Map&lt;String, WebSocketSession&gt; all = new ConcurrentHashMap&lt;&gt;();
+        roomSessions.values().forEach(all::putAll);
+        return all;
+    }
+}</code></pre>
 <p>ChatWebSocketHandler에 이를 통합하면, 연결 시점에 <code>register()</code>를 호출하고, 연결이 끝나는 시점인 <code>doFinally()</code>에서 <code>unregister()</code>를 호출하는 식으로 세션 생명주기를 관리한다.</p>
 <h3 id="1342-pingpong">13.4.2 Ping/Pong 하트비트</h3>
 <p>네트워크가 불안정하거나 오랫동안 아무 메시지도 없으면, 프록시나 방화벽이 유휴 연결을 끊어버릴 수 있다. 이를 방지하려면 주기적으로 Ping/Pong을 주고받으면서 연결이 살아있음을 알린다.</p>
 <p><strong>서버 측 Ping 스케줄러:</strong></p>
-<p>```java
-@Component
+<pre class="highlight"><code class="language-java">@Component
 @RequiredArgsConstructor @Slf4j
-public class WebSocketPingScheduler {</p>
-<pre><code>private final WebSocketSessionRegistry sessionRegistry;
+public class WebSocketPingScheduler {
 
-@Scheduled(fixedRate = 30000)
-public void sendPing() {
-    sessionRegistry.getAllSessions().forEach((sessionId, session) -&gt; {
-        if (session.isOpen()) {
-            session.send(Mono.just(session.pingMessage(factory -&gt;
-                factory.wrap("ping".getBytes(StandardCharsets.UTF_8)))))
-                .subscribe(null, error -&gt;
-                    log.warn("Ping 실패: sessionId={}", sessionId));
-        }
-    });
-}
-</code></pre>
-<p>}
-```</p>
+    private final WebSocketSessionRegistry sessionRegistry;
+
+    @Scheduled(fixedRate = 30000)
+    public void sendPing() {
+        sessionRegistry.getAllSessions().forEach((sessionId, session) -&gt; {
+            if (session.isOpen()) {
+                session.send(Mono.just(session.pingMessage(factory -&gt;
+                    factory.wrap("ping".getBytes(StandardCharsets.UTF_8)))))
+                    .subscribe(null, error -&gt;
+                        log.warn("Ping 실패: sessionId={}", sessionId));
+            }
+        });
+    }
+}</code></pre>
 <p><code>@EnableScheduling</code>을 메인 애플리케이션에 추가해야 한다.</p>
 <p><strong>애플리케이션 레벨 하트비트:</strong></p>
 <p>그런데 프록시나 방화벽이 WebSocket 프레임을 제대로 지원하지 않는 경우도 있다. 이런 상황에서는 애플리케이션 레벨에서 직접 하트비트를 처리해야 한다.</p>
-<p>```java
-// 수신 시 하트비트 필터링
-Mono<Void> input = session.receive()
+<pre class="highlight"><code class="language-java">// 수신 시 하트비트 필터링
+Mono&lt;Void&gt; input = session.receive()
     .filter(msg -&gt; !"HEARTBEAT".equals(msg.getPayloadAsText()))
     .flatMap(msg -&gt; handleIncoming(msg.getPayloadAsText(), roomId, username))
-    .then();</p>
-<p>// 송신 시 하트비트와 실시간 메시지 병합
-Flux<WebSocketMessage> heartbeat = Flux.interval(Duration.ofSeconds(25))
+    .then();
+
+// 송신 시 하트비트와 실시간 메시지 병합
+Flux&lt;WebSocketMessage&gt; heartbeat = Flux.interval(Duration.ofSeconds(25))
     .map(tick -&gt; session.textMessage("HEARTBEAT"));
-Flux<WebSocketMessage> output = Flux.merge(
+Flux&lt;WebSocketMessage&gt; output = Flux.merge(
     messageBroker.subscribe(roomId).mapNotNull(m -&gt; toWebSocketMessage(session, m)),
-    heartbeat);
-```</p>
+    heartbeat);</code></pre>
 <h3 id="1343">13.4.3 재연결 처리</h3>
 <p>결국 네트워크는 끊긴다. 이를 대비한 자동 재연결 메커니즘은 필수다. 클라이언트와 서버 양쪽에서 대비해야 한다.</p>
 <p><strong>클라이언트 재연결 (지수 백오프):</strong></p>
-<p>```javascript
-class ReconnectingWebSocket {
+<pre class="highlight"><code class="language-javascript">class ReconnectingWebSocket {
     constructor(url, options = {}) {
         this.url = url;
         this.maxRetries = options.maxRetries || 10;
@@ -711,72 +678,69 @@ class ReconnectingWebSocket {
         this.retryCount = 0;
         this.lastMessageTimestamp = null;
         this.connect();
-    }</p>
-<pre><code>connect() {
-    let connectUrl = this.url;
-    if (this.lastMessageTimestamp) {
-        const sep = connectUrl.includes('?') ? '&amp;' : '?';
-        connectUrl += `${sep}since=${this.lastMessageTimestamp}`;
     }
-    this.ws = new WebSocket(connectUrl);
 
-    this.ws.onopen = () =&gt; { this.retryCount = 0; };
-    this.ws.onmessage = (e) =&gt; {
-        if (e.data === 'HEARTBEAT') return;
-        const msg = JSON.parse(e.data);
-        this.lastMessageTimestamp = msg.timestamp;
-        this.onMessage?.(msg);
-    };
-    this.ws.onclose = (e) =&gt; {
-        if (e.code !== 1000 &amp;&amp; this.retryCount &lt; this.maxRetries) {
-            const delay = Math.min(
-                this.retryDelay * Math.pow(2, this.retryCount),
-                this.maxRetryDelay);
-            setTimeout(() =&gt; { this.retryCount++; this.connect(); }, delay);
+    connect() {
+        let connectUrl = this.url;
+        if (this.lastMessageTimestamp) {
+            const sep = connectUrl.includes('?') ? '&amp;' : '?';
+            connectUrl += `${sep}since=${this.lastMessageTimestamp}`;
         }
-    };
-}
+        this.ws = new WebSocket(connectUrl);
 
-send(data) {
-    if (this.ws?.readyState === WebSocket.OPEN)
-        this.ws.send(typeof data === 'string' ? data : JSON.stringify(data));
-}
+        this.ws.onopen = () =&gt; { this.retryCount = 0; };
+        this.ws.onmessage = (e) =&gt; {
+            if (e.data === 'HEARTBEAT') return;
+            const msg = JSON.parse(e.data);
+            this.lastMessageTimestamp = msg.timestamp;
+            this.onMessage?.(msg);
+        };
+        this.ws.onclose = (e) =&gt; {
+            if (e.code !== 1000 &amp;&amp; this.retryCount &lt; this.maxRetries) {
+                const delay = Math.min(
+                    this.retryDelay * Math.pow(2, this.retryCount),
+                    this.maxRetryDelay);
+                setTimeout(() =&gt; { this.retryCount++; this.connect(); }, delay);
+            }
+        };
+    }
 
-close() { this.maxRetries = 0; this.ws?.close(1000); }
-</code></pre>
-<p>}
-```</p>
+    send(data) {
+        if (this.ws?.readyState === WebSocket.OPEN)
+            this.ws.send(typeof data === 'string' ? data : JSON.stringify(data));
+    }
+
+    close() { this.maxRetries = 0; this.ws?.close(1000); }
+}</code></pre>
 <p><strong>서버 측 메시지 복구:</strong></p>
 <p>클라이언트가 재연결할 때 타임스탬프를 전달하면, 그 이후의 메시지들을 모두 전송해줄 수 있다.</p>
-<p>```java
-@Override
-public Mono<Void> handle(WebSocketSession session) {
+<pre class="highlight"><code class="language-java">@Override
+public Mono&lt;Void&gt; handle(WebSocketSession session) {
     // ... 파라미터 추출 ...
-    String sinceParam = params.get("since");</p>
-<pre><code>// 재연결 시 놓친 메시지 복구
-Flux&lt;WebSocketMessage&gt; missedMessages = Flux.empty();
-if (sinceParam != null) {
-    LocalDateTime since = LocalDateTime.parse(sinceParam);
-    missedMessages = chatMessageService.getMessagesSince(roomId, since)
+    String sinceParam = params.get("since");
+
+    // 재연결 시 놓친 메시지 복구
+    Flux&lt;WebSocketMessage&gt; missedMessages = Flux.empty();
+    if (sinceParam != null) {
+        LocalDateTime since = LocalDateTime.parse(sinceParam);
+        missedMessages = chatMessageService.getMessagesSince(roomId, since)
+            .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));
+    }
+
+    Flux&lt;WebSocketMessage&gt; liveMessages = messageBroker.subscribe(roomId)
         .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));
-}
 
-Flux&lt;WebSocketMessage&gt; liveMessages = messageBroker.subscribe(roomId)
-    .mapNotNull(msg -&gt; toWebSocketMessage(session, msg));
+    // 놓친 메시지 먼저 전송 후 실시간 스트림 전환
+    Flux&lt;WebSocketMessage&gt; output = missedMessages.concatWith(liveMessages);
 
-// 놓친 메시지 먼저 전송 후 실시간 스트림 전환
-Flux&lt;WebSocketMessage&gt; output = missedMessages.concatWith(liveMessages);
+    Mono&lt;Void&gt; input = session.receive()
+        .filter(msg -&gt; !"HEARTBEAT".equals(msg.getPayloadAsText()))
+        .flatMap(msg -&gt; handleIncoming(msg.getPayloadAsText(), roomId, username))
+        .doFinally(signal -&gt; sessionRegistry.unregister(roomId, session))
+        .then();
 
-Mono&lt;Void&gt; input = session.receive()
-    .filter(msg -&gt; !"HEARTBEAT".equals(msg.getPayloadAsText()))
-    .flatMap(msg -&gt; handleIncoming(msg.getPayloadAsText(), roomId, username))
-    .doFinally(signal -&gt; sessionRegistry.unregister(roomId, session))
-    .then();
-
-return Mono.zip(input, session.send(output)).then();
-</code></pre>
-<p>}
-```</p>
+    return Mono.zip(input, session.send(output)).then();
+}</code></pre>
 <h3 id="1344">13.4.4 연결 종료와 보안</h3>
 <p>WebSocket 연결을 닫을 때는 <code>CloseStatus</code> 코드로 종료 사유를 알린다. 주요 코드들이다.</p>
 <table>
@@ -810,17 +774,15 @@ return Mono.zip(input, session.send(output)).then();
 </tbody>
 </table>
 <p>예를 들어, 부정행위를 하는 사용자를 강제로 퇴장시키려면 이렇게 할 수 있다.</p>
-<p><code>java
-public Mono&lt;Void&gt; disconnectUser(String roomId, String targetUsername) {
+<pre class="highlight"><code class="language-java">public Mono&lt;Void&gt; disconnectUser(String roomId, String targetUsername) {
     return Flux.fromIterable(sessionRegistry.getSessions(roomId).entrySet())
         .filter(e -&gt; targetUsername.equals(sessionRegistry.getUsername(e.getKey())))
         .flatMap(e -&gt; e.getValue()
             .close(new CloseStatus(4001, "관리자에 의해 종료")))
         .then();
-}</code></p>
+}</code></pre>
 <p>WebSocket 엔드포인트도 당연히 인증이 필요하다. WebSocket 핸드셰이크가 사실 HTTP 요청이므로, Spring Security를 그냥 적용할 수 있다. 다만 JWT 토큰 같은 걸 어떻게 전달할지는 생각해야 한다. 일반적으로는 쿼리 파라미터나 첫 번째 메시지에 담아서 보낸다.</p>
-<p><code>java
-@Bean
+<pre class="highlight"><code class="language-java">@Bean
 public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
     return http
         .authorizeExchange(ex -&gt; ex
@@ -829,19 +791,17 @@ public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
             .anyExchange().authenticated())
         .csrf(csrf -&gt; csrf.disable())
         .build();
-}</code></p>
-<p><code>java
-// 핸들러 내부에서 JWT 검증
+}</code></pre>
+<pre class="highlight"><code class="language-java">// 핸들러 내부에서 JWT 검증
 String token = params.get("token");
 if (token == null || !jwtTokenProvider.validateToken(token)) {
     return session.close(new CloseStatus(4401, "인증 실패"));
 }
-String username = jwtTokenProvider.getUsernameFromToken(token);</code></p>
-<p><code>javascript
-// 클라이언트에서 토큰 전달
+String username = jwtTokenProvider.getUsernameFromToken(token);</code></pre>
+<pre class="highlight"><code class="language-javascript">// 클라이언트에서 토큰 전달
 const token = localStorage.getItem('accessToken');
 const ws = new WebSocket(
-    `ws://localhost:8080/ws/chat?roomId=${roomId}&amp;username=${user}&amp;token=${token}`);</code></p>
+    `ws://localhost:8080/ws/chat?roomId=${roomId}&amp;username=${user}&amp;token=${token}`);</code></pre>
 <blockquote>
 <p><strong>주의</strong>: URL 쿼리 파라미터로 토큰을 전달하면 로그에 그대로 남을 수 있다. 서버 로그, 브라우저 히스토리, 프록시 로그 등 여러 곳에 보인다는 뜻이다. 필자의 경험상 프로덕션에서는 쿠키를 쓰거나, WebSocket 연결 직후 첫 번째 메시지로 토큰을 보내는 것이 더 안전하다.</p>
 </blockquote>

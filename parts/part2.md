@@ -1256,7 +1256,8 @@ public class UserController {
         return userService.getUserById(id)
                 .map(UserResponse::from)
                 .map(ResponseEntity::ok)
-                .defaultIfEmpty(ResponseEntity.notFound().build());
+                .onErrorResume(ResourceNotFoundException.class,
+                        e -> Mono.just(ResponseEntity.notFound().build()));
     }
 
     @GetMapping
@@ -1531,9 +1532,6 @@ curl -X POST http://localhost:8080/api/posts \
   -H "Content-Type: application/json" \
   -d '{ "title": "WebFlux 첫 글", "content": "리액티브 API 구현",
         "authorId": "65f1a2b3c4d5e6f7a8b9c0d1", "tags": ["spring","webflux"] }'
-
-# 게시글 검색
-curl "http://localhost:8080/api/posts/search?keyword=WebFlux"
 
 # 작성자별 페이징 조회
 curl "http://localhost:8080/api/posts/author/65f1a2b3c4d5e6f7a8b9c0d1?page=0&size=5"
@@ -1943,11 +1941,16 @@ public class Product {
 ```
 
 ```java
+public interface ProductRepository extends ReactiveMongoRepository<Product, String> {
+}
+```
+
+```java
 @Service
 @RequiredArgsConstructor
 public class ProductService {
 
-    private final ReactiveMongoRepository<Product, String> productRepository;
+    private final ProductRepository productRepository;
 
     public Flux<Product> findAll() { return productRepository.findAll(); }
     public Mono<Product> findById(String id) { return productRepository.findById(id); }
@@ -1971,6 +1974,7 @@ public class ProductService {
     }
 
     public Mono<Void> deleteById(String id) { return productRepository.deleteById(id); }
+}
 ```
 
 ### 7.3.3 에러 처리가 포함된 핸들러

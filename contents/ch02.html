@@ -25,7 +25,7 @@
 <h2 id="21-spring-mvc-spring-webflux">2.1 Spring MVC와 Spring WebFlux 비교</h2>
 <h3 id="211-vs">2.1.1 아키텍처 차이: 서블릿 스택 vs 리액티브 스택</h3>
 <p>Spring MVC는 Java Servlet API 위에 구축되어 있다. 클라이언트의 요청이 들어오면 서블릿 컨테이너(Tomcat, Jetty 등)는 스레드 풀에서 하나의 스레드를 할당하고, 그 스레드가 요청의 처음부터 끝까지 계속 담당하게 된다. 이 방식을 <strong>thread-per-request</strong> 모델이라고 부르는데, 이름 그대로 요청 하나당 스레드 하나씩 배치하는 것이다.</p>
-<p><code>[Spring MVC 스택]
+<pre class="highlight"><code>[Spring MVC 스택]
 ┌─────────────────────┐
 │   Servlet Container  │  (Tomcat, Jetty)
 │   ┌───────────────┐  │
@@ -40,9 +40,9 @@
 │   └───────────────┘  │
 │   Servlet API        │
 │   (Blocking I/O)     │
-└─────────────────────┘</code></p>
+└─────────────────────┘</code></pre>
 <p>반면 Spring WebFlux는 리액티브 스택 위에서 완전히 다르게 구축되어 있다. 서블릿 API에는 의존하지 않으며, 기본 런타임으로 Netty를 사용한다. 핵심은 소수의 이벤트 루프 스레드가 많은 요청들을 논블로킹 방식으로 효율적으로 처리할 수 있다는 점이다.</p>
-<p><code>[Spring WebFlux 스택]
+<pre class="highlight"><code>[Spring WebFlux 스택]
 ┌─────────────────────┐
 │   Reactive Runtime   │  (Netty, Undertow)
 │   ┌───────────────┐  │
@@ -59,23 +59,21 @@
 │   └───────────────┘  │
 │   Reactive Streams   │
 │   (Non-Blocking I/O) │
-└─────────────────────┘</code></p>
+└─────────────────────┘</code></pre>
 <h3 id="212">2.1.2 스레드 모델 차이</h3>
 <p><strong>Spring MVC</strong>의 스레드 모델은 직관적이긴 하지만 자원 측면에서는 비효율적이다. 동시에 200개의 요청을 처리하려면 최소 200개의 스레드를 준비해야 한다. 문제는 각 스레드가 데이터베이스 응답을 기다리는 동안에도 계속 점유되고 있다는 기 때문이다.</p>
-<p>```
-[Spring MVC - Thread-per-Request]</p>
-<p>요청 A ──▶ Thread-1: [수신]──[처리]──[DB 대기...]──[응답]──▶ 완료
+<pre class="highlight"><code>[Spring MVC - Thread-per-Request]
+
+요청 A ──▶ Thread-1: [수신]──[처리]──[DB 대기...]──[응답]──▶ 완료
 요청 B ──▶ Thread-2: [수신]──[처리]──[DB 대기...]──[응답]──▶ 완료
 요청 C ──▶ Thread-3: [수신]──[처리]──[DB 대기...]──[응답]──▶ 완료
   ...
-요청 N ──▶ Thread-N: (스레드 풀 고갈 → 대기 큐에서 대기)
-```</p>
+요청 N ──▶ Thread-N: (스레드 풀 고갈 → 대기 큐에서 대기)</code></pre>
 <p><strong>Spring WebFlux</strong>는 이벤트 루프 방식을 채택했기 때문에 상황이 완전히 달라진다. CPU 코어 수 정도의 적은 스레드(기본적으로 코어 수 x 1)가 모든 요청을 논블로킹으로 처리할 수 있다. I/O 대기 시간 동안 해당 스레드가 다른 요청을 처리하면 되기 때문이다.</p>
-<p>```
-[Spring WebFlux - Event Loop]</p>
-<p>EventLoop-1: [요청A 수신]─[요청B 수신]─[요청A DB콜백]─[요청C 수신]─[요청B DB콜백]─...
-EventLoop-2: [요청D 수신]─[요청E 수신]─[요청D DB콜백]─[요청F 수신]─[요청E DB콜백]─...
-```</p>
+<pre class="highlight"><code>[Spring WebFlux - Event Loop]
+
+EventLoop-1: [요청A 수신]─[요청B 수신]─[요청A DB콜백]─[요청C 수신]─[요청B DB콜백]─...
+EventLoop-2: [요청D 수신]─[요청E 수신]─[요청D DB콜백]─[요청F 수신]─[요청E DB콜백]─...</code></pre>
 <p><strong>처리량과 지연 시간 비교</strong></p>
 <table>
 <thead>
@@ -126,74 +124,70 @@ EventLoop-2: [요청D 수신]─[요청E 수신]─[요청D DB콜백]─[요청F
 <h3 id="213">2.1.3 코드 스타일 비교</h3>
 <p>이를 직관적으로 이해하기 위해, 사용자를 조회하는 간단한 API를 두 가지 방식으로 구현해서 비교해보면 좋다.</p>
 <p><strong>Spring MVC 방식:</strong></p>
-<p>```java
-@RestController
+<pre class="highlight"><code class="language-java">@RestController
 @RequestMapping("/api/users")
-public class UserController {</p>
-<pre><code>private final UserService userService;
+public class UserController {
 
-public UserController(UserService userService) {
-    this.userService = userService;
-}
+    private final UserService userService;
 
-@GetMapping("/{id}")
-public ResponseEntity&lt;User&gt; getUser(@PathVariable String id) {
-    User user = userService.findById(id);  // 블로킹 호출
-    if (user == null) {
-        return ResponseEntity.notFound().build();
+    public UserController(UserService userService) {
+        this.userService = userService;
     }
-    return ResponseEntity.ok(user);
-}
 
-@GetMapping
-public ResponseEntity&lt;List&lt;User&gt;&gt; getAllUsers() {
-    List&lt;User&gt; users = userService.findAll();  // 블로킹 호출
-    return ResponseEntity.ok(users);
-}
+    @GetMapping("/{id}")
+    public ResponseEntity&lt;User&gt; getUser(@PathVariable String id) {
+        User user = userService.findById(id);  // 블로킹 호출
+        if (user == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(user);
+    }
 
-@PostMapping
-public ResponseEntity&lt;User&gt; createUser(@RequestBody User user) {
-    User saved = userService.save(user);  // 블로킹 호출
-    return ResponseEntity
-            .created(URI.create("/api/users/" + saved.getId()))
-            .body(saved);
-}
-</code></pre>
-<p>}
-```</p>
+    @GetMapping
+    public ResponseEntity&lt;List&lt;User&gt;&gt; getAllUsers() {
+        List&lt;User&gt; users = userService.findAll();  // 블로킹 호출
+        return ResponseEntity.ok(users);
+    }
+
+    @PostMapping
+    public ResponseEntity&lt;User&gt; createUser(@RequestBody User user) {
+        User saved = userService.save(user);  // 블로킹 호출
+        return ResponseEntity
+                .created(URI.create("/api/users/" + saved.getId()))
+                .body(saved);
+    }
+}</code></pre>
 <p><strong>Spring WebFlux 방식:</strong></p>
-<p>```java
-@RestController
+<pre class="highlight"><code class="language-java">@RestController
 @RequestMapping("/api/users")
-public class UserController {</p>
-<pre><code>private final UserService userService;
+public class UserController {
 
-public UserController(UserService userService) {
-    this.userService = userService;
-}
+    private final UserService userService;
 
-@GetMapping("/{id}")
-public Mono&lt;ResponseEntity&lt;User&gt;&gt; getUser(@PathVariable String id) {
-    return userService.findById(id)                    // 논블로킹 호출
-            .map(user -&gt; ResponseEntity.ok(user))
-            .defaultIfEmpty(ResponseEntity.notFound().build());
-}
+    public UserController(UserService userService) {
+        this.userService = userService;
+    }
 
-@GetMapping
-public Flux&lt;User&gt; getAllUsers() {
-    return userService.findAll();  // 논블로킹, 스트리밍 가능
-}
+    @GetMapping("/{id}")
+    public Mono&lt;ResponseEntity&lt;User&gt;&gt; getUser(@PathVariable String id) {
+        return userService.findById(id)                    // 논블로킹 호출
+                .map(user -&gt; ResponseEntity.ok(user))
+                .defaultIfEmpty(ResponseEntity.notFound().build());
+    }
 
-@PostMapping
-public Mono&lt;ResponseEntity&lt;User&gt;&gt; createUser(@RequestBody User user) {
-    return userService.save(user)                      // 논블로킹 호출
-            .map(saved -&gt; ResponseEntity
-                    .created(URI.create("/api/users/" + saved.getId()))
-                    .body(saved));
-}
-</code></pre>
-<p>}
-```</p>
+    @GetMapping
+    public Flux&lt;User&gt; getAllUsers() {
+        return userService.findAll();  // 논블로킹, 스트리밍 가능
+    }
+
+    @PostMapping
+    public Mono&lt;ResponseEntity&lt;User&gt;&gt; createUser(@RequestBody User user) {
+        return userService.save(user)                      // 논블로킹 호출
+                .map(saved -&gt; ResponseEntity
+                        .created(URI.create("/api/users/" + saved.getId()))
+                        .body(saved));
+    }
+}</code></pre>
 <p>두 방식의 핵심 차이를 표로 정리해보면 이렇다.</p>
 <table>
 <thead>
@@ -244,35 +238,33 @@ public Mono&lt;ResponseEntity&lt;User&gt;&gt; createUser(@RequestBody User user)
 </ul>
 <h3 id="222-event-loop">2.2.2 이벤트 루프(Event Loop) 모델</h3>
 <p>Netty의 이벤트 루프가 정말 핵심인데, 아주 간단히 말하면 하나의 스레드가 <strong>셀렉터(Selector)</strong>라는 도구를 사용해서 여러 채널(연결)의 I/O 이벤트를 감시하고 처리하는 구조다.</p>
-<p>```
-[Netty 이벤트 루프 구조]</p>
-<pre><code>              ┌──────────────────────────────┐
-              │       EventLoopGroup          │
-              │  (Boss Group - 연결 수락)      │
-              │  ┌────────────────────────┐   │
-              │  │ EventLoop (Thread-1)   │   │
-              │  │  → 새 연결 수락(accept)  │   │
-              │  └────────────────────────┘   │
-              └──────────┬───────────────────┘
-                         │ 연결을 Worker에 등록
-              ┌──────────▼───────────────────┐
-              │       EventLoopGroup          │
-              │  (Worker Group - I/O 처리)     │
-              │  ┌────────────────────────┐   │
-              │  │ EventLoop-1 (Thread)   │   │
-              │  │  채널 A, D, G 담당      │   │
-              │  └────────────────────────┘   │
-              │  ┌────────────────────────┐   │
-              │  │ EventLoop-2 (Thread)   │   │
-              │  │  채널 B, E, H 담당      │   │
-              │  └────────────────────────┘   │
-              │  ┌────────────────────────┐   │
-              │  │ EventLoop-N (Thread)   │   │
-              │  │  채널 C, F, I 담당      │   │
-              │  └────────────────────────┘   │
-              └──────────────────────────────┘
-</code></pre>
-<p>```</p>
+<pre class="highlight"><code>[Netty 이벤트 루프 구조]
+
+                  ┌──────────────────────────────┐
+                  │       EventLoopGroup          │
+                  │  (Boss Group - 연결 수락)      │
+                  │  ┌────────────────────────┐   │
+                  │  │ EventLoop (Thread-1)   │   │
+                  │  │  → 새 연결 수락(accept)  │   │
+                  │  └────────────────────────┘   │
+                  └──────────┬───────────────────┘
+                             │ 연결을 Worker에 등록
+                  ┌──────────▼───────────────────┐
+                  │       EventLoopGroup          │
+                  │  (Worker Group - I/O 처리)     │
+                  │  ┌────────────────────────┐   │
+                  │  │ EventLoop-1 (Thread)   │   │
+                  │  │  채널 A, D, G 담당      │   │
+                  │  └────────────────────────┘   │
+                  │  ┌────────────────────────┐   │
+                  │  │ EventLoop-2 (Thread)   │   │
+                  │  │  채널 B, E, H 담당      │   │
+                  │  └────────────────────────┘   │
+                  │  ┌────────────────────────┐   │
+                  │  │ EventLoop-N (Thread)   │   │
+                  │  │  채널 C, F, I 담당      │   │
+                  │  └────────────────────────┘   │
+                  └──────────────────────────────┘</code></pre>
 <p>각 이벤트 루프 스레드는 다음 세 가지를 계속 반복한다.</p>
 <ol>
 <li><strong>Selector로 I/O 이벤트 대기</strong>: 등록된 채널 중에 읽거나 쓸 준비가 된 채널이 있는지 확인한다</li>
@@ -282,9 +274,9 @@ public Mono&lt;ResponseEntity&lt;User&gt;&gt; createUser(@RequestBody User user)
 <p>이 모델에서 기억할 핵심 원칙이 하나 있다. <strong>하나의 채널은 항상 같은 이벤트 루프에 연결</strong>된다는 것인데, 덕분에 복잡한 동기화 코드 없이도 스레드 안전성이 자동으로 보장될 수 있다.</p>
 <h3 id="223-httphandler-webhandler-dispatcherhandler">2.2.3 HttpHandler, WebHandler, DispatcherHandler 파이프라인</h3>
 <p>Spring WebFlux의 내부는 여러 계층의 핸들러들이 마치 우편 처리 시스템처럼 서로 연쇄되어 있다.</p>
-<p>```
-[요청 처리 파이프라인]</p>
-<p>HTTP 요청
+<pre class="highlight"><code>[요청 처리 파이프라인]
+
+HTTP 요청
    │
    ▼
 ┌──────────────┐
@@ -316,23 +308,20 @@ public Mono&lt;ResponseEntity&lt;User&gt;&gt; createUser(@RequestBody User user)
 │  ┌──────▼──────┐ │
 │  │ResultHandler │ │  → 결과를 HTTP 응답으로 변환
 │  └─────────────┘ │
-└──────────────────┘
-```</p>
+└──────────────────┘</code></pre>
 <p><strong>HttpHandler</strong>는 가장 기본적인 계약(interface)다. 실은 <code>handle(ServerHttpRequest, ServerHttpResponse)</code> 하나의 메서드만 정의하고 있는데, Netty나 Undertow, Tomcat(서블릿 3.1+) 같은 각 서버마다 이를 구현하는 어댑터를 두고 있다.</p>
-<p><code>java
-public interface HttpHandler {
+<pre class="highlight"><code class="language-java">public interface HttpHandler {
     Mono&lt;Void&gt; handle(ServerHttpRequest request, ServerHttpResponse response);
-}</code></p>
+}</code></pre>
 <p><strong>DispatcherHandler</strong>는 Spring MVC의 <code>DispatcherServlet</code>을 리액티브 방식으로 다시 구현한 것이라고 보면 된다. 요청을 세 단계로 나누어 처리한다.</p>
-<p><code>java
-// DispatcherHandler의 핵심 로직 (간략화)
+<pre class="highlight"><code class="language-java">// DispatcherHandler의 핵심 로직 (간략화)
 public Mono&lt;Void&gt; handle(ServerWebExchange exchange) {
     return Flux.fromIterable(this.handlerMappings)       // 1. 핸들러 매핑 탐색
             .concatMap(mapping -&gt; mapping.getHandler(exchange))
             .next()
             .flatMap(handler -&gt; invokeHandler(exchange, handler))  // 2. 핸들러 실행
             .flatMap(result -&gt; handleResult(exchange, result));    // 3. 결과 처리
-}</code></p>
+}</code></pre>
 <h3 id="224">2.2.4 요청 처리 흐름</h3>
 <p>이제 클라이언트의 HTTP 요청이 들어와서 응답이 나갈 때까지 전체 여정을 따라가보자.</p>
 <ol>
@@ -350,100 +339,95 @@ public Mono&lt;Void&gt; handle(ServerWebExchange exchange) {
 <h2 id="23-io">2.3 논블로킹 I/O의 원리</h2>
 <h3 id="231-io-vs-io">2.3.1 블로킹 I/O vs 논블로킹 I/O</h3>
 <p><strong>블로킹 I/O</strong>는 직관적이지만 비효율적이다. <code>read()</code> 또는 <code>write()</code> 호출 시 데이터가 준비될 때까지 호출한 스레드는 대기 상태에 빠진다. 이 동안 그 스레드는 아무 일도 못하면서 메모리와 스택 공간만 계속 차지한다.</p>
-<p>```java
-// 블로킹 I/O 예시 (java.io)
+<pre class="highlight"><code class="language-java">// 블로킹 I/O 예시 (java.io)
 try (Socket socket = new Socket("example.com", 80);
-     InputStream in = socket.getInputStream()) {</p>
-<pre><code>byte[] buffer = new byte[1024];
-int bytesRead = in.read(buffer);  // ← 데이터가 올 때까지 스레드 블로킹
-// 이 줄은 데이터를 읽을 때까지 실행되지 않는다
-processData(buffer, bytesRead);
-</code></pre>
-<p>}
-```</p>
-<p>```
-[블로킹 I/O 타임라인]</p>
-<p>Thread-1: ──[read() 호출]──────[대기중...]──────[데이터 수신]──[처리]──▶
+     InputStream in = socket.getInputStream()) {
+
+    byte[] buffer = new byte[1024];
+    int bytesRead = in.read(buffer);  // ← 데이터가 올 때까지 스레드 블로킹
+    // 이 줄은 데이터를 읽을 때까지 실행되지 않는다
+    processData(buffer, bytesRead);
+}</code></pre>
+<pre class="highlight"><code>[블로킹 I/O 타임라인]
+
+Thread-1: ──[read() 호출]──────[대기중...]──────[데이터 수신]──[처리]──▶
                                ↑
-                         스레드가 아무 일도 못함
-```</p>
+                         스레드가 아무 일도 못함</code></pre>
 <p><strong>논블로킹 I/O</strong>는 완전히 다르다. <code>read()</code> 호출이 즉시 반환되기 때문에 데이터가 아직 없으면 "아직 없다"는 신호만 받고, 스레드는 바로 다른 일을 할 수 있다.</p>
-<p>```java
-// 논블로킹 I/O 예시 (java.nio)
+<pre class="highlight"><code class="language-java">// 논블로킹 I/O 예시 (java.nio)
 SocketChannel channel = SocketChannel.open();
 channel.configureBlocking(false);  // 논블로킹 모드 설정
-channel.connect(new InetSocketAddress("example.com", 80));</p>
-<p>ByteBuffer buffer = ByteBuffer.allocate(1024);
+channel.connect(new InetSocketAddress("example.com", 80));
+while (!channel.finishConnect()) { /* 연결 완료 대기 */ }
+
+ByteBuffer buffer = ByteBuffer.allocate(1024);
 int bytesRead = channel.read(buffer);  // ← 즉시 반환 (데이터 없으면 0 또는 -1)
-// 스레드가 블로킹되지 않으므로 바로 다음 줄 실행
-```</p>
-<p>```
-[논블로킹 I/O 타임라인]</p>
-<p>Thread-1: ──[read()→0]──[다른작업]──[read()→0]──[다른작업]──[read()→데이터]──[처리]──▶
+// 스레드가 블로킹되지 않으므로 바로 다음 줄 실행</code></pre>
+<pre class="highlight"><code>[논블로킹 I/O 타임라인]
+
+Thread-1: ──[read()→0]──[다른작업]──[read()→0]──[다른작업]──[read()→데이터]──[처리]──▶
               ↑             ↑           ↑           ↑
-         즉시 반환      유용한 작업   즉시 반환    유용한 작업
-```</p>
+         즉시 반환      유용한 작업   즉시 반환    유용한 작업</code></pre>
 <h3 id="232-java-nio-selector">2.3.2 Java NIO와 Selector</h3>
 <p>Java NIO(New I/O)의 핵심은 <strong>Selector</strong>다. 이것이 있으면 하나의 스레드가 여러 채널의 I/O 이벤트를 효율적으로 감시할 수 있다. 내부적으로는 운영체제의 <code>epoll</code>(Linux) 또는 <code>kqueue</code>(macOS) 같은 고효율 시스템 콜을 활용하고 있다.</p>
-<p>```java
-// Java NIO Selector 사용 예시
-Selector selector = Selector.open();</p>
-<p>// 여러 채널을 셀렉터에 등록
+<pre class="highlight"><code class="language-java">// Java NIO Selector 사용 예시
+Selector selector = Selector.open();
+
+// 여러 채널을 셀렉터에 등록
 ServerSocketChannel serverChannel = ServerSocketChannel.open();
 serverChannel.configureBlocking(false);
 serverChannel.bind(new InetSocketAddress(8080));
-serverChannel.register(selector, SelectionKey.OP_ACCEPT);</p>
-<p>while (true) {
+serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+
+while (true) {
     // I/O 이벤트가 있을 때까지 대기 (효율적인 대기)
-    selector.select();</p>
-<pre><code>Set&lt;SelectionKey&gt; selectedKeys = selector.selectedKeys();
-Iterator&lt;SelectionKey&gt; iter = selectedKeys.iterator();
+    selector.select();
 
-while (iter.hasNext()) {
-    SelectionKey key = iter.next();
+    Set&lt;SelectionKey&gt; selectedKeys = selector.selectedKeys();
+    Iterator&lt;SelectionKey&gt; iter = selectedKeys.iterator();
 
-    if (key.isAcceptable()) {
-        // 새 연결 수락
-        SocketChannel client = serverChannel.accept();
-        client.configureBlocking(false);
-        client.register(selector, SelectionKey.OP_READ);
-    } else if (key.isReadable()) {
-        // 데이터 읽기 가능
-        SocketChannel client = (SocketChannel) key.channel();
-        ByteBuffer buffer = ByteBuffer.allocate(1024);
-        client.read(buffer);
-        // 데이터 처리...
+    while (iter.hasNext()) {
+        SelectionKey key = iter.next();
+
+        if (key.isAcceptable()) {
+            // 새 연결 수락
+            SocketChannel client = serverChannel.accept();
+            client.configureBlocking(false);
+            client.register(selector, SelectionKey.OP_READ);
+        } else if (key.isReadable()) {
+            // 데이터 읽기 가능
+            SocketChannel client = (SocketChannel) key.channel();
+            ByteBuffer buffer = ByteBuffer.allocate(1024);
+            client.read(buffer);
+            // 데이터 처리...
+        }
+
+        iter.remove();
     }
+}</code></pre>
+<pre class="highlight"><code>[Selector 동작 원리]
 
-    iter.remove();
-}
-</code></pre>
-<p>}
-```</p>
-<p>```
-[Selector 동작 원리]</p>
-<pre><code>                ┌───────────────┐
-                │   Selector    │
-                │   (Thread-1)  │
-                └───┬───┬───┬───┘
-                    │   │   │
-        ┌───────────┘   │   └───────────┐
-        ▼               ▼               ▼
-   ┌─────────┐   ┌─────────┐   ┌─────────┐
-   │Channel A│   │Channel B│   │Channel C│
-   │ (READ)  │   │ (WRITE) │   │ (READ)  │
-   └─────────┘   └─────────┘   └─────────┘
-</code></pre>
-<p>하나의 스레드가 select()를 호출하면:
+                    ┌───────────────┐
+                    │   Selector    │
+                    │   (Thread-1)  │
+                    └───┬───┬───┬───┘
+                        │   │   │
+            ┌───────────┘   │   └───────────┐
+            ▼               ▼               ▼
+       ┌─────────┐   ┌─────────┐   ┌─────────┐
+       │Channel A│   │Channel B│   │Channel C│
+       │ (READ)  │   │ (WRITE) │   │ (READ)  │
+       └─────────┘   └─────────┘   └─────────┘
+
+  하나의 스레드가 select()를 호출하면:
   → 운영체제가 준비된 채널만 알려줌 (예: A와 C)
-  → 스레드가 A와 C만 처리 (불필요한 폴링 없음)
-```</p>
+  → 스레드가 A와 C만 처리 (불필요한 폴링 없음)</code></pre>
 <h3 id="233">2.3.3 이벤트 루프의 동작 방식</h3>
 <p>Netty의 이벤트 루프는 Java NIO의 Selector를 기초로 삼되, 여기에 더 정교한 태스크 스케줄링과 파이프라인 처리를 덧붙인 것이다.</p>
 <p>이벤트 루프가 한 바퀴 도는(iteration) 과정을 보면 다음과 같다.</p>
-<p>```
-[이벤트 루프 사이클]</p>
-<p>┌─────────────────────────────────────────────┐
+<pre class="highlight"><code>[이벤트 루프 사이클]
+
+┌─────────────────────────────────────────────┐
 │                Event Loop                    │
 │                                              │
 │  1. select()  ─── I/O 이벤트 감지            │
@@ -456,26 +440,23 @@ while (iter.hasNext()) {
 │       │    (사용자가 제출한 작업, 타이머 등)    │
 │       │                                      │
 │       └──────── 반복 ────────────────────────│
-└─────────────────────────────────────────────┘
-```</p>
+└─────────────────────────────────────────────┘</code></pre>
 <p>여기서 기억해야 할 절대 원칙이 하나 있다. <strong>이벤트 루프 스레드에서는 절대 블로킹 작업을 하면 안 된다는 것이다.</strong> 하나의 이벤트 루프가 수천 개의 연결을 동시에 담당하고 있기 때문에, 그 스레드가 한 번 블로킹되면 수천 개의 연결이 모두 함께 지연되는 끔찍한 일이 벌어진다.</p>
-<p>```java
-// 절대 하면 안 되는 코드 (이벤트 루프에서 블로킹)
+<pre class="highlight"><code class="language-java">// 절대 하면 안 되는 코드 (이벤트 루프에서 블로킹)
 @GetMapping("/bad-example")
-public Mono<String> badExample() {
+public Mono&lt;String&gt; badExample() {
     Thread.sleep(1000);  // 이벤트 루프 스레드를 1초간 블로킹!
     return Mono.just("이렇게 하면 안 됩니다");
-}</p>
-<p>// 올바른 코드 (논블로킹)
+}
+
+// 올바른 코드 (논블로킹)
 @GetMapping("/good-example")
-public Mono<String> goodExample() {
+public Mono&lt;String&gt; goodExample() {
     return Mono.delay(Duration.ofSeconds(1))  // 논블로킹 대기
             .then(Mono.just("논블로킹으로 1초 후 응답"));
-}
-```</p>
+}</code></pre>
 <p>만약 블로킹 작업이 피할 수 없다면, 반드시 별도의 스케줄러로 그 작업을 위임해야 한다.</p>
-<p><code>java
-// 블로킹이 불가피한 경우 - 별도 스케줄러 사용
+<pre class="highlight"><code class="language-java">// 블로킹이 불가피한 경우 - 별도 스케줄러 사용
 @GetMapping("/blocking-needed")
 public Mono&lt;String&gt; blockingNeeded() {
     return Mono.fromCallable(() -&gt; {
@@ -483,37 +464,34 @@ public Mono&lt;String&gt; blockingNeeded() {
                 return legacyService.queryDatabase();
             })
             .subscribeOn(Schedulers.boundedElastic());  // 블로킹 전용 스레드 풀
-}</code></p>
+}</code></pre>
 <hr>
 <h2 id="24-webflux">2.4 WebFlux를 선택해야 하는 경우와 그렇지 않은 경우</h2>
 <h3 id="241-webflux">2.4.1 WebFlux가 적합한 시나리오</h3>
 <p><strong>1. 높은 동시성이 요구되는 I/O 바운드 애플리케이션</strong></p>
 <p>마이크로서비스 게이트웨이나 API 중개 서비스처럼 여러 외부 서비스를 한꺼번에 호출하고 결과를 조합해야 하는 경우가 대표적이다. 이런 상황에서 WebFlux는 진가를 발휘한다.</p>
-<p>```java
-// 여러 외부 서비스를 동시에 호출하여 결과 조합
-public Mono<DashboardData> getDashboard(String userId) {
-    Mono<UserProfile> profile = userService.getProfile(userId);
-    Mono<List\<Order>> orders = orderService.getOrders(userId);
-    Mono<List\<Notification>> notifications = notificationService.get(userId);</p>
-<pre><code>return Mono.zip(profile, orders, notifications)
-        .map(tuple -&gt; new DashboardData(
-                tuple.getT1(),
-                tuple.getT2(),
-                tuple.getT3()
-        ));
-// 세 호출이 동시에 실행되어 전체 응답 시간 단축
-</code></pre>
-<p>}
-```</p>
+<pre class="highlight"><code class="language-java">// 여러 외부 서비스를 동시에 호출하여 결과 조합
+public Mono&lt;DashboardData&gt; getDashboard(String userId) {
+    Mono&lt;UserProfile&gt; profile = userService.getProfile(userId);
+    Mono&lt;List&lt;Order&gt;&gt; orders = orderService.getOrders(userId);
+    Mono&lt;List&lt;Notification&gt;&gt; notifications = notificationService.get(userId);
+
+    return Mono.zip(profile, orders, notifications)
+            .map(tuple -&gt; new DashboardData(
+                    tuple.getT1(),
+                    tuple.getT2(),
+                    tuple.getT3()
+            ));
+    // 세 호출이 동시에 실행되어 전체 응답 시간 단축
+}</code></pre>
 <p><strong>2. 실시간 스트리밍 애플리케이션</strong></p>
 <p>SSE(Server-Sent Events)나 WebSocket 같은 방식으로 실시간 데이터를 스트리밍해야 할 때, WebFlux의 <code>Flux</code>가 자연스럽게 그 역할을 수행할 수 있다.</p>
-<p><code>java
-// 실시간 주가 스트리밍
+<pre class="highlight"><code class="language-java">// 실시간 주가 스트리밍
 @GetMapping(value = "/stocks/{symbol}/stream",
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 public Flux&lt;StockPrice&gt; streamStockPrice(@PathVariable String symbol) {
     return stockService.getPriceStream(symbol);  // 무한 스트림
-}</code></p>
+}</code></pre>
 <p><strong>3. 대량의 동시 연결을 유지해야 하는 경우</strong></p>
 <p>채팅 서비스나 알림 시스템처럼 수천 개에서 수만 개의 커넥션을 오래 유지해야 할 때는 어떨까? thread-per-request 방식은 메모리 한계에 쉽게 도달하기 때문에 WebFlux가 필수다.</p>
 <p><strong>4. 전체 파이프라인이 리액티브인 경우</strong></p>
@@ -529,9 +507,9 @@ public Flux&lt;StockPrice&gt; streamStockPrice(@PathVariable String symbol) {
 <p>동시 사용자가 수십 명 정도인 백오피스 시스템이라면? Spring MVC만으로 충분하고, WebFlux를 굳이 도입할 필요가 없다.</p>
 <h3 id="243">2.4.3 의사결정 기준</h3>
 <p>결국 WebFlux를 도입할지 말지는 몇 가지 질문에 답하는 것으로 결정할 수 있다.</p>
-<p>```
-[WebFlux 도입 의사결정 흐름]</p>
-<p>높은 동시성(수천 이상)이 필요한가?
+<pre class="highlight"><code>[WebFlux 도입 의사결정 흐름]
+
+높은 동시성(수천 이상)이 필요한가?
   ├── 아니오 → Spring MVC 사용
   └── 예
        │
@@ -542,259 +520,248 @@ public Flux&lt;StockPrice&gt; streamStockPrice(@PathVariable String symbol) {
               │
               팀이 리액티브 프로그래밍에 익숙한가?
                 ├── 아니오 → 학습 기간 확보 후 도입 검토
-                └── 예 → Spring WebFlux 사용
-```</p>
+                └── 예 → Spring WebFlux 사용</code></pre>
 <hr>
 <h2 id="25-webflux">2.5 WebFlux의 두 가지 프로그래밍 모델</h2>
 <p>Spring WebFlux를 사용할 때 선택할 수 있는 프로그래밍 방식이 두 가지 있다. 어노테이션 기반 모델과 함수형 엔드포인트 모델인데, 둘 다 동일한 리액티브 런타임 위에서 움직인다. 흥미롭게도 한 프로젝트 내에서 두 방식을 섞어 쓸 수도 있다.</p>
 <h3 id="251">2.5.1 어노테이션 기반 모델</h3>
 <p>Spring MVC를 써본 개발자라면 가장 익숙한 방식이다. <code>@Controller</code>, <code>@RestController</code>, <code>@RequestMapping</code> 같은 어노테이션을 그대로 사용하면서 반환 타입만 <code>Mono</code>와 <code>Flux</code>로 바꾸면 된다.</p>
-<p>```java
-@RestController
+<pre class="highlight"><code class="language-java">@RestController
 @RequestMapping("/api/products")
-public class ProductController {</p>
-<pre><code>private final ProductService productService;
+public class ProductController {
 
-public ProductController(ProductService productService) {
-    this.productService = productService;
-}
+    private final ProductService productService;
 
-/**
- * 단일 상품 조회
- */
-@GetMapping("/{id}")
-public Mono&lt;ResponseEntity&lt;Product&gt;&gt; getProduct(@PathVariable String id) {
-    return productService.findById(id)
-            .map(ResponseEntity::ok)
-            .defaultIfEmpty(ResponseEntity.notFound().build());
-}
+    public ProductController(ProductService productService) {
+        this.productService = productService;
+    }
 
-/**
- * 전체 상품 목록 조회
- */
-@GetMapping
-public Flux&lt;Product&gt; getAllProducts(
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "20") int size) {
-    return productService.findAll(page, size);
-}
+    /**
+     * 단일 상품 조회
+     */
+    @GetMapping("/{id}")
+    public Mono&lt;ResponseEntity&lt;Product&gt;&gt; getProduct(@PathVariable String id) {
+        return productService.findById(id)
+                .map(ResponseEntity::ok)
+                .defaultIfEmpty(ResponseEntity.notFound().build());
+    }
 
-/**
- * 상품 생성
- */
-@PostMapping
-@ResponseStatus(HttpStatus.CREATED)
-public Mono&lt;Product&gt; createProduct(@Valid @RequestBody Product product) {
-    return productService.save(product);
-}
+    /**
+     * 전체 상품 목록 조회
+     */
+    @GetMapping
+    public Flux&lt;Product&gt; getAllProducts(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return productService.findAll(page, size);
+    }
 
-/**
- * 상품 수정
- */
-@PutMapping("/{id}")
-public Mono&lt;ResponseEntity&lt;Product&gt;&gt; updateProduct(
-        @PathVariable String id,
-        @Valid @RequestBody Product product) {
-    return productService.update(id, product)
-            .map(ResponseEntity::ok)
-            .defaultIfEmpty(ResponseEntity.notFound().build());
-}
+    /**
+     * 상품 생성
+     */
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public Mono&lt;Product&gt; createProduct(@Valid @RequestBody Product product) {
+        return productService.save(product);
+    }
 
-/**
- * 상품 삭제
- */
-@DeleteMapping("/{id}")
-@ResponseStatus(HttpStatus.NO_CONTENT)
-public Mono&lt;Void&gt; deleteProduct(@PathVariable String id) {
-    return productService.deleteById(id);
-}
+    /**
+     * 상품 수정
+     */
+    @PutMapping("/{id}")
+    public Mono&lt;ResponseEntity&lt;Product&gt;&gt; updateProduct(
+            @PathVariable String id,
+            @Valid @RequestBody Product product) {
+        return productService.update(id, product)
+                .map(ResponseEntity::ok)
+                .defaultIfEmpty(ResponseEntity.notFound().build());
+    }
 
-/**
- * 카테고리별 상품 스트리밍 (SSE)
- */
-@GetMapping(value = "/stream/category/{category}",
-            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-public Flux&lt;Product&gt; streamByCategory(@PathVariable String category) {
-    return productService.findByCategoryStream(category);
-}
-</code></pre>
-<p>}
-```</p>
+    /**
+     * 상품 삭제
+     */
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public Mono&lt;Void&gt; deleteProduct(@PathVariable String id) {
+        return productService.deleteById(id);
+    }
+
+    /**
+     * 카테고리별 상품 스트리밍 (SSE)
+     */
+    @GetMapping(value = "/stream/category/{category}",
+                produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux&lt;Product&gt; streamByCategory(@PathVariable String category) {
+        return productService.findByCategoryStream(category);
+    }
+}</code></pre>
 <p>서비스 계층도 어떻게 구성되는지 보면 감이 올 것이다.</p>
-<p>```java
-@Service
-public class ProductService {</p>
-<pre><code>private final ProductRepository productRepository;
+<pre class="highlight"><code class="language-java">@Service
+public class ProductService {
 
-public ProductService(ProductRepository productRepository) {
-    this.productRepository = productRepository;
-}
+    private final ProductRepository productRepository;
 
-public Mono&lt;Product&gt; findById(String id) {
-    return productRepository.findById(id);
-}
+    public ProductService(ProductRepository productRepository) {
+        this.productRepository = productRepository;
+    }
 
-public Flux&lt;Product&gt; findAll(int page, int size) {
-    return productRepository.findAll()
-            .skip((long) page * size)
-            .take(size);
-}
+    public Mono&lt;Product&gt; findById(String id) {
+        return productRepository.findById(id);
+    }
 
-public Mono&lt;Product&gt; save(Product product) {
-    product.setCreatedAt(LocalDateTime.now());
-    return productRepository.save(product);
-}
+    public Flux&lt;Product&gt; findAll(int page, int size) {
+        return productRepository.findAll()
+                .skip((long) page * size)
+                .take(size);
+    }
 
-public Mono&lt;Product&gt; update(String id, Product product) {
-    return productRepository.findById(id)
-            .flatMap(existing -&gt; {
-                existing.setName(product.getName());
-                existing.setPrice(product.getPrice());
-                existing.setUpdatedAt(LocalDateTime.now());
-                return productRepository.save(existing);
-            });
-}
+    public Mono&lt;Product&gt; save(Product product) {
+        product.setCreatedAt(LocalDateTime.now());
+        return productRepository.save(product);
+    }
 
-public Mono&lt;Void&gt; deleteById(String id) {
-    return productRepository.deleteById(id);
-}
+    public Mono&lt;Product&gt; update(String id, Product product) {
+        return productRepository.findById(id)
+                .flatMap(existing -&gt; {
+                    existing.setName(product.getName());
+                    existing.setPrice(product.getPrice());
+                    existing.setUpdatedAt(LocalDateTime.now());
+                    return productRepository.save(existing);
+                });
+    }
 
-public Flux&lt;Product&gt; findByCategoryStream(String category) {
-    return productRepository.findByCategory(category);
-}
-</code></pre>
-<p>}
-```</p>
+    public Mono&lt;Void&gt; deleteById(String id) {
+        return productRepository.deleteById(id);
+    }
+
+    public Flux&lt;Product&gt; findByCategoryStream(String category) {
+        return productRepository.findByCategory(category);
+    }
+}</code></pre>
 <h3 id="252">2.5.2 함수형 엔드포인트 모델</h3>
 <p>함수형 모델은 라우팅과 핸들러를 어노테이션이 아니라 코드로 직접 정의하는 방식이다. <code>RouterFunction</code>이 라우팅 규칙을, <code>HandlerFunction</code>이 요청 처리를 담당한다.</p>
 <p><strong>핸들러(Handler):</strong></p>
-<p>```java
-@Component
-public class ProductHandler {</p>
-<pre><code>private final ProductService productService;
+<pre class="highlight"><code class="language-java">@Component
+public class ProductHandler {
 
-public ProductHandler(ProductService productService) {
-    this.productService = productService;
-}
+    private final ProductService productService;
 
-/**
- * 단일 상품 조회
- */
-public Mono&lt;ServerResponse&gt; getProduct(ServerRequest request) {
-    String id = request.pathVariable("id");
-    return productService.findById(id)
-            .flatMap(product -&gt; ServerResponse.ok()
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(product))
-            .switchIfEmpty(ServerResponse.notFound().build());
-}
+    public ProductHandler(ProductService productService) {
+        this.productService = productService;
+    }
 
-/**
- * 전체 상품 목록 조회
- */
-public Mono&lt;ServerResponse&gt; getAllProducts(ServerRequest request) {
-    int page = request.queryParam("page")
-            .map(Integer::parseInt).orElse(0);
-    int size = request.queryParam("size")
-            .map(Integer::parseInt).orElse(20);
+    /**
+     * 단일 상품 조회
+     */
+    public Mono&lt;ServerResponse&gt; getProduct(ServerRequest request) {
+        String id = request.pathVariable("id");
+        return productService.findById(id)
+                .flatMap(product -&gt; ServerResponse.ok()
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .bodyValue(product))
+                .switchIfEmpty(ServerResponse.notFound().build());
+    }
 
-    Flux&lt;Product&gt; products = productService.findAll(page, size);
-    return ServerResponse.ok()
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(products, Product.class);
-}
+    /**
+     * 전체 상품 목록 조회
+     */
+    public Mono&lt;ServerResponse&gt; getAllProducts(ServerRequest request) {
+        int page = request.queryParam("page")
+                .map(Integer::parseInt).orElse(0);
+        int size = request.queryParam("size")
+                .map(Integer::parseInt).orElse(20);
 
-/**
- * 상품 생성
- */
-public Mono&lt;ServerResponse&gt; createProduct(ServerRequest request) {
-    return request.bodyToMono(Product.class)
-            .flatMap(productService::save)
-            .flatMap(saved -&gt; ServerResponse
-                    .created(URI.create("/api/products/" + saved.getId()))
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(saved));
-}
+        Flux&lt;Product&gt; products = productService.findAll(page, size);
+        return ServerResponse.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(products, Product.class);
+    }
 
-/**
- * 상품 수정
- */
-public Mono&lt;ServerResponse&gt; updateProduct(ServerRequest request) {
-    String id = request.pathVariable("id");
-    return request.bodyToMono(Product.class)
-            .flatMap(product -&gt; productService.update(id, product))
-            .flatMap(updated -&gt; ServerResponse.ok()
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(updated))
-            .switchIfEmpty(ServerResponse.notFound().build());
-}
+    /**
+     * 상품 생성
+     */
+    public Mono&lt;ServerResponse&gt; createProduct(ServerRequest request) {
+        return request.bodyToMono(Product.class)
+                .flatMap(productService::save)
+                .flatMap(saved -&gt; ServerResponse
+                        .created(URI.create("/api/products/" + saved.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .bodyValue(saved));
+    }
 
-/**
- * 상품 삭제
- */
-public Mono&lt;ServerResponse&gt; deleteProduct(ServerRequest request) {
-    String id = request.pathVariable("id");
-    return productService.deleteById(id)
-            .then(ServerResponse.noContent().build());
-}
-</code></pre>
-<p>}
-```</p>
+    /**
+     * 상품 수정
+     */
+    public Mono&lt;ServerResponse&gt; updateProduct(ServerRequest request) {
+        String id = request.pathVariable("id");
+        return request.bodyToMono(Product.class)
+                .flatMap(product -&gt; productService.update(id, product))
+                .flatMap(updated -&gt; ServerResponse.ok()
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .bodyValue(updated))
+                .switchIfEmpty(ServerResponse.notFound().build());
+    }
+
+    /**
+     * 상품 삭제
+     */
+    public Mono&lt;ServerResponse&gt; deleteProduct(ServerRequest request) {
+        String id = request.pathVariable("id");
+        return productService.deleteById(id)
+                .then(ServerResponse.noContent().build());
+    }
+}</code></pre>
 <p><strong>라우터(Router):</strong></p>
-<p>```java
-@Configuration
-public class ProductRouter {</p>
-<pre><code>@Bean
-public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
-    return RouterFunctions.route()
-            .path("/api/products", builder -&gt; builder
-                    .GET("/{id}", handler::getProduct)
-                    .GET("", handler::getAllProducts)
-                    .POST("", handler::createProduct)
-                    .PUT("/{id}", handler::updateProduct)
-                    .DELETE("/{id}", handler::deleteProduct)
-            )
-            .build();
-}
-</code></pre>
-<p>}
-```</p>
-<p>여러 도메인의 라우터들을 조합해서 전체 라우팅을 구성할 수도 있다.</p>
-<p>```java
-@Configuration
-public class AppRouter {</p>
-<pre><code>@Bean
-public RouterFunction&lt;ServerResponse&gt; allRoutes(
-        ProductHandler productHandler,
-        OrderHandler orderHandler,
-        UserHandler userHandler) {
+<pre class="highlight"><code class="language-java">@Configuration
+public class ProductRouter {
 
-    return RouterFunctions.route()
-            .path("/api/products", builder -&gt; builder
-                    .GET("/{id}", productHandler::getProduct)
-                    .GET("", productHandler::getAllProducts)
-                    .POST("", productHandler::createProduct)
-            )
-            .path("/api/orders", builder -&gt; builder
-                    .GET("/{id}", orderHandler::getOrder)
-                    .GET("", orderHandler::getAllOrders)
-                    .POST("", orderHandler::createOrder)
-            )
-            .path("/api/users", builder -&gt; builder
-                    .GET("/{id}", userHandler::getUser)
-                    .POST("", userHandler::createUser)
-            )
-            .filter((request, next) -&gt; {
-                // 공통 필터: 요청 로깅
-                System.out.println("Request: " + request.method()
-                        + " " + request.path());
-                return next.handle(request);
-            })
-            .build();
-}
-</code></pre>
-<p>}
-```</p>
+    @Bean
+    public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
+        return RouterFunctions.route()
+                .path("/api/products", builder -&gt; builder
+                        .GET("/{id}", handler::getProduct)
+                        .GET("", handler::getAllProducts)
+                        .POST("", handler::createProduct)
+                        .PUT("/{id}", handler::updateProduct)
+                        .DELETE("/{id}", handler::deleteProduct)
+                )
+                .build();
+    }
+}</code></pre>
+<p>여러 도메인의 라우터들을 조합해서 전체 라우팅을 구성할 수도 있다.</p>
+<pre class="highlight"><code class="language-java">@Configuration
+public class AppRouter {
+
+    @Bean
+    public RouterFunction&lt;ServerResponse&gt; allRoutes(
+            ProductHandler productHandler,
+            OrderHandler orderHandler,
+            UserHandler userHandler) {
+
+        return RouterFunctions.route()
+                .path("/api/products", builder -&gt; builder
+                        .GET("/{id}", productHandler::getProduct)
+                        .GET("", productHandler::getAllProducts)
+                        .POST("", productHandler::createProduct)
+                )
+                .path("/api/orders", builder -&gt; builder
+                        .GET("/{id}", orderHandler::getOrder)
+                        .GET("", orderHandler::getAllOrders)
+                        .POST("", orderHandler::createOrder)
+                )
+                .path("/api/users", builder -&gt; builder
+                        .GET("/{id}", userHandler::getUser)
+                        .POST("", userHandler::createUser)
+                )
+                .filter((request, next) -&gt; {
+                    // 공통 필터: 요청 로깅
+                    System.out.println("Request: " + request.method()
+                            + " " + request.path());
+                    return next.handle(request);
+                })
+                .build();
+    }
+}</code></pre>
 <h3 id="253">2.5.3 두 모델의 비교와 선택 기준</h3>
 <table>
 <thead>

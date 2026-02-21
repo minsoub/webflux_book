@@ -118,7 +118,7 @@ public Flux<String> getActiveUserNames(Flux<User> users) {
 }
 ```
 
-보다시피 리액티브 코드는 훨씬 간결하다. 그리고 데이터가 도착할 때마다 파이프라인을 통해 처리되므로 전체 데이터가 메모리에 있어야 한다는 제약이 없다. 무엇보다 호출 스레드가 차단되지 않는다는 것이 가장 큰 장점이다.
+보다시피 리액티브 코드는 훨씬 간결하다. 그리고 데이터가 도착할 때마다 파이프라인을 통해 처리되며, 각 연산자가 데이터를 하나씩 처리하고 필요한 경우에만 버퍼링한다(예: sort는 전체 데이터를 모은 후 정렬). 무엇보다 호출 스레드가 차단되지 않는다는 것이 가장 큰 장점이다.
 
 ### 1.2.3 동기 vs 비동기, 블로킹 vs 논블로킹
 
@@ -246,6 +246,7 @@ Subscriber                    Publisher
 
 ```java
 import java.util.concurrent.Flow.*;
+import java.util.concurrent.SubmissionPublisher;
 
 public class SimpleReactiveExample {
 
@@ -287,6 +288,7 @@ public class SimpleReactiveExample {
             publisher.submit(i);
         }
         publisher.close();
+        Thread.sleep(1000); // 비동기 처리 완료 대기
     }
 }
 ```
@@ -914,6 +916,7 @@ Thread-1: ──[read() 호출]──────[대기중...]─────�
 SocketChannel channel = SocketChannel.open();
 channel.configureBlocking(false);  // 논블로킹 모드 설정
 channel.connect(new InetSocketAddress("example.com", 80));
+while (!channel.finishConnect()) { /* 연결 완료 대기 */ }
 
 ByteBuffer buffer = ByteBuffer.allocate(1024);
 int bytesRead = channel.read(buffer);  // ← 즉시 반환 (데이터 없으면 0 또는 -1)
@@ -1860,8 +1863,8 @@ public class UserService {
             .switchIfEmpty(
                 mongoTemplate.findById(id, User.class)   // 2. DB 조회
                     .doOnNext(user ->
-                        cacheService.cacheUser(user)      // 3. 캐시 저장
-                            .subscribe()
+                        cacheService.cacheUser(user)      // 3. 캐시 저장 (fire-and-forget 패턴으로,
+                            .subscribe()                  //    캐시 실패가 메인 흐름에 영향을 주지 않도록 의도적으로 사용)
                     )
             )
             .switchIfEmpty(
@@ -2842,7 +2845,7 @@ db.books.find({ author: "홍길동" }).explain("executionStats")
     "executionTimeMillis": 0,     // 실행 시간 (ms)
     "totalKeysExamined": 1,       // 검사한 인덱스 키 수
     "totalDocsExamined": 1,       // 검사한 도큐먼트 수
-    "executionStages": {
+    "executionStage": {
       "stage": "FETCH",           // 실행 스테이지
       "inputStage": {
         "stage": "IXSCAN",        // 인덱스 스캔 사용

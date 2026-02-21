@@ -206,12 +206,12 @@ public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
 **해결 방법**: `retryWhen`으로 재시도 로직을 구성하고, Resume Token을 저장했다가 활용하면 끊긴 지점부터 다시 받을 수 있다.
 
 ```java
-private volatile BsonValue lastResumeToken;
+private volatile BsonDocument lastResumeToken;
 
 public Flux<Order> watchOrders() {
     return createChangeStream()
         .doOnNext(event -> lastResumeToken =
-            event.getRaw().getResumeToken().get("_data"))
+            event.getRaw().getResumeToken())
         .map(ChangeStreamEvent::getBody)
         .retryWhen(Retry.backoff(Long.MAX_VALUE, Duration.ofSeconds(1))
             .maxBackoff(Duration.ofMinutes(1)));
@@ -223,7 +223,7 @@ private Flux<ChangeStreamEvent<Order>> createChangeStream() {
             Aggregation.match(Criteria.where("operationType")
                 .in("insert", "update"))));
     if (lastResumeToken != null) {
-        builder.resumeAfter(new BsonDocument("_data", lastResumeToken));
+        builder.resumeAfter(lastResumeToken);
     }
     return mongoTemplate.changeStream("orders", builder.build(), Order.class);
 }
