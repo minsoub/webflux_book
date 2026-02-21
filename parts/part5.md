@@ -1,6 +1,6 @@
 # Chapter 16. 리액티브 테스트 전략
 
-리액티브 프로그래밍은 비동기/논블로킹 특성상 전통적인 동기 방식의 테스트와는 접근법이 다르다. `Mono`와 `Flux`는 구독(subscribe)이 일어나기 전까지 아무것도 실행되지 않으며, 데이터가 비동기적으로 흘러가므로 단순히 반환값을 `assertEquals()`로 검증하는 방식은 적합하지 않다. 이번 장에서는 리액티브 테스트의 핵심 도구인 **StepVerifier**와 **WebTestClient**를 중심으로, Embedded MongoDB, Testcontainers, MockWebServer를 활용한 다양한 테스트 전략을 체계적으로 다룬다.
+리액티브 프로그래밍을 다룰 때 테스트 방식이 완전히 달라진다는 걸 깨닫게 된다. `Mono`와 `Flux`는 누군가 구독(subscribe)하기 전까지는 말 그대로 아무것도 실행되지 않고, 데이터가 비동기적으로 흘러가므로 전통적인 동기식 테스트처럼 단순히 반환값을 `assertEquals()`로 검증하는 방식은 통하지 않기 때문이다. 이 장에서는 실제로 리액티브 코드를 검증할 수 있는 핵심 도구들을 배우게 될 것이다. **StepVerifier**부터 **WebTestClient**까지, 그리고 Embedded MongoDB, Testcontainers, MockWebServer 등을 활용하는 실무적인 테스트 전략들을 살펴보자.
 
 ---
 
@@ -8,7 +8,7 @@
 
 ### 16.1.1 StepVerifier란?
 
-`StepVerifier`는 Reactor에서 제공하는 테스트 유틸리티로, `Publisher`(Mono, Flux)가 방출하는 데이터 시퀀스를 단계별로 검증한다. `reactor-test` 모듈에 포함되어 있다.
+`StepVerifier`는 Reactor 라이브러리에서 제공하는 테스트 헬퍼로, `Publisher`(Mono나 Flux)가 방출하는 데이터 시퀀스를 단계별로 검증하는 데 사용한다. `reactor-test` 모듈을 추가하면 바로 쓸 수 있다.
 
 ```groovy
 dependencies {
@@ -16,7 +16,7 @@ dependencies {
 }
 ```
 
-기본 사용 패턴은 다음과 같다.
+기본 사용 패턴은 이렇다.
 
 ```java
 StepVerifier.create(publisher)   // 1. Publisher를 감싼다
@@ -24,11 +24,11 @@ StepVerifier.create(publisher)   // 1. Publisher를 감싼다
     .verifyComplete();            // 3. 완료 신호를 검증하고 구독을 시작한다
 ```
 
-`verifyComplete()`를 호출해야 실제 구독이 시작된다. 이 호출이 없으면 테스트는 아무것도 검증하지 않고 통과한다.
+중요한 포인트는 `verifyComplete()`를 호출해야 실제 구독이 시작된다는 점이다. 없으면 테스트는 아무것도 하지 않고 그냥 통과해버린다.
 
 ### 16.1.2 expectNext, expectComplete, expectError
 
-가장 기본적인 검증 메서드들이다.
+리액티브 시퀀스를 검증할 때 가장 자주 쓰는 메서드들을 살펴보자.
 
 ```java
 @Test
@@ -85,7 +85,7 @@ void mono_에러_메시지와_조건_검증() {
 
 ### 16.1.3 assertNext
 
-`assertNext()`는 방출된 값에 대해 복잡한 단언(assertion)을 수행할 때 사용한다. `Consumer<T>`를 받으므로 AssertJ와 조합하기 좋다.
+방출된 값에 대해 좀 더 복잡한 검증이 필요할 때는 `assertNext()`를 쓴다. `Consumer<T>`를 입력받기 때문에 AssertJ와 함께 써도 깔끔하다.
 
 ```java
 @Test
@@ -105,7 +105,7 @@ void assertNext로_복잡한_검증() {
 
 ### 16.1.4 withVirtualTime
 
-`Flux.interval()`이나 `Mono.delay()`처럼 시간에 의존하는 연산을 테스트할 때, 실제 시간 경과를 기다리면 테스트가 느려진다. `withVirtualTime()`은 가상 시간을 사용하여 시간 흐름을 즉시 시뮬레이션한다.
+`Flux.interval()`이나 `Mono.delay()`처럼 시간에 의존하는 연산들을 테스트하려면 좀 다른 접근이 필요하다. 실제 시간을 기다리면 테스트 속도가 엄청 느려지니까, `withVirtualTime()`을 사용해서 시간을 스뮬레이션하는 게 훨씬 낫다.
 
 ```java
 @Test
@@ -134,7 +134,7 @@ void 가상_시간으로_interval_검증() {
 
 ### 16.1.5 서비스 계층 단위 테스트 예제
 
-Mockito로 리포지토리를 모킹하고 StepVerifier로 서비스 계층을 테스트한다.
+이제 실제로 서비스 계층을 테스트해보자. Mockito로 리포지토리를 모킹하고 StepVerifier로 검증하는 방식이다.
 
 ```java
 @ExtendWith(MockitoExtension.class)
@@ -217,11 +217,13 @@ class ProductServiceTest {
 
 ### 16.2.1 WebTestClient란?
 
-`WebTestClient`는 Spring WebFlux 애플리케이션의 HTTP 엔드포인트를 테스트하기 위한 논블로킹 테스트 클라이언트다. 서버를 실행하지 않고 컨트롤러에 직접 바인딩하거나, 실제 HTTP 요청을 보내는 방식 모두 지원한다.
+`WebTestClient`는 WebFlux 애플리케이션의 HTTP 엔드포인트를 테스트할 때 쓰는 논블로킹 테스트 클라이언트이다. 서버를 실행하지 않고도 컨트롤러에 직접 요청을 보낼 수 있고, 원한다면 실제 HTTP 요청을 보내는 방식도 지원한다.
 
 ### 16.2.2 바인딩 방식
 
-**bindToController** -- 특정 컨트롤러만 격리하여 테스트한다. Spring 컨텍스트를 로드하지 않으므로 빠르다.
+WebTestClient를 설정하는 방법은 몇 가지가 있다. 각각의 상황에 맞춰 선택하면 된다.
+
+**bindToController** -- 특정 컨트롤러만 떼어내서 테스트하는 방식이다. Spring 컨텍스트를 로드하지 않으므로 속도가 빠르다.
 
 ```java
 @BeforeEach
@@ -236,7 +238,7 @@ void setUp() {
 }
 ```
 
-**bindToApplicationContext** -- 전체 애플리케이션 컨텍스트를 로드하여 테스트한다.
+**bindToApplicationContext** -- 반대로 전체 애플리케이션 컨텍스트를 로드해서 테스트하려면 이 방식을 쓴다.
 
 ```java
 @SpringBootTest
@@ -248,7 +250,7 @@ class ProductIntegrationTest {
 }
 ```
 
-**bindToRouterFunction** -- 함수형 엔드포인트를 테스트할 때 사용한다.
+**bindToRouterFunction** -- 함수형으로 라우팅을 정의했다면 이걸 사용하면 된다.
 
 ```java
 webTestClient = WebTestClient
@@ -379,6 +381,8 @@ class ProductControllerTest {
 
 ### 16.2.4 JSON 검증 심화
 
+응답을 더 정교하게 검증하는 방법들을 알아보자.
+
 ```java
 @Test
 void JSON_상세_검증() {
@@ -424,7 +428,7 @@ void 응답을_객체로_역직렬화하여_검증() {
 
 ### 16.3.1 Embedded MongoDB 설정
 
-실제 MongoDB 서버 없이 JVM 내에서 MongoDB를 실행하여 리포지토리를 테스트한다.
+리포지토리 계층을 테스트할 때 실제 MongoDB를 쓸 필요는 없다. JVM 내에서 가벼운 MongoDB를 띄워서 쓰는 게 훨씬 편하다. 필자의 경험상 로컬 개발 환경에서는 이 방식이 가장 실용적이다.
 
 ```groovy
 dependencies {
@@ -434,7 +438,7 @@ dependencies {
 
 ### 16.3.2 @DataMongoTest
 
-`@DataMongoTest`는 MongoDB 관련 컴포넌트만 로드하는 테스트 슬라이스 어노테이션이다.
+`@DataMongoTest`를 쓰면 MongoDB 관련 컴포넌트만 로드되는데, 이게 테스트를 훨씬 빠르게 해준다.
 
 | 로드되는 컴포넌트 | 로드되지 않는 컴포넌트 |
 |-------------------|---------------------|
@@ -514,7 +518,7 @@ class ProductRepositoryTest {
 
 ### 16.3.3 테스트 데이터 준비 전략
 
-**팩토리 메서드 패턴**으로 테스트 데이터를 일관성 있게 준비한다.
+여러 테스트에서 동일한 형태의 테스트 데이터를 반복해서 만들어야 할 때가 많다. 이럴 땐 **팩토리 메서드 패턴**을 쓰면 깔끔하다.
 
 ```java
 public class TestDataFactory {
@@ -540,7 +544,7 @@ public class TestDataFactory {
 
 ### 16.3.4 ReactiveMongoTemplate 테스트
 
-리포지토리 인터페이스로 표현하기 어려운 복잡한 쿼리를 테스트한다.
+리포지토리 인터페이스만으로는 표현할 수 없는 좀 더 복잡한 쿼리들이 있다. 이런 경우들을 다뤄보자.
 
 ```java
 @DataMongoTest
@@ -605,7 +609,7 @@ class ProductCustomRepositoryTest {
 
 ### 16.4.1 Testcontainers란?
 
-Embedded MongoDB는 편리하지만 실제 MongoDB와 동작이 미묘하게 다를 수 있다. **Testcontainers**는 Docker 컨테이너를 활용하여 실제 MongoDB 인스턴스를 테스트 환경에서 실행한다.
+Embedded MongoDB는 분명 편하지만, 실제 MongoDB와 동작이 완전히 일치하지 않을 수 있다는 게 문제다. 더 정확한 테스트를 원한다면 **Testcontainers**를 써보자. Docker를 활용해서 실제 MongoDB 인스턴스를 테스트할 때마다 띄워주니까 프로덕션과 정확하게 같은 환경에서 테스트할 수 있다.
 
 ```groovy
 dependencies {
@@ -667,7 +671,7 @@ class ProductRepositoryTestcontainersTest {
 
 ### 16.4.3 컨테이너 재사용으로 테스트 속도 개선
 
-테스트 클래스마다 컨테이너를 새로 띄우면 시간이 오래 걸린다. 추상 클래스로 컨테이너를 공유한다.
+하지만 여기서 주의할 점이 있다. 매번 새로운 컨테이너를 띄우면 테스트가 상당히 느려진다. 필자의 경험상 여러 테스트가 같은 MongoDB 컨테이너를 공유하도록 하면 훨씬 빠르다.
 
 ```java
 public abstract class AbstractMongoTestcontainer {
@@ -709,7 +713,7 @@ class ProductRepositoryTest extends AbstractMongoTestcontainer {
 
 ### 16.4.4 트랜잭션 테스트 (Replica Set)
 
-Testcontainers의 `MongoDBContainer`는 기본적으로 단일 노드 Replica Set으로 시작하므로 트랜잭션 테스트가 가능하다.
+MongoDB의 트랜잭션 기능을 테스트하려면 Replica Set이 필요한데, Testcontainers가 기본적으로 이를 지원한다.
 
 ```java
 @DataMongoTest
@@ -783,7 +787,7 @@ class TransactionTest {
 
 ### 16.5.1 MockWebServer란?
 
-`MockWebServer`는 OkHttp 라이브러리에서 제공하는 가벼운 HTTP 서버로, `WebClient`를 통해 호출하는 외부 API를 로컬에서 모킹한다.
+우리 애플리케이션이 외부 API를 호출해야 한다면 어떻게 테스트할까? `MockWebServer`는 OkHttp 라이브러리에서 제공하는 경량 HTTP 서버로, `WebClient`로 호출하는 외부 API를 로컬에서 모킹할 수 있게 해준다.
 
 ```groovy
 dependencies {
@@ -864,7 +868,7 @@ class ExternalApiClientTest {
 
 ### 16.5.3 RecordedRequest로 요청 검증
 
-`MockWebServer`는 수신한 요청을 기록하므로, 클라이언트가 올바른 요청을 보냈는지 검증할 수 있다.
+응답 검증도 중요하지만, 우리 클라이언트가 올바른 요청을 보냈는지 확인하는 것도 마찬가지다. `MockWebServer`는 수신한 요청을 기록해두므로 이를 검증할 수 있다.
 
 ```java
 @Test
@@ -966,7 +970,7 @@ class PaymentGatewayClientTest {
 
 ### 16.6.1 테스트 슬라이스란?
 
-Spring Boot의 **테스트 슬라이스(Test Slice)**는 애플리케이션의 특정 계층만 로드하여 테스트하는 기법이다. 전체 컨텍스트를 로드하는 `@SpringBootTest`보다 빠르고, 테스트 대상 계층에 집중할 수 있다.
+지금까지 배운 도구들을 정리해보면, 테스트 방식이 꽤 다양하다는 걸 알 수 있다. Spring Boot의 **테스트 슬라이스(Test Slice)**는 이 여러 테스트 방식을 체계적으로 정리한 개념이다. 특정 계층만 로드해서 테스트하는 것인데, 이렇게 하면 전체 컨텍스트를 로드하는 것보다 훨씬 빠르다.
 
 | 어노테이션 | 테스트 대상 | 로드 범위 |
 |-----------|-----------|----------|
@@ -976,7 +980,7 @@ Spring Boot의 **테스트 슬라이스(Test Slice)**는 애플리케이션의 �
 
 ### 16.6.2 @WebFluxTest
 
-`@WebFluxTest`는 웹 계층만 로드한다. 서비스와 리포지토리는 로드하지 않으므로 `@MockBean`으로 모킹해야 한다.
+가장 많이 쓰는 테스트 슬라이스는 `@WebFluxTest`다. 웹 계층만 로드하고 서비스나 리포지토리는 로드하지 않으므로, `@MockBean`으로 의존성을 모킹해줘야 한다.
 
 ```java
 @WebFluxTest(controllers = ProductController.class)
@@ -1008,6 +1012,8 @@ class ProductControllerSliceTest {
 ```
 
 ### 16.6.3 @SpringBootTest 전체 통합 테스트
+
+단위 테스트나 슬라이스 테스트로는 한계가 있다. 시스템 전체가 제대로 동작하는지 확인하려면 전체 통합 테스트가 필요하다.
 
 ```java
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -1082,7 +1088,7 @@ class FullIntegrationTest {
 
 ### 16.6.4 Mockito와 @MockBean 활용 팁
 
-리액티브 환경에서 Mockito를 사용할 때 주의할 점을 정리한다.
+리액티브 환경에서 Mockito를 쓸 때는 동기 환경과는 조금 다르다. 몇 가지 주의할 점들을 정리해봤다.
 
 ```java
 @WebFluxTest(OrderController.class)
@@ -1174,13 +1180,15 @@ class OrderControllerTest {
 | MockWebServer | 빠름 | 중간 | 외부 API 연동 검증 |
 | @SpringBootTest | 느림 | 높음 | 전체 흐름 E2E 검증 |
 
-권장하는 테스트 비율(테스트 피라미드)은 다음과 같다.
+테스트 작성할 때는 **테스트 피라미드(Test Pyramid)**라는 원칙을 따르는 게 좋다. 피라미드 형태로 테스트를 구성하면 테스트 속도와 신뢰성의 균형을 잘 맞출 수 있다.
 
-- **단위 테스트(StepVerifier + Mockito)**: 70% -- 빠르게 많이 작성
-- **슬라이스 테스트(@WebFluxTest, @DataMongoTest)**: 20% -- 계층별 검증
-- **통합 테스트(@SpringBootTest)**: 10% -- 핵심 시나리오만
+- **단위 테스트(StepVerifier + Mockito)**: 70% -- 빠르니까 많이 작성해도 된다
+- **슬라이스 테스트(@WebFluxTest, @DataMongoTest)**: 20% -- 각 계층을 검증한다
+- **통합 테스트(@SpringBootTest)**: 10% -- 정말 중요한 엔드투엔드 시나리오만
 
 ### 16.6.6 테스트 작성 시 주의사항
+
+리액티브 테스트를 쓰다 보면 자주 하는 실수들이 있다. 필자의 경험상 이런 실수들을 피하면 훨씬 튼튼한 테스트를 만들 수 있다.
 
 **1. block()은 테스트 준비 단계에서만 사용한다**
 
@@ -1230,7 +1238,7 @@ void 잘못된_테스트() {
 
 ## 요약
 
-이번 장에서는 리액티브 애플리케이션의 테스트 전략을 계층별로 다루었다.
+여기까지 리액티브 애플리케이션을 테스트하는 여러 방법들을 살펴봤다. 각 도구와 기법들을 정리하면 다음과 같다.
 
 | 주제 | 핵심 내용 |
 |------|----------|
@@ -1241,12 +1249,14 @@ void 잘못된_테스트() {
 | **MockWebServer** | `MockResponse`로 외부 API 응답 시뮬레이션. `RecordedRequest`로 전송된 요청 검증 |
 | **테스트 슬라이스** | `@WebFluxTest`(웹), `@DataMongoTest`(DB), `@SpringBootTest`(전체). Mockito로 의존성 모킹 |
 
-리액티브 테스트에서 가장 중요한 원칙은 **`block()`으로 동기 변환하지 않고 `StepVerifier`로 비동기 시퀀스를 검증하는 것**이다. 각 계층에 적합한 테스트 도구를 선택하여 빠르면서도 신뢰성 높은 테스트 스위트를 구축하자.
+리액티브 테스트에서 핵심은 **`block()`으로 무리하게 동기로 변환하지 않는 것**이다. 대신 `StepVerifier`로 비동기 시퀀스를 정직하게 검증해야 한다. 각 계층에 맞는 테스트 도구를 올바르게 선택하면, 빠르면서도 신뢰성 높은 테스트 스위트를 만들 수 있다.
 
 다음 장에서는 SpringDoc OpenAPI를 활용한 리액티브 API 문서화와 버전 관리 전략을 다룬다.
 # Chapter 17. 문서화와 API 관리
 
-API를 잘 만드는 것 못지않게 중요한 것이 **잘 문서화하는 것**이다. 아무리 훌륭한 리액티브 API를 설계하더라도, 소비자(프론트엔드 개발자, 외부 파트너, 내부 팀)가 그 사용법을 쉽게 파악할 수 없다면 실용적 가치가 반감된다. 이번 장에서는 Spring WebFlux 환경에서 SpringDoc OpenAPI(Swagger)를 활용한 API 문서 자동 생성, `Mono`/`Flux` 반환 타입과 `RouterFunction`의 문서화, 그리고 API 버전 관리 전략까지 실전에서 필요한 내용을 다룬다.
+훌륭한 API를 설계하는 것은 중요하지만, 정직하게 말하자면 그것만으로는 부족하다. 아무리 좋은 리액티브 API를 만들어도 팀 동료, 프론트엔드 개발자, 외부 파트너가 그것을 어떻게 써야 할지 몰라버리면 의미가 없다. 필자의 경험상, API는 구현하는 그 순간보다 **유지보수되는 기간이 훨씬 길다**. 그리고 그 긴 기간 동안 그 API를 사용하는 사람들은 대부분 문서를 읽는다.
+
+이 장에서는 Spring WebFlux 환경에서 API 문서를 체계적으로 만들고 관리하는 방법을 살펴본다. SpringDoc OpenAPI(Swagger)를 통한 자동 문서 생성부터, 리액티브 타입의 문서화 처리, 그리고 API 버전을 어떻게 관리할지까지 다룰 예정이다.
 
 ---
 
@@ -1254,7 +1264,7 @@ API를 잘 만드는 것 못지않게 중요한 것이 **잘 문서화하는 것
 
 ### 17.1.1 SpringDoc OpenAPI란?
 
-SpringDoc OpenAPI는 Spring Boot 애플리케이션에서 **OpenAPI 3.0/3.1 명세**를 자동으로 생성해주는 라이브러리다. 과거에는 Springfox(Swagger 2)가 널리 사용되었지만, Spring Boot 3.x 이후로는 SpringDoc이 사실상 표준으로 자리잡았다.
+SpringDoc OpenAPI는 Spring Boot 애플리케이션에서 **OpenAPI 3.0/3.1 명세**를 자동으로 생성해주는 라이브러리 정도로 이해하면 된다. 한때는 Springfox(Swagger 2)라는 도구를 많이 썼는데, Spring Boot 3.x가 나오면서 SpringDoc이 실질적인 표준이 되었다.
 
 | 구분 | Springfox | SpringDoc |
 |------|-----------|-----------|
@@ -1266,7 +1276,7 @@ SpringDoc OpenAPI는 Spring Boot 애플리케이션에서 **OpenAPI 3.0/3.1 명�
 
 ### 17.1.2 의존성 설정
 
-WebFlux 환경에서는 `springdoc-openapi-starter-webflux-ui` 의존성을 추가한다. 일반 MVC용인 `springdoc-openapi-starter-webmvc-ui`와 혼동하지 않도록 주의한다.
+WebFlux를 사용한다면 `springdoc-openapi-starter-webflux-ui` 의존성을 추가하면 된다. 주의할 점은 일반 MVC용인 `springdoc-openapi-starter-webmvc-ui`와 헷갈리는 것인데, 프로젝트 특성에 맞는 것을 선택해야 한다.
 
 ```groovy
 dependencies {
@@ -1287,7 +1297,7 @@ dependencies {
 
 ### 17.1.3 기본 설정
 
-`application.yml`에서 SpringDoc의 동작을 세밀하게 제어할 수 있다.
+`application.yml`에 설정을 조금 추가하면 SpringDoc의 동작을 원하는 대로 제어할 수 있다.
 
 ```yaml
 springdoc:
@@ -1305,7 +1315,7 @@ springdoc:
   show-actuator: false
 ```
 
-운영 환경에서는 보안상 Swagger UI를 비활성화하는 것이 일반적이다.
+운영 환경에서는 보안을 생각해서 Swagger UI를 꺼두는 게 관례다.
 
 ```yaml
 # application-prod.yml
@@ -1318,7 +1328,7 @@ springdoc:
 
 ### 17.1.4 OpenAPI 전역 설정 빈
 
-API 문서의 제목, 설명, 버전 등 전역 정보를 `OpenAPI` 빈으로 정의한다.
+API 문서 전체의 제목, 설명, 버전 정보 같은 것들은 `OpenAPI` 빈으로 따로 정의하는 것이 깔끔하다.
 
 ```java
 @Configuration
@@ -1346,7 +1356,7 @@ public class OpenApiConfig {
 
 ### 17.1.5 @Operation과 @ApiResponse
 
-컨트롤러 메서드에 `@Operation`을 붙여 개별 API의 설명을 추가하고, `@ApiResponse`로 응답 코드별 설명을 명시한다.
+`@Operation` 어노테이션을 메서드에 붙이면 각 API마다 설명을 달 수 있고, `@ApiResponse`로는 응답 코드를 상세히 문서화할 수 있다.
 
 ```java
 @RestController
@@ -1407,7 +1417,7 @@ public class ProductController {
 
 ### 17.1.6 @Schema를 활용한 모델 문서화
 
-요청/응답 DTO에 `@Schema`를 적용하면 Swagger UI에서 각 필드의 의미, 필수 여부, 예시 값을 확인할 수 있다.
+DTO에 `@Schema`를 붙여놓으면, Swagger UI에서 필드별 설명, 필수 여부, 예시 같은 정보가 깔끔하게 표시된다.
 
 ```java
 @Schema(description = "상품 등록 요청")
@@ -1459,7 +1469,7 @@ public record ProductResponse(
 
 ### 17.2.1 Mono/Flux 반환 타입 처리
 
-SpringDoc은 리액티브 타입을 자동으로 인식하여, 래핑된 내부 타입을 기준으로 스키마를 생성한다.
+SpringDoc은 `Mono`나 `Flux` 같은 리액티브 타입을 아주 잘 이해한다. 내부에 감싸진 타입이 뭔지 파악해서 자동으로 스키마를 만들어낸다.
 
 | 메서드 반환 타입 | OpenAPI 스키마 |
 |----------------|---------------|
@@ -1469,7 +1479,7 @@ SpringDoc은 리액티브 타입을 자동으로 인식하여, 래핑된 내부 
 | `Mono<ResponseEntity<Product>>` | `Product` + 상태 코드 |
 | `Flux<ServerSentEvent<Product>>` | SSE 스트림으로 표현 |
 
-**스트리밍 응답**의 경우 `produces` 미디어 타입을 명시하는 것이 좋다.
+스트리밍 응답을 다룬다면, `produces` 미디어 타입을 명시적으로 지정해두는 게 문서 작성 입장에서도 명확하다.
 
 ```java
 @Operation(summary = "상품 실시간 스트림")
@@ -1481,7 +1491,7 @@ public Flux<ProductResponse> streamProducts() {
 
 ### 17.2.2 RouterFunction 문서화
 
-함수형 라우터(`RouterFunction`)는 리플렉션으로 메타데이터를 추출할 수 없다. SpringDoc은 `@RouterOperation` 어노테이션과 `OpenApiCustomizer` 두 가지 방식을 제공한다.
+함수형 라우터(`RouterFunction`)는 일반 컨트롤러와 달라서 리플렉션으로 메타데이터를 뽑아낼 수 없다. 그래서 SpringDoc은 별도로 두 가지 방법을 제공한다: `@RouterOperation` 어노테이션 방식과 `OpenApiCustomizer` 프로그래밍 방식이다.
 
 **방법 1: @RouterOperation 어노테이션**
 
@@ -1525,11 +1535,11 @@ public class ProductRouter {
 
 **방법 2: OpenApiCustomizer 프로그래밍 방식**
 
-라우트가 많거나, 문서 정보를 코드로 관리하고 싶을 때는 `OpenApiCustomizer` 빈에서 `openApi.getPaths().addPathItem()`을 호출하여 경로와 오퍼레이션을 프로그래밍 방식으로 등록한다.
+라우트가 많다거나, 문서 정보를 동적으로 관리하고 싶은 경우 `OpenApiCustomizer` 빈을 만들어서 `openApi.getPaths().addPathItem()` 같은 메서드로 경로와 오퍼레이션을 프로그래밍 방식으로 등록할 수 있다.
 
 ### 17.2.3 SecurityScheme 설정
 
-JWT 인증을 사용하는 API의 경우, Swagger UI에서 토큰을 입력하여 인증된 요청을 테스트할 수 있도록 `SecurityScheme`을 설정한다.
+JWT 인증을 쓰는 API라면, Swagger UI에 직접 토큰을 입력하고 테스트하고 싶을 테니 `SecurityScheme`을 설정해두자.
 
 ```java
 @Bean
@@ -1550,7 +1560,7 @@ public OpenAPI customOpenAPI() {
 }
 ```
 
-특정 엔드포인트에만 보안을 적용하거나 제외하려면 `@SecurityRequirement`를 메서드 레벨에서 사용한다.
+그런데 어떤 엔드포인트는 인증이 필요하고 어떤 건 불필요하다면? `@SecurityRequirement`를 메서드마다 붙여서 선택적으로 적용하면 된다.
 
 ```java
 // 인증이 필요한 엔드포인트
@@ -1571,7 +1581,7 @@ public Flux<ProductResponse> getAllProducts() {
 
 ### 17.2.4 그룹(Group)별 문서 분리
 
-대규모 프로젝트에서는 API를 도메인별로 그룹화하여 별도의 문서로 분리한다.
+프로젝트가 커지면 API가 여러 도메인에 흩어진다. 문서도 그에 맞춰 그룹 단위로 분리하는 게 읽기 훨씬 편하다.
 
 ```java
 @Configuration
@@ -1595,7 +1605,7 @@ public class OpenApiGroupConfig {
 }
 ```
 
-Swagger UI 상단의 드롭다운에서 그룹을 선택하면 해당 그룹의 API만 표시된다.
+Swagger UI의 상단 드롭다운에서 그룹을 고르면, 선택한 그룹의 API만 보이는 식으로 작동한다.
 
 ---
 
@@ -1603,11 +1613,11 @@ Swagger UI 상단의 드롭다운에서 그룹을 선택하면 해당 그룹의 
 
 ### 17.3.1 왜 API 버전 관리가 필요한가?
 
-API는 한번 공개되면 소비자가 존재한다. 기존 소비자의 코드를 깨뜨리지 않으면서 새로운 기능을 추가하거나 구조를 변경해야 하는 상황이 반드시 발생한다. 체계적인 버전 관리 전략이 없으면 기존 클라이언트가 예기치 않게 동작을 멈추고, 어떤 필드가 언제 변경되었는지 추적이 불가능해진다.
+API를 한 번 공개하면, 그 순간부터 누군가는 그걸 사용하고 있다. 필자의 경험상 가장 많이 실수하는 부분이 바로 이것이다: 기존 API 사용자를 깨뜨리면서 마음대로 변경하면 안 된다. 체계적인 버전 관리가 없으면, 어느 날 갑자기 누군가의 클라이언트가 멈춰있고, 왜 변경되었는지 추적할 수도 없게 된다.
 
 ### 17.3.2 URL 경로 기반 버전 관리
 
-가장 직관적이고 널리 사용되는 방식이다. URL 경로에 버전 번호를 포함한다.
+가장 간단하고 직관적인 방법이다. 그냥 URL에 버전 번호를 넣어버리는 것이다.
 
 ```java
 @RestController
@@ -1645,7 +1655,7 @@ public class ProductV2Controller {
 }
 ```
 
-버전별 응답 DTO를 분리하여 관리한다.
+이렇게 하면 버전마다 DTO를 따로 만들어야 한다.
 
 ```java
 // V1: 카테고리를 단일 문자열로 표현
@@ -1679,7 +1689,7 @@ public record ProductV2Response(String id, String name, int price,
 
 ### 17.3.3 헤더 기반 버전 관리
 
-URL을 깨끗하게 유지하면서 커스텀 헤더로 버전을 지정하는 방식이다.
+URL을 깔끔하게 놔두고 싶다면, 헤더에다가 버전을 넣는 방법도 있다.
 
 ```
 GET /api/products
@@ -1722,7 +1732,7 @@ public class ProductController {
 
 ### 17.3.4 미디어 타입(Content Negotiation) 기반 버전 관리
 
-`Accept` 헤더에 버전 정보를 포함하는 방식이다. GitHub API가 대표적으로 이 방식을 사용한다.
+또 다른 방법은 `Accept` 헤더에 버전을 넣는 것이다. GitHub API가 이렇게 한다고 알려져 있다.
 
 ```java
 @RestController
@@ -1749,7 +1759,7 @@ public class ProductController {
 }
 ```
 
-커스텀 미디어 타입을 Spring이 JSON으로 처리하도록 `WebFluxConfigurer`의 `configureHttpMessageCodecs`에서 `Jackson2JsonEncoder`와 `Jackson2JsonDecoder`에 해당 미디어 타입을 등록해야 한다.
+다만 이 방식은 구현이 좀 복잡하다. Spring이 커스텀 미디어 타입을 JSON으로 처리하도록 `WebFluxConfigurer`의 `configureHttpMessageCodecs` 메서드에서 코덱을 등록해야 한다.
 
 | 장점 | 단점 |
 |------|------|
@@ -1759,7 +1769,7 @@ public class ProductController {
 
 ### 17.3.5 하위 호환성 유지 전략
 
-버전 관리 방식과 관계없이, **하위 호환성(Backward Compatibility)**을 최대한 유지하는 것이 가장 좋은 전략이다. 새 버전을 만드는 것은 최후의 수단으로 남겨두어야 한다.
+어떤 방식으로 버전을 관리하든, **하위 호환성(Backward Compatibility)**을 지키는 게 최고의 전략이다. 필자의 경험상, 새 버전을 만드는 건 정말 마지막 수단으로 남겨두어야 한다.
 
 **하위 호환이 유지되는 변경 (Non-Breaking)**
 
@@ -1779,7 +1789,7 @@ public class ProductController {
 
 **Deprecation 정책 구현**
 
-API 필드나 엔드포인트를 제거할 때는 충분한 유예 기간을 두고 사전 고지한다.
+만약 정말로 API의 어떤 필드나 엔드포인트를 없애야 한다면, 충분한 유예 기간을 두고 미리 경고해야 한다.
 
 ```java
 @GetMapping("/{id}")
@@ -1806,17 +1816,17 @@ public Mono<ResponseEntity<ProductV1Response>> getProductV1(@PathVariable String
 
 **실전 권장 가이드라인**
 
-1. **URL 경로 기반을 기본으로 사용한다.** 가장 직관적이고, 디버깅과 모니터링이 쉽다.
-2. **하위 호환 변경은 버전을 올리지 않는다.** 필드 추가, 선택 파라미터 추가 등은 기존 버전에 적용한다.
-3. **Breaking Change가 불가피할 때만 새 버전을 생성한다.**
-4. **이전 버전은 최소 6개월 이상 유지한다.** Sunset 헤더로 종료 일자를 사전 고지한다.
-5. **동시에 유지하는 버전은 최대 2개로 제한한다.** 3개 이상은 유지보수 비용이 기하급수적으로 증가한다.
+1. **URL 경로 기반을 기본으로 사용하자.** 제일 직관적이고 문제 추적도 쉽다.
+2. **하위 호환이 유지되는 변경이라면 버전을 올리지 않는다.** 필드 추가나 선택 파라미터 추가 정도면 기존 버전에 포함시킨다.
+3. **Breaking Change는 정말 피할 수 없을 때만 새 버전을 만든다.**
+4. **이전 버전도 최소 6개월 정도는 유지해야 한다.** Sunset 헤더로 언제 종료될지 미리 알려준다.
+5. **동시 운영하는 버전은 최대 2개로 제한해야 한다.** 3개 이상이면 유지보수 비용이 지수적으로 늘어난다.
 
 ---
 
 ## 17.4 정리
 
-이번 장에서 다룬 핵심 내용을 요약한다.
+이 장에서 나눈 내용을 빠르게 정리해보면 다음과 같다.
 
 | 주제 | 핵심 내용 |
 |------|----------|
@@ -1827,4 +1837,6 @@ public Mono<ResponseEntity<ProductV1Response>> getProductV1(@PathVariable String
 | **SecurityScheme** | JWT Bearer 인증을 Swagger UI에서 테스트 가능하도록 설정 |
 | **버전 관리** | URL 경로 기반이 가장 실용적, 하위 호환성 유지가 최우선 |
 
-API 문서화와 버전 관리는 기술적 완성도보다 **개발 조직의 규율과 일관성**이 더 중요한 영역이다. 도구가 아무리 좋아도 팀 전체가 문서화 원칙을 지키지 않으면 무용지물이다. 다음 장에서는 프로덕션 환경에서 애플리케이션의 상태를 모니터링하고 관찰하기 위한 **Observability** 전략을 다룬다.
+마지막으로 한 가지 더. API 문서화와 버전 관리는 프레임워크나 도구보다 **팀의 규칙과 일관성**이 훨씬 더 중요하다. SpringDoc이 아무리 훌륭해도, 팀원들이 문서화를 제대로 하지 않으면 소용없다. 반대로 규칙이 정해져 있으면 좋은 도구가 없어도 충분히 잘할 수 있다.
+
+다음 장에서는 이제 프로덕션 환경으로 나간다. 애플리케이션이 실제로 돌아가는 상황에서 뭐가 일어나는지 관찰하고 모니터링하는 **Observability** 전략을 다루려고 한다.

@@ -20,31 +20,35 @@
   <div class="wrapper">
     <main class="content">
       <h1 id="chapter-5">Chapter 5. 개발 환경 구성</h1>
-<p>Part 1에서 리액티브 프로그래밍, WebFlux, Reactor, MongoDB의 이론적 토대를 다졌다. 이제 Part 2의 첫 장으로서 실제 코드를 작성할 수 있는 개발 환경을 구성한다. JDK 설치부터 IDE 설정, Docker 기반 MongoDB 실행, 프로젝트 생성, 의존성 구성, 그리고 팀 단위에서도 활용 가능한 프로젝트 구조 설계까지 한 번에 정리한다.</p>
+<p>Part 1에서 리액티브 프로그래밍, WebFlux, Reactor, MongoDB의 이론적 토대를 다졌다. 이제 실제 코드를 작성해 볼 차례인데, 먼저 개발 환경을 제대로 갖춰야 한다. JDK 설치부터 IDE 설정, Docker 기반 MongoDB 실행, 프로젝트 생성, 의존성 구성, 그리고 팀 협업에서도 유용한 프로젝트 구조까지 이 장 하나에서 한 번에 다룬다.</p>
 <hr>
 <h2 id="51-jdk-ide-docker">5.1 JDK, IDE, Docker 설치</h2>
 <h3 id="511-jdk-17-sdkman">5.1.1 JDK 17+ 설치 — SDKMAN 활용</h3>
-<p>Spring Boot 3.x는 Java 17 이상을 요구한다. 여러 JDK 버전을 프로젝트별로 전환해야 하는 경우가 많으므로 <strong>SDKMAN</strong>을 활용하면 편리하다.</p>
+<p>Spring Boot 3.x는 Java 17 이상을 필요로 한다. 프로젝트마다 JDK 버전을 달리 사용해야 하는 경우가 많기 때문에, 이런 상황에서 <strong>SDKMAN</strong>이 유용하다.</p>
 <p><strong>SDKMAN 설치 (macOS / Linux)</strong></p>
-<pre class="highlight"><code class="language-bash"># SDKMAN 설치
-curl -s "https://get.sdkman.io" | bash
-source "$HOME/.sdkman/bin/sdkman-init.sh"
-
-# 설치 확인
-sdk version</code></pre>
+<p>```bash</p>
+<h1 id="sdkman">SDKMAN 설치</h1>
+<p>curl -s "https://get.sdkman.io" | bash
+source "$HOME/.sdkman/bin/sdkman-init.sh"</p>
+<h1 id="_1">설치 확인</h1>
+<p>sdk version
+```</p>
 <p><strong>JDK 설치 및 버전 관리</strong></p>
-<pre class="highlight"><code class="language-bash">sdk list java                          # 설치 가능한 JDK 목록
+<p><code>bash
+sdk list java                          # 설치 가능한 JDK 목록
 sdk install java 21.0.5-amzn           # Amazon Corretto 21 설치 (LTS)
 sdk default java 21.0.5-amzn           # 기본 JDK 설정
-java -version                          # 확인</code></pre>
+java -version                          # 확인</code></p>
 <blockquote>
 <p><strong>Windows 사용자</strong>: SDKMAN 대신 <a href="https://scoop.sh">scoop</a>(<code>scoop install corretto21-jdk</code>)이나 직접 다운로드를 권장한다.</p>
 </blockquote>
-<p><strong>프로젝트별 JDK 자동 전환</strong> -- 프로젝트 루트에 <code>.sdkmanrc</code>를 생성하면 디렉터리 진입 시 자동 전환된다.</p>
-<pre class="highlight"><code class="language-properties"># .sdkmanrc
-java=21.0.5-amzn</code></pre>
+<p><strong>프로젝트별 JDK 자동 전환</strong> -- 프로젝트 루트에 <code>.sdkmanrc</code>를 만들어두면, 해당 디렉터리에 들어갈 때 자동으로 JDK 버전이 전환되는 기능이 있다.</p>
+<p>```properties</p>
+<h1 id="sdkmanrc">.sdkmanrc</h1>
+<p>java=21.0.5-amzn
+```</p>
 <h3 id="512-intellij-idea">5.1.2 IntelliJ IDEA 설정</h3>
-<p><strong>권장 에디션</strong>: IntelliJ IDEA Ultimate (Spring Boot 지원 내장). Community Edition도 사용 가능하지만 Spring 전용 도구 지원이 제한적이다.</p>
+<p><strong>권장 에디션</strong>: IntelliJ IDEA Ultimate가 Spring Boot 개발에 최적화되어 있다. Community Edition을 써도 되지만, Spring 관련 고급 기능 지원에서는 다소 제한이 있을 수 있다.</p>
 <p><strong>필수 플러그인</strong></p>
 <table>
 <thead>
@@ -79,18 +83,19 @@ java=21.0.5-amzn</code></pre>
 <li><code>File Encodings</code> → Project/Properties Encoding: <strong>UTF-8</strong></li>
 </ul>
 <h3 id="513-docker-desktop">5.1.3 Docker Desktop 설치</h3>
-<p>MongoDB를 로컬에서 실행할 때 Docker를 사용하면 설치·제거가 간편하고 팀원 간 동일한 환경을 보장할 수 있다.</p>
-<pre class="highlight"><code class="language-bash"># macOS — Homebrew를 통한 설치
-brew install --cask docker
-
-# 설치 확인
-docker --version
-docker compose version</code></pre>
-<p>Docker Desktop 실행 후 <strong>Resources</strong> 설정에서 메모리를 최소 4GB 이상 할당하는 것을 권장한다. MongoDB와 애플리케이션을 동시에 실행하려면 충분한 리소스가 필요하다.</p>
+<p>MongoDB를 로컬에서 실행하려면 Docker를 활용하는 것이 좋다. 설치와 제거가 간단해질 뿐 아니라 팀원들이 동일한 환경을 쉽게 구성할 수 있기 때문이다.</p>
+<p>```bash</p>
+<h1 id="macos-homebrew">macOS — Homebrew를 통한 설치</h1>
+<p>brew install --cask docker</p>
+<h1 id="_2">설치 확인</h1>
+<p>docker --version
+docker compose version
+```</p>
+<p>Docker Desktop을 실행한 후 <strong>Resources</strong> 설정에서 메모리를 최소 4GB 이상 할당해 두면 좋다. MongoDB와 애플리케이션을 함께 실행할 때 여유 있게 돌아가기 때문이다.</p>
 <hr>
 <h2 id="52-spring-initializr">5.2 Spring Initializr로 프로젝트 생성</h2>
 <h3 id="521-startspringio">5.2.1 start.spring.io 사용법</h3>
-<p><a href="https://start.spring.io">https://start.spring.io</a>에 접속하여 다음과 같이 설정한다.</p>
+<p><a href="https://start.spring.io">https://start.spring.io</a>에 접속하면 직관적인 폼이 나온다. 다음 항목들을 설정하면 된다.</p>
 <table>
 <thead>
 <tr>
@@ -138,7 +143,7 @@ docker compose version</code></pre>
 </tbody>
 </table>
 <h3 id="522">5.2.2 의존성 선택</h3>
-<p>Spring Initializr에서 다음 의존성을 추가한다.</p>
+<p>이제 필요한 라이브러리들을 추가해야 한다.</p>
 <table>
 <thead>
 <tr>
@@ -173,41 +178,37 @@ docker compose version</code></pre>
 </tr>
 </tbody>
 </table>
-<p><strong>GENERATE</strong> 버튼을 클릭하면 ZIP 파일이 다운로드된다. 압축을 풀고 IntelliJ IDEA에서 <code>Open</code>으로 프로젝트를 연다.</p>
+<p><strong>GENERATE</strong> 버튼을 누르면 ZIP 파일이 내려온다. 압축을 풀고 IntelliJ에서 프로젝트를 열면 된다.</p>
 <blockquote>
-<p><strong>IntelliJ에서 직접 생성</strong>: <code>File → New → Project → Spring Boot</code>를 선택하면 IDE 안에서 동일한 작업을 수행할 수 있다.</p>
+<p><strong>팁</strong>: IDE에서 직접 프로젝트를 만들 수도 있다. <code>File → New → Project → Spring Boot</code>를 선택하면 Initializr의 같은 기능을 IDE 내부에서 사용할 수 있다.</p>
 </blockquote>
 <h3 id="523">5.2.3 초기 프로젝트 구조</h3>
-<p>Spring Initializr가 생성하는 기본 구조는 <code>build.gradle.kts</code>, <code>src/main/java/</code> 하위의 메인 클래스, <code>src/main/resources/application.properties</code>, <code>src/test/</code> 하위의 테스트 클래스로 구성된다. 이후 <code>application.properties</code>는 <code>application.yml</code>로 변환하여 사용한다.</p>
+<p>Initializr가 만들어주는 기본 구조는 <code>build.gradle.kts</code>, 메인 클래스, <code>application.properties</code>, 테스트 클래스 정도로 간단하다. 실제 개발할 때는 <code>application.properties</code> 대신 <code>application.yml</code>을 쓰는 것이 계층 구조를 표현하기에 더 낫다.</p>
 <hr>
-<h2 id="53">5.3 주요 의존성 설정</h2>
+<h2 id="53">5.3 주요 의존성 설정 및 빌드 파일 구성</h2>
 <h3 id="531-buildgradlekts">5.3.1 build.gradle.kts 전체 예시</h3>
-<pre class="highlight"><code class="language-kotlin">plugins {
+<p>```kotlin
+plugins {
     java
     id("org.springframework.boot") version "3.4.1"
     id("io.spring.dependency-management") version "1.1.7"
-}
-
-group = "com.example"
-version = "0.0.1-SNAPSHOT"
-
-java {
+}</p>
+<p>group = "com.example"
+version = "0.0.1-SNAPSHOT"</p>
+<p>java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
     }
-}
-
-configurations {
+}</p>
+<p>configurations {
     compileOnly {
         extendsFrom(configurations.annotationProcessor.get())
     }
-}
-
-repositories {
+}</p>
+<p>repositories {
     mavenCentral()
-}
-
-dependencies {
+}</p>
+<p>dependencies {
     // Spring WebFlux (Netty 기반 논블로킹 웹 서버)
     implementation("org.springframework.boot:spring-boot-starter-webflux")
     // Spring Data Reactive MongoDB
@@ -215,23 +216,23 @@ dependencies {
     // Validation (jakarta.validation)
     implementation("org.springframework.boot:spring-boot-starter-validation")
     // Actuator (헬스 체크, 메트릭)
-    implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")</p>
+<pre><code>// Lombok
+compileOnly("org.projectlombok:lombok")
+annotationProcessor("org.projectlombok:lombok")
+// DevTools (개발 시 자동 재시작)
+developmentOnly("org.springframework.boot:spring-boot-devtools")
 
-    // Lombok
-    compileOnly("org.projectlombok:lombok")
-    annotationProcessor("org.projectlombok:lombok")
-    // DevTools (개발 시 자동 재시작)
-    developmentOnly("org.springframework.boot:spring-boot-devtools")
-
-    // 테스트
-    testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("io.projectreactor:reactor-test")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-}
-
-tasks.withType&lt;Test&gt; {
+// 테스트
+testImplementation("org.springframework.boot:spring-boot-starter-test")
+testImplementation("io.projectreactor:reactor-test")
+testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+</code></pre>
+<p>}</p>
+<p>tasks.withType<Test> {
     useJUnitPlatform()
-}</code></pre>
+}
+```</p>
 <h3 id="532">5.3.2 의존성 상세 설명</h3>
 <table>
 <thead>
@@ -256,16 +257,18 @@ tasks.withType&lt;Test&gt; {
 </tbody>
 </table>
 <blockquote>
-<p><strong>주의</strong>: <code>spring-boot-starter-web</code>(Spring MVC)을 함께 추가하면 MVC가 우선 적용되어 Netty 대신 Tomcat이 구동된다. 반드시 둘 중 하나만 선택한다.</p>
+<p><strong>주의</strong>: <code>spring-boot-starter-web</code>(Spring MVC)을 함께 추가하지 않도록 주의해야 한다. 만약 둘을 함께 설정하면 Spring이 MVC를 우선 적용하여 Netty 대신 Tomcat이 구동되기 때문이다.</p>
 </blockquote>
 <h3 id="533-gradle-wrapper">5.3.3 Gradle Wrapper 버전 관리</h3>
-<pre class="highlight"><code class="language-bash">./gradlew --version                        # 현재 버전 확인
-./gradlew wrapper --gradle-version=8.12    # 업그레이드</code></pre>
+<p><code>bash
+./gradlew --version                        # 현재 버전 확인
+./gradlew wrapper --gradle-version=8.12    # 업그레이드</code></p>
 <hr>
 <h2 id="54-applicationyml">5.4 application.yml 설정</h2>
-<p><code>application.properties</code>를 삭제하고 <code>application.yml</code>을 생성한다. YAML 형식이 계층 구조를 표현하기에 더 적합하다.</p>
+<p>기본으로 생성되는 <code>application.properties</code> 파일은 삭제하고 <code>application.yml</code>을 새로 만든다. YAML 형식이 설정 항목의 위계를 표현하는 데 훨씬 편하기 때문이다.</p>
 <h3 id="541-applicationyml">5.4.1 기본 설정 (application.yml)</h3>
-<pre class="highlight"><code class="language-yaml">spring:
+<p>```yaml
+spring:
   application:
     name: webflux-mongo-demo
   data:
@@ -276,35 +279,34 @@ tasks.withType&lt;Test&gt; {
     serialization:
       write-dates-as-timestamps: false
     deserialization:
-      fail-on-unknown-properties: false
-
-server:
+      fail-on-unknown-properties: false</p>
+<p>server:
   port: 8080
   netty:
     connection-timeout: 5000
-    idle-timeout: 15000
-
-management:
+    idle-timeout: 15000</p>
+<p>management:
   endpoints:
     web:
       exposure:
         include: health,info,metrics,env
   endpoint:
     health:
-      show-details: when-authorized
-
-logging:
+      show-details: when-authorized</p>
+<p>logging:
   level:
     root: INFO
     com.example.webfluxmongodemo: DEBUG
     org.springframework.data.mongodb: DEBUG
     reactor.netty: INFO
   pattern:
-    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"</code></pre>
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+```</p>
 <h3 id="542">5.4.2 프로파일별 설정</h3>
-<p>Spring Boot는 <code>application-{profile}.yml</code> 파일을 통해 환경별 설정을 분리할 수 있다.</p>
+<p>Spring Boot에서는 <code>application-{profile}.yml</code> 형식으로 파일을 나누면, 환경에 따라 다른 설정을 쉽게 적용할 수 있다.</p>
 <p><strong>application-local.yml (로컬 개발)</strong></p>
-<pre class="highlight"><code class="language-yaml">spring:
+<p>```yaml
+spring:
   data:
     mongodb:
       uri: mongodb://appuser:apppass@localhost:27017/webflux_demo?authSource=admin
@@ -312,32 +314,33 @@ logging:
     restart:
       enabled: true
       poll-interval: 2s
-      quiet-period: 1s
-
-logging:
+      quiet-period: 1s</p>
+<p>logging:
   level:
     com.example.webfluxmongodemo: DEBUG
-    org.springframework.data.mongodb.core.ReactiveMongoTemplate: DEBUG</code></pre>
+    org.springframework.data.mongodb.core.ReactiveMongoTemplate: DEBUG
+```</p>
 <p><strong>application-prod.yml (운영)</strong></p>
-<pre class="highlight"><code class="language-yaml">spring:
+<p>```yaml
+spring:
   data:
     mongodb:
-      uri: ${MONGODB_URI}    # 환경 변수에서 주입
-
-server:
-  port: ${SERVER_PORT:8080}   # 환경 변수 없으면 8080 기본값
-
-logging:
+      uri: ${MONGODB_URI}    # 환경 변수에서 주입</p>
+<p>server:
+  port: ${SERVER_PORT:8080}   # 환경 변수 없으면 8080 기본값</p>
+<p>logging:
   level:
     root: WARN
     com.example.webfluxmongodemo: INFO
-    org.springframework.data.mongodb: WARN</code></pre>
+    org.springframework.data.mongodb: WARN
+```</p>
 <p><strong>프로파일 활성화 방법</strong></p>
-<pre class="highlight"><code class="language-bash">java -jar app.jar --spring.profiles.active=local      # JVM 옵션
-export SPRING_PROFILES_ACTIVE=local                    # 환경 변수</code></pre>
+<p><code>bash
+java -jar app.jar --spring.profiles.active=local      # JVM 옵션
+export SPRING_PROFILES_ACTIVE=local                    # 환경 변수</code></p>
 <h3 id="543-mongodb-uri">5.4.3 MongoDB 연결 URI 상세</h3>
-<p>MongoDB URI 포맷을 정확히 이해하면 다양한 환경에 대응할 수 있다.</p>
-<pre class="highlight"><code>mongodb://[username:password@]host[:port]/database[?options]</code></pre>
+<p>MongoDB 연결 문자열의 형식을 제대로 알아두면, 여러 환경에 유연하게 대응할 수 있다.</p>
+<p><code>mongodb://[username:password@]host[:port]/database[?options]</code></p>
 <table>
 <thead>
 <tr>
@@ -375,17 +378,18 @@ export SPRING_PROFILES_ACTIVE=local                    # 환경 변수</code></p
 </tbody>
 </table>
 <p><strong>복제 세트 연결 예시</strong></p>
-<pre class="highlight"><code class="language-yaml">spring:
+<p><code>yaml
+spring:
   data:
     mongodb:
-      uri: mongodb://user:pass@host1:27017,host2:27017,host3:27017/mydb?replicaSet=rs0&amp;readPreference=secondaryPreferred</code></pre>
+      uri: mongodb://user:pass@host1:27017,host2:27017,host3:27017/mydb?replicaSet=rs0&amp;readPreference=secondaryPreferred</code></p>
 <hr>
 <h2 id="55-mongodb-docker">5.5 MongoDB Docker 컨테이너 구성</h2>
 <h3 id="551-docker-composeyml">5.5.1 docker-compose.yml 작성</h3>
-<p>프로젝트 루트에 <code>docker-compose.yml</code>을 생성한다.</p>
-<pre class="highlight"><code class="language-yaml">version: "3.9"
-
-services:
+<p>이제 MongoDB를 Docker로 실행하기 위한 설정 파일을 만들어보자.</p>
+<p>```yaml
+version: "3.9"</p>
+<p>services:
   # ──────────────────────────────────────────────
   # MongoDB
   # ──────────────────────────────────────────────
@@ -408,9 +412,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
-
-  # ──────────────────────────────────────────────
+      start_period: 30s</p>
+<p># ──────────────────────────────────────────────
   # Mongo Express (선택 — 웹 기반 관리 도구)
   # ──────────────────────────────────────────────
   mongo-express:
@@ -426,57 +429,61 @@ services:
       ME_CONFIG_BASICAUTH: "false"
     depends_on:
       mongodb:
-        condition: service_healthy
-
-volumes:
+        condition: service_healthy</p>
+<p>volumes:
   mongo-data:
-    driver: local</code></pre>
+    driver: local
+```</p>
 <h3 id="552">5.5.2 초기화 스크립트</h3>
-<p><code>docker/mongo-init.js</code> 파일을 작성하여 컨테이너 최초 실행 시 애플리케이션 전용 사용자와 데이터베이스를 자동 생성한다.</p>
-<pre class="highlight"><code class="language-javascript">// docker/mongo-init.js
-// MongoDB 컨테이너 최초 실행 시 1회 실행된다.
-
-// 애플리케이션 전용 사용자 생성
-db = db.getSiblingDB("webflux_demo");
-
-db.createUser({
+<p>MongoDB 컨테이너가 처음 시작될 때 자동으로 애플리케이션용 사용자와 데이터베이스를 만들어두면 편하다. <code>docker/mongo-init.js</code> 파일로 이를 구현한다.</p>
+<p>```javascript
+// docker/mongo-init.js
+// MongoDB 컨테이너 최초 실행 시 1회 실행된다.</p>
+<p>// 애플리케이션 전용 사용자 생성
+db = db.getSiblingDB("webflux_demo");</p>
+<p>db.createUser({
     user: "appuser",
     pwd: "apppass",
     roles: [
         { role: "readWrite", db: "webflux_demo" }
     ]
-});
-
-// 초기 컬렉션 생성 (선택)
+});</p>
+<p>// 초기 컬렉션 생성 (선택)
 db.createCollection("users");
-db.createCollection("posts");
-
-print("===== MongoDB 초기화 완료 =====");</code></pre>
+db.createCollection("posts");</p>
+<p>print("===== MongoDB 초기화 완료 =====");
+```</p>
 <h3 id="553-docker-compose">5.5.3 Docker Compose 실행</h3>
-<pre class="highlight"><code class="language-bash">docker compose up -d                    # 컨테이너 시작 (백그라운드)
+<p><code>bash
+docker compose up -d                    # 컨테이너 시작 (백그라운드)
 docker compose logs -f mongodb          # 로그 확인
 docker compose ps                       # 상태 확인
 docker compose down                     # 중지
-docker compose down -v                  # 중지 + 볼륨 삭제 (데이터 초기화)</code></pre>
+docker compose down -v                  # 중지 + 볼륨 삭제 (데이터 초기화)</code></p>
 <p><strong>정상 동작 확인</strong></p>
-<pre class="highlight"><code class="language-bash">docker exec -it webflux-mongo mongosh -u appuser -p apppass \
-  --authenticationDatabase admin webflux_demo
-
-# 셸 내부에서
-db.users.insertOne({ name: "테스트", email: "test@example.com" })
-db.users.find()</code></pre>
+<p>```bash
+docker exec -it webflux-mongo mongosh -u appuser -p apppass \
+  --authenticationDatabase admin webflux_demo</p>
+<h1 id="_3">셸 내부에서</h1>
+<p>db.users.insertOne({ name: "테스트", email: "test@example.com" })
+db.users.find()
+```</p>
 <h3 id="554-env">5.5.4 .env 파일로 민감 정보 분리</h3>
-<p>docker-compose.yml에 비밀번호를 직접 넣는 대신 <code>.env</code> 파일을 활용하고, <code>.gitignore</code>에 <code>.env</code>를 추가한다.</p>
-<pre class="highlight"><code class="language-properties"># .env (git에 포함시키지 않는다)
-MONGO_ROOT_USERNAME=admin
-MONGO_ROOT_PASSWORD=admin1234</code></pre>
-<pre class="highlight"><code class="language-yaml"># docker-compose.yml에서 환경 변수 참조
-environment:
+<p>docker-compose.yml에 비밀번호를 하드코딩하는 것은 좋지 않다. <code>.env</code> 파일로 분리하고 <code>.gitignore</code>에 추가하면 더 안전하다.</p>
+<p>```properties</p>
+<h1 id="env-git">.env (git에 포함시키지 않는다)</h1>
+<p>MONGO_ROOT_USERNAME=admin
+MONGO_ROOT_PASSWORD=admin1234
+```</p>
+<p>```yaml</p>
+<h1 id="docker-composeyml">docker-compose.yml에서 환경 변수 참조</h1>
+<p>environment:
   MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
-  MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}</code></pre>
+  MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+```</p>
 <hr>
 <h2 id="56">5.6 프로젝트 구조 설계</h2>
-<p>프로젝트가 커지면 패키지 구조가 코드의 탐색성과 유지보수성을 좌우한다. 두 가지 대표적인 구조를 비교한 뒤 본서의 권장 구조를 제시한다.</p>
+<p>프로젝트 규모가 커질수록 패키지 조직이 중요해진다. 코드를 찾기 쉽고 수정하기 좋으려면 초반부터 좋은 구조를 잡아야 한다. 널리 쓰이는 두 가지 접근법을 비교해보고, 이 책에서 권장하는 방식을 소개한다.</p>
 <h3 id="561-vs">5.6.1 계층형 vs 도메인형 비교</h3>
 <table>
 <thead>
@@ -505,8 +512,8 @@ environment:
 </tbody>
 </table>
 <h3 id="562">5.6.2 본서의 권장 구조 — 도메인형 하이브리드</h3>
-<p>본서에서는 도메인형을 기본으로 하되, 공통 관심사(설정, 예외 처리, 유틸리티)를 <code>global/</code> 패키지로 분리하는 하이브리드 구조를 사용한다.</p>
-<pre class="highlight"><code>webflux-mongo-demo/
+<p>이 책에서는 도메인형 구조를 기본으로 삼으면서도, 설정이나 예외 처리처럼 여러 도메인에서 공통으로 쓰는 코드는 <code>global/</code> 패키지에 모아둔다. 이런 절충적인 방식이 실무에서 잘 먹혀간다.</p>
+<p><code>webflux-mongo-demo/
 ├── build.gradle.kts
 ├── settings.gradle.kts
 ├── docker-compose.yml
@@ -571,147 +578,145 @@ environment:
             │   └── UserControllerTest.java
             └── post/
                 ├── PostServiceTest.java
-                └── PostControllerTest.java</code></pre>
+                └── PostControllerTest.java</code></p>
 <h3 id="563">5.6.3 핵심 클래스 골격 코드</h3>
-<p>프로젝트 구조를 잡았으니 각 계층의 골격 코드를 미리 작성한다. 본격적인 구현은 Chapter 6에서 진행한다.</p>
+<p>구조를 설정했으니 이제 각 계층의 기본 틀을 만들어 보자. 세부 로직은 다음 장에서 채워 넣을 것이다.</p>
 <p><strong>메인 클래스</strong></p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo;
-
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
-@SpringBootApplication
-public class WebfluxMongoDemoApplication {
-
-    public static void main(String[] args) {
-        SpringApplication.run(WebfluxMongoDemoApplication.class, args);
-    }
-}</code></pre>
+<p>```java
+package com.example.webfluxmongodemo;</p>
+<p>import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;</p>
+<p>@SpringBootApplication
+public class WebfluxMongoDemoApplication {</p>
+<pre><code>public static void main(String[] args) {
+    SpringApplication.run(WebfluxMongoDemoApplication.class, args);
+}
+</code></pre>
+<p>}
+```</p>
 <p><strong>도메인 (Document)</strong></p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo.user.domain;
-
-import lombok.*;
+<p>```java
+package com.example.webfluxmongodemo.user.domain;</p>
+<p>import lombok.*;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.index.Indexed;
-
-import java.time.LocalDateTime;
-
-@Document(collection = "users")     // MongoDB 컬렉션 매핑
+import org.springframework.data.mongodb.core.index.Indexed;</p>
+<p>import java.time.LocalDateTime;</p>
+<p>@Document(collection = "users")     // MongoDB 컬렉션 매핑
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class User {
+public class User {</p>
+<pre><code>@Id
+private String id;              // MongoDB의 _id에 매핑
 
-    @Id
-    private String id;              // MongoDB의 _id에 매핑
+@Indexed(unique = true)         // 고유 인덱스 자동 생성
+private String email;
 
-    @Indexed(unique = true)         // 고유 인덱스 자동 생성
-    private String email;
+private String name;
+private String password;
 
-    private String name;
-    private String password;
+@CreatedDate
+private LocalDateTime createdAt;
 
-    @CreatedDate
-    private LocalDateTime createdAt;
+@LastModifiedDate
+private LocalDateTime updatedAt;
 
-    @LastModifiedDate
-    private LocalDateTime updatedAt;
-
-    public void updateName(String name) {
-        this.name = name;
-    }
-}</code></pre>
+public void updateName(String name) {
+    this.name = name;
+}
+</code></pre>
+<p>}
+```</p>
 <p><strong>리포지토리</strong></p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo.user.repository;
-
-import com.example.webfluxmongodemo.user.domain.User;
+<p>```java
+package com.example.webfluxmongodemo.user.repository;</p>
+<p>import com.example.webfluxmongodemo.user.domain.User;
 import org.springframework.data.mongodb.repository.ReactiveMongoRepository;
-import reactor.core.publisher.Mono;
+import reactor.core.publisher.Mono;</p>
+<p>public interface UserRepository extends ReactiveMongoRepository<User, String> {</p>
+<pre><code>Mono&lt;User&gt; findByEmail(String email);
 
-public interface UserRepository extends ReactiveMongoRepository&lt;User, String&gt; {
-
-    Mono&lt;User&gt; findByEmail(String email);
-
-    Mono&lt;Boolean&gt; existsByEmail(String email);
-}</code></pre>
+Mono&lt;Boolean&gt; existsByEmail(String email);
+</code></pre>
+<p>}
+```</p>
 <blockquote>
-<p><code>ReactiveMongoRepository</code>는 <code>ReactiveCrudRepository</code>를 확장하며, 반환 타입이 <code>Mono</code>와 <code>Flux</code>다. 블로킹 호출이 전혀 없다.</p>
+<p><code>ReactiveMongoRepository</code>는 <code>ReactiveCrudRepository</code>를 상속받으면서 메서드들이 모두 <code>Mono</code>나 <code>Flux</code>를 반환한다. 덕분에 어디서도 블로킹이 일어나지 않는다.</p>
 </blockquote>
 <p><strong>서비스</strong></p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo.user.service;
-
-import com.example.webfluxmongodemo.user.domain.User;
+<p>```java
+package com.example.webfluxmongodemo.user.service;</p>
+<p>import com.example.webfluxmongodemo.user.domain.User;
 import com.example.webfluxmongodemo.user.dto.UserCreateRequest;
 import com.example.webfluxmongodemo.user.dto.UserResponse;
 import com.example.webfluxmongodemo.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
-@Service
+import reactor.core.publisher.Mono;</p>
+<p>@Service
 @RequiredArgsConstructor
-public class UserService {
+public class UserService {</p>
+<pre><code>private final UserRepository userRepository;
 
-    private final UserRepository userRepository;
+public Mono&lt;UserResponse&gt; createUser(UserCreateRequest request) {
+    User user = User.builder()
+            .email(request.email())
+            .name(request.name())
+            .password(request.password())   // 실제로는 암호화 필수
+            .build();
 
-    public Mono&lt;UserResponse&gt; createUser(UserCreateRequest request) {
-        User user = User.builder()
-                .email(request.email())
-                .name(request.name())
-                .password(request.password())   // 실제로는 암호화 필수
-                .build();
+    return userRepository.save(user)
+            .map(UserResponse::from);
+}
 
-        return userRepository.save(user)
-                .map(UserResponse::from);
-    }
+public Mono&lt;UserResponse&gt; getUserById(String id) {
+    return userRepository.findById(id)
+            .map(UserResponse::from)
+            .switchIfEmpty(Mono.error(
+                new IllegalArgumentException("사용자를 찾을 수 없습니다: " + id)
+            ));
+}
 
-    public Mono&lt;UserResponse&gt; getUserById(String id) {
-        return userRepository.findById(id)
-                .map(UserResponse::from)
-                .switchIfEmpty(Mono.error(
-                    new IllegalArgumentException("사용자를 찾을 수 없습니다: " + id)
-                ));
-    }
+public Flux&lt;UserResponse&gt; getAllUsers() {
+    return userRepository.findAll()
+            .map(UserResponse::from);
+}
 
-    public Flux&lt;UserResponse&gt; getAllUsers() {
-        return userRepository.findAll()
-                .map(UserResponse::from);
-    }
-
-    public Mono&lt;Void&gt; deleteUser(String id) {
-        return userRepository.deleteById(id);
-    }
-}</code></pre>
+public Mono&lt;Void&gt; deleteUser(String id) {
+    return userRepository.deleteById(id);
+}
+</code></pre>
+<p>}
+```</p>
 <p><strong>DTO (Java Record 활용)</strong></p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo.user.dto;
-
-import jakarta.validation.constraints.Email;
+<p>```java
+package com.example.webfluxmongodemo.user.dto;</p>
+<p>import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
-
-public record UserCreateRequest(
+import jakarta.validation.constraints.Size;</p>
+<p>public record UserCreateRequest(
     @NotBlank(message = "이름은 필수입니다")
-    String name,
+    String name,</p>
+<pre><code>@NotBlank(message = "이메일은 필수입니다")
+@Email(message = "올바른 이메일 형식이 아닙니다")
+String email,
 
-    @NotBlank(message = "이메일은 필수입니다")
-    @Email(message = "올바른 이메일 형식이 아닙니다")
-    String email,
-
-    @NotBlank(message = "비밀번호는 필수입니다")
-    @Size(min = 8, message = "비밀번호는 8자 이상이어야 합니다")
-    String password
-) {}</code></pre>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo.user.dto;
-
-import com.example.webfluxmongodemo.user.domain.User;
-import java.time.LocalDateTime;
-
-public record UserResponse(
+@NotBlank(message = "비밀번호는 필수입니다")
+@Size(min = 8, message = "비밀번호는 8자 이상이어야 합니다")
+String password
+</code></pre>
+<p>) {}
+```</p>
+<p>```java
+package com.example.webfluxmongodemo.user.dto;</p>
+<p>import com.example.webfluxmongodemo.user.domain.User;
+import java.time.LocalDateTime;</p>
+<p>public record UserResponse(
     String id,
     String name,
     String email,
@@ -725,11 +730,12 @@ public record UserResponse(
             user.getCreatedAt()
         );
     }
-}</code></pre>
+}
+```</p>
 <p><strong>컨트롤러</strong></p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo.user.controller;
-
-import com.example.webfluxmongodemo.user.dto.UserCreateRequest;
+<p>```java
+package com.example.webfluxmongodemo.user.controller;</p>
+<p>import com.example.webfluxmongodemo.user.dto.UserCreateRequest;
 import com.example.webfluxmongodemo.user.dto.UserResponse;
 import com.example.webfluxmongodemo.user.service.UserService;
 import jakarta.validation.Valid;
@@ -737,45 +743,44 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
-@RestController
+import reactor.core.publisher.Mono;</p>
+<p>@RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
-public class UserController {
+public class UserController {</p>
+<pre><code>private final UserService userService;
 
-    private final UserService userService;
+@PostMapping
+@ResponseStatus(HttpStatus.CREATED)
+public Mono&lt;UserResponse&gt; createUser(@Valid @RequestBody UserCreateRequest request) {
+    return userService.createUser(request);
+}
 
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Mono&lt;UserResponse&gt; createUser(@Valid @RequestBody UserCreateRequest request) {
-        return userService.createUser(request);
-    }
+@GetMapping("/{id}")
+public Mono&lt;UserResponse&gt; getUser(@PathVariable String id) {
+    return userService.getUserById(id);
+}
 
-    @GetMapping("/{id}")
-    public Mono&lt;UserResponse&gt; getUser(@PathVariable String id) {
-        return userService.getUserById(id);
-    }
+@GetMapping
+public Flux&lt;UserResponse&gt; getAllUsers() {
+    return userService.getAllUsers();
+}
 
-    @GetMapping
-    public Flux&lt;UserResponse&gt; getAllUsers() {
-        return userService.getAllUsers();
-    }
-
-    @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public Mono&lt;Void&gt; deleteUser(@PathVariable String id) {
-        return userService.deleteUser(id);
-    }
-}</code></pre>
+@DeleteMapping("/{id}")
+@ResponseStatus(HttpStatus.NO_CONTENT)
+public Mono&lt;Void&gt; deleteUser(@PathVariable String id) {
+    return userService.deleteUser(id);
+}
+</code></pre>
+<p>}
+```</p>
 <p><strong>MongoDB 설정 클래스</strong></p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxmongodemo.global.config;
-
-import org.springframework.context.annotation.Configuration;
+<p>```java
+package com.example.webfluxmongodemo.global.config;</p>
+<p>import org.springframework.context.annotation.Configuration;
 import org.springframework.data.mongodb.config.EnableReactiveMongoAuditing;
-import org.springframework.data.mongodb.repository.config.EnableReactiveMongoRepositories;
-
-@Configuration
+import org.springframework.data.mongodb.repository.config.EnableReactiveMongoRepositories;</p>
+<p>@Configuration
 @EnableReactiveMongoRepositories(
     basePackages = "com.example.webfluxmongodemo"
 )
@@ -783,24 +788,26 @@ import org.springframework.data.mongodb.repository.config.EnableReactiveMongoRep
 public class MongoConfig {
     // ReactiveMongoClient는 Spring Boot가 자동 구성한다.
     // 커스텀 설정이 필요한 경우에만 Bean을 등록한다.
-}</code></pre>
+}
+```</p>
 <h3 id="564">5.6.4 프로젝트 실행 및 검증</h3>
-<pre class="highlight"><code class="language-bash">docker compose up -d                                          # MongoDB 시작
-./gradlew bootRun --args='--spring.profiles.active=local'     # 애플리케이션 시작</code></pre>
-<p>정상 기동 시 <code>Netty started on port 8080</code> 로그가 출력된다. 헬스 체크와 API로 검증한다.</p>
-<pre class="highlight"><code class="language-bash"># 헬스 체크 — mongo 컴포넌트가 UP이면 성공
-curl http://localhost:8080/actuator/health
-
-# 사용자 생성
-curl -X POST http://localhost:8080/api/users \
+<p><code>bash
+docker compose up -d                                          # MongoDB 시작
+./gradlew bootRun --args='--spring.profiles.active=local'     # 애플리케이션 시작</code></p>
+<p>정상적으로 구동되면 <code>Netty started on port 8080</code> 같은 로그가 나타날 것이다. 간단한 헬스 체크로 검증해 보자.</p>
+<p>```bash</p>
+<h1 id="mongo-up">헬스 체크 — mongo 컴포넌트가 UP이면 성공</h1>
+<p>curl http://localhost:8080/actuator/health</p>
+<h1 id="_4">사용자 생성</h1>
+<p>curl -X POST http://localhost:8080/api/users \
   -H "Content-Type: application/json" \
-  -d '{"name":"홍길동","email":"hong@example.com","password":"password1234"}'
-
-# 사용자 조회
-curl http://localhost:8080/api/users</code></pre>
+  -d '{"name":"홍길동","email":"hong@example.com","password":"password1234"}'</p>
+<h1 id="_5">사용자 조회</h1>
+<p>curl http://localhost:8080/api/users
+```</p>
 <hr>
-<h2 id="_1">정리</h2>
-<p>이번 장에서 구성한 개발 환경을 요약하면 다음과 같다.</p>
+<h2 id="_6">정리</h2>
+<p>이 장에서 다룬 개발 환경 구성을 한눈에 정리하면 이렇다.</p>
 <table>
 <thead>
 <tr>
@@ -843,14 +850,13 @@ curl http://localhost:8080/api/users</code></pre>
 </tr>
 </tbody>
 </table>
-<p>다음 장에서는 이 환경 위에서 어노테이션 기반 REST API를 본격적으로 구현한다. 도메인 모델 정의부터 Repository, Service, Controller 각 계층의 상세 구현과 API 테스트까지 다룬다.</p>
-<hr>
+<p>다음 장부터 이 환경 위에서 실제 REST API를 구현해 보자. 도메인 모델을 정의하고 Repository, Service, Controller의 구체적인 로직을 채워 넣은 뒤, API를 테스트해 보는 과정까지 다룰 것이다.</p>
 <h1 id="chapter-6-rest-api">Chapter 6. 어노테이션 기반 REST API 구현</h1>
-<p>Chapter 5에서 프로젝트 구조와 개발 환경을 갖추었다. 이번 장에서는 본격적으로 도메인 모델을 정의하고, 리포지토리, 서비스, 컨트롤러 계층을 순서대로 구축하여 완전한 CRUD REST API를 완성한다. 모든 계층에서 <code>Mono</code>와 <code>Flux</code>를 반환하며, 요청부터 응답, 데이터베이스 접근까지 논블로킹으로 동작하는 리액티브 파이프라인을 구성한다.</p>
+<p>Chapter 5에서 프로젝트 구조와 개발 환경을 다 갖추었으니, 이제 본격적으로 API를 만들어보자. 먼저 도메인 모델을 정의하고, 리포지토리와 서비스 계층을 거쳐 컨트롤러까지 순서대로 구축하면 완전한 CRUD REST API가 완성된다. 이 과정에서 모든 계층이 <code>Mono</code>와 <code>Flux</code>를 반환하며, 요청에서부터 응답까지 논블로킹으로 동작하는 리액티브 파이프라인을 구성하게 된다.</p>
 <hr>
 <h2 id="61-document">6.1 도메인 모델(Document) 정의</h2>
 <h3 id="611">6.1.1 주요 어노테이션 정리</h3>
-<p>Spring Data MongoDB는 Java 객체를 MongoDB 도큐먼트에 매핑하기 위한 다양한 어노테이션을 제공한다.</p>
+<p>Spring Data MongoDB는 Java 객체를 MongoDB 도큐먼트에 매핑할 때 여러 어노테이션을 제공한다. 각각이 어떤 역할을 하는지 살펴보자.</p>
 <table>
 <thead>
 <tr>
@@ -894,160 +900,162 @@ curl http://localhost:8080/api/users</code></pre>
 </tbody>
 </table>
 <h3 id="612-user">6.1.2 User 도메인 모델</h3>
-<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.domain;
-
-import lombok.*;
+<p>```java
+package com.example.webfluxdemo.domain;</p>
+<p>import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.annotation.Version;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.mapping.Field;
-
-import java.time.LocalDateTime;
-
-@Document(collection = "users")
+import org.springframework.data.mongodb.core.mapping.Field;</p>
+<p>import java.time.LocalDateTime;</p>
+<p>@Document(collection = "users")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
 @ToString
-public class User {
+public class User {</p>
+<pre><code>@Id
+private String id;
 
-    @Id
-    private String id;
+@Field("name")
+private String name;
 
-    @Field("name")
-    private String name;
+@Indexed(unique = true)
+private String email;
 
-    @Indexed(unique = true)
-    private String email;
+private String password;
 
-    private String password;
+@Builder.Default
+private String role = "USER";
 
-    @Builder.Default
-    private String role = "USER";
+@CreatedDate
+private LocalDateTime createdAt;
 
-    @CreatedDate
-    private LocalDateTime createdAt;
+@LastModifiedDate
+private LocalDateTime updatedAt;
 
-    @LastModifiedDate
-    private LocalDateTime updatedAt;
+@Version
+private Long version;
 
-    @Version
-    private Long version;
+public void updateProfile(String name, String email) {
+    this.name = name;
+    this.email = email;
+}
 
-    public void updateProfile(String name, String email) {
-        this.name = name;
-        this.email = email;
-    }
-
-    public void changePassword(String password) {
-        this.password = password;
-    }
-}</code></pre>
-<p><code>@Version</code> 필드를 추가하면 동시 수정 시 <code>OptimisticLockingFailureException</code>이 발생하여 데이터 정합성을 보호한다.</p>
+public void changePassword(String password) {
+    this.password = password;
+}
+</code></pre>
+<p>}
+```</p>
+<p><code>@Version</code> 필드를 추가해두면, 여러 요청이 동시에 같은 사용자를 수정할 때 <code>OptimisticLockingFailureException</code>이 발생해서 데이터 정합성을 지켜준다.</p>
 <h3 id="613-post">6.1.3 Post 도메인 모델</h3>
-<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.domain;
-
-import lombok.*;
+<p>```java
+package com.example.webfluxdemo.domain;</p>
+<p>import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.Indexed;
-import org.springframework.data.mongodb.core.mapping.Document;
-
-import java.time.LocalDateTime;
+import org.springframework.data.mongodb.core.mapping.Document;</p>
+<p>import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.List;
-
-@Document(collection = "posts")
+import java.util.List;</p>
+<p>@Document(collection = "posts")
 @CompoundIndex(name = "author_created", def = "{'authorId': 1, 'createdAt': -1}")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
 @ToString
-public class Post {
+public class Post {</p>
+<pre><code>@Id
+private String id;
 
-    @Id
-    private String id;
+private String title;
 
-    private String title;
+private String content;
 
-    private String content;
+@Indexed
+private String authorId;
 
-    @Indexed
-    private String authorId;
+@Builder.Default
+private List&lt;String&gt; tags = new ArrayList&lt;&gt;();
 
-    @Builder.Default
-    private List&lt;String&gt; tags = new ArrayList&lt;&gt;();
+@Builder.Default
+private int viewCount = 0;
 
-    @Builder.Default
-    private int viewCount = 0;
+@CreatedDate
+private LocalDateTime createdAt;
 
-    @CreatedDate
-    private LocalDateTime createdAt;
+@LastModifiedDate
+private LocalDateTime updatedAt;
 
-    @LastModifiedDate
-    private LocalDateTime updatedAt;
+public void update(String title, String content, List&lt;String&gt; tags) {
+    this.title = title;
+    this.content = content;
+    this.tags = tags != null ? tags : this.tags;
+}
 
-    public void update(String title, String content, List&lt;String&gt; tags) {
-        this.title = title;
-        this.content = content;
-        this.tags = tags != null ? tags : this.tags;
-    }
-
-    public void incrementViewCount() {
-        this.viewCount++;
-    }
-}</code></pre>
-<p><code>@CompoundIndex</code>로 <code>authorId</code> 오름차순 + <code>createdAt</code> 내림차순 복합 인덱스를 생성하여, 특정 작성자의 최신 게시글 조회 쿼리를 최적화한다.</p>
+public void incrementViewCount() {
+    this.viewCount++;
+}
+</code></pre>
+<p>}
+```</p>
+<p><code>@CompoundIndex</code>로 <code>authorId</code> 오름차순과 <code>createdAt</code> 내림차순의 복합 인덱스를 만들면, 특정 작성자의 최신 게시글을 조회할 때 쿼리가 훨씬 빨라진다.</p>
 <h3 id="614-auditing">6.1.4 Auditing 설정</h3>
-<p><code>@CreatedDate</code>, <code>@LastModifiedDate</code>가 동작하려면 Auditing 기능을 활성화해야 한다.</p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.config;
-
-import org.springframework.context.annotation.Configuration;
-import org.springframework.data.mongodb.config.EnableReactiveMongoAuditing;
-
-@Configuration
+<p><code>@CreatedDate</code>와 <code>@LastModifiedDate</code>가 실제로 동작하려면, Auditing 기능을 명시적으로 활성화해야 한다.</p>
+<p>```java
+package com.example.webfluxdemo.config;</p>
+<p>import org.springframework.context.annotation.Configuration;
+import org.springframework.data.mongodb.config.EnableReactiveMongoAuditing;</p>
+<p>@Configuration
 @EnableReactiveMongoAuditing
 public class MongoConfig {
-}</code></pre>
-<p>리액티브 환경에서는 반드시 <code>EnableReactiveMongoAuditing</code>을 사용해야 하며, 일반 <code>@EnableMongoAuditing</code>은 동작하지 않는다. 자동 인덱스 생성을 활성화하려면 <code>application.yml</code>에 다음 설정을 추가한다.</p>
-<pre class="highlight"><code class="language-yaml">spring:
+}
+```</p>
+<p>리액티브 환경에서는 꼭 <code>EnableReactiveMongoAuditing</code>을 써야 한다는 점을 잊지 말자. 일반적인 <code>@EnableMongoAuditing</code>은 여기서 작동하지 않기 때문이다. 그리고 자동 인덱스 생성을 켜려면 <code>application.yml</code>에 다음을 추가하면 된다.</p>
+<p><code>yaml
+spring:
   data:
     mongodb:
       uri: mongodb://admin:secret1234@localhost:27017/webflux_demo?authSource=admin
-      auto-index-creation: true</code></pre>
+      auto-index-creation: true</code></p>
 <blockquote>
 <p><strong>주의</strong>: <code>auto-index-creation</code>은 개발 환경에서는 편리하지만, 운영 환경에서는 수동 인덱스 관리를 권장한다. 대규모 컬렉션에서 인덱스 자동 생성은 서비스 시작 시간을 지연시킬 수 있다.</p>
 </blockquote>
 <hr>
 <h2 id="62-reactivemongorepository">6.2 ReactiveMongoRepository 활용</h2>
+<p>이제 데이터베이스 접근 계층을 만들어보자. Spring Data가 제공하는 리액티브 리포지토리를 활용하면 기본 CRUD 메서드를 자동으로 얻을 수 있다.</p>
 <h3 id="621-userrepository">6.2.1 UserRepository 정의</h3>
-<pre class="highlight"><code class="language-java">public interface UserRepository extends ReactiveMongoRepository&lt;User, String&gt; {
+<p>```java
+public interface UserRepository extends ReactiveMongoRepository<User, String> {</p>
+<pre><code>// 메서드 이름 기반 쿼리 자동 생성
+Mono&lt;User&gt; findByEmail(String email);
 
-    // 메서드 이름 기반 쿼리 자동 생성
-    Mono&lt;User&gt; findByEmail(String email);
+Flux&lt;User&gt; findByName(String name);
 
-    Flux&lt;User&gt; findByName(String name);
+Flux&lt;User&gt; findByRole(String role);
 
-    Flux&lt;User&gt; findByRole(String role);
+Mono&lt;Boolean&gt; existsByEmail(String email);
 
-    Mono&lt;Boolean&gt; existsByEmail(String email);
+// @Query: MongoDB JSON 쿼리 직접 작성
+@Query("{ 'name': { $regex: ?0, $options: 'i' } }")
+Flux&lt;User&gt; searchByName(String keyword);
 
-    // @Query: MongoDB JSON 쿼리 직접 작성
-    @Query("{ 'name': { $regex: ?0, $options: 'i' } }")
-    Flux&lt;User&gt; searchByName(String keyword);
-
-    // 특정 필드만 조회 (fields 속성)
-    @Query(value = "{ 'role': ?0 }", fields = "{ 'name': 1, 'email': 1 }")
-    Flux&lt;User&gt; findNameAndEmailByRole(String role);
-}</code></pre>
-<p><code>ReactiveMongoRepository&lt;T, ID&gt;</code>는 <code>ReactiveCrudRepository</code>를 확장하며, 다음 메서드를 기본으로 제공한다.</p>
+// 특정 필드만 조회 (fields 속성)
+@Query(value = "{ 'role': ?0 }", fields = "{ 'name': 1, 'email': 1 }")
+Flux&lt;User&gt; findNameAndEmailByRole(String role);
+</code></pre>
+<p>}
+```</p>
+<p><code>ReactiveMongoRepository&lt;T, ID&gt;</code>는 <code>ReactiveCrudRepository</code>를 상속받으므로, 기본적으로 다음과 같은 메서드들을 제공한다.</p>
 <table>
 <thead>
 <tr>
@@ -1090,31 +1098,33 @@ public class MongoConfig {
 </tbody>
 </table>
 <h3 id="622-postrepository">6.2.2 PostRepository 정의</h3>
-<pre class="highlight"><code class="language-java">public interface PostRepository extends ReactiveMongoRepository&lt;Post, String&gt; {
+<p>```java
+public interface PostRepository extends ReactiveMongoRepository<Post, String> {</p>
+<pre><code>Flux&lt;Post&gt; findByAuthorId(String authorId);
 
-    Flux&lt;Post&gt; findByAuthorId(String authorId);
+Flux&lt;Post&gt; findByTagsContaining(String tag);
 
-    Flux&lt;Post&gt; findByTagsContaining(String tag);
+Flux&lt;Post&gt; findByTitleContainingIgnoreCase(String keyword);
 
-    Flux&lt;Post&gt; findByTitleContainingIgnoreCase(String keyword);
+// 페이징: Pageable 파라미터를 전달
+Flux&lt;Post&gt; findByAuthorId(String authorId, Pageable pageable);
 
-    // 페이징: Pageable 파라미터를 전달
-    Flux&lt;Post&gt; findByAuthorId(String authorId, Pageable pageable);
+Mono&lt;Long&gt; countByAuthorId(String authorId);
 
-    Mono&lt;Long&gt; countByAuthorId(String authorId);
+// 복잡한 쿼리: 제목 또는 내용에 키워드가 포함된 게시글 검색
+@Query("{ $or: [ " +
+       "  { 'title': { $regex: ?0, $options: 'i' } }, " +
+       "  { 'content': { $regex: ?0, $options: 'i' } } " +
+       "] }")
+Flux&lt;Post&gt; searchByKeyword(String keyword);
 
-    // 복잡한 쿼리: 제목 또는 내용에 키워드가 포함된 게시글 검색
-    @Query("{ $or: [ " +
-           "  { 'title': { $regex: ?0, $options: 'i' } }, " +
-           "  { 'content': { $regex: ?0, $options: 'i' } } " +
-           "] }")
-    Flux&lt;Post&gt; searchByKeyword(String keyword);
-
-    // 정렬: 메서드 이름에 OrderBy 포함
-    Flux&lt;Post&gt; findByAuthorIdOrderByCreatedAtDesc(String authorId);
-}</code></pre>
+// 정렬: 메서드 이름에 OrderBy 포함
+Flux&lt;Post&gt; findByAuthorIdOrderByCreatedAtDesc(String authorId);
+</code></pre>
+<p>}
+```</p>
 <h3 id="623">6.2.3 쿼리 메서드 이름 규칙</h3>
-<p>Spring Data는 메서드 이름을 파싱하여 쿼리를 자동 생성한다. 주요 키워드:</p>
+<p>Spring Data의 매력적인 점 중 하나가 메서드 이름만 보고도 쿼리를 자동으로 만들어준다는 것이다. 주요 키워드들을 정리하면 다음과 같다.</p>
 <table>
 <thead>
 <tr>
@@ -1157,265 +1167,271 @@ public class MongoConfig {
 </tbody>
 </table>
 <h3 id="624">6.2.4 페이징 처리</h3>
-<p>리액티브 환경에서의 페이징은 <code>Pageable</code>을 파라미터로 전달하고, 별도로 총 개수를 조회한다.</p>
-<pre class="highlight"><code class="language-java">import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
-
-// 0번째 페이지, 10개씩, 생성일 내림차순
-Pageable pageable = PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt"));
-
-Flux&lt;Post&gt; posts = postRepository.findByAuthorId("user123", pageable);
-Mono&lt;Long&gt; totalCount = postRepository.countByAuthorId("user123");</code></pre>
+<p>리액티브 환경에서 페이징을 할 때는 약간 다른 접근이 필요하다. <code>Pageable</code>을 전달하되, 총 개수는 별도로 조회해야 한다.</p>
+<p>```java
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;</p>
+<p>// 0번째 페이지, 10개씩, 생성일 내림차순
+Pageable pageable = PageRequest.of(0, 10, Sort.by(Sort.Direction.DESC, "createdAt"));</p>
+<p>Flux<Post> posts = postRepository.findByAuthorId("user123", pageable);
+Mono<Long> totalCount = postRepository.countByAuthorId("user123");
+```</p>
 <blockquote>
 <p><strong>참고</strong>: Spring Data Reactive에는 <code>Page&lt;T&gt;</code> 반환 타입이 없다. <code>Page</code>는 전체 개수를 동기적으로 계산해야 하므로 리액티브 모델과 맞지 않기 때문이다. 대신 <code>Flux&lt;T&gt;</code>와 <code>Mono&lt;Long&gt;</code>을 조합하여 페이징 정보를 구성한다.</p>
 </blockquote>
 <hr>
 <h2 id="63">6.3 서비스 계층 구현</h2>
+<p>서비스 계층은 리포지토리와 컨트롤러 사이에서 비즈니스 로직을 담당한다. 리액티브 패턴을 제대로 이해하는 것이 이 계층에서 가장 중요하다.</p>
 <h3 id="631">6.3.1 커스텀 예외 정의</h3>
-<p>먼저 서비스 계층에서 사용할 커스텀 예외를 정의한다.</p>
-<pre class="highlight"><code class="language-java">@Getter
+<p>먼저 서비스에서 사용할 커스텀 예외들을 정의해두자.</p>
+<p>```java
+@Getter
 public class ResourceNotFoundException extends RuntimeException {
     private final String resourceName;
     private final String fieldName;
-    private final String fieldValue;
+    private final String fieldValue;</p>
+<pre><code>public ResourceNotFoundException(String resourceName, String fieldName,
+                                 String fieldValue) {
+    super(String.format("%s not found with %s: '%s'",
+            resourceName, fieldName, fieldValue));
+    this.resourceName = resourceName;
+    this.fieldName = fieldName;
+    this.fieldValue = fieldValue;
+}
+</code></pre>
+<p>}</p>
+<p>public class DuplicateResourceException extends RuntimeException {
+    public DuplicateResourceException(String message) { super(message); }
+}
+```</p>
+<h3 id="632-userservice">6.3.2 UserService 구현체</h3>
+<p>이제 실제 CRUD 로직을 구현해보자. 인터페이스에서 <code>Mono&lt;User&gt; createUser(User)</code>, <code>Mono&lt;User&gt; getUserById(String)</code>, <code>Flux&lt;User&gt; getAllUsers()</code> 같은 메서드를 선언했다면, 구현체에서는 리액티브 패턴을 활용해서 이를 구현한다.</p>
+<p>```java
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class UserServiceImpl implements UserService {</p>
+<pre><code>private final UserRepository userRepository;
 
-    public ResourceNotFoundException(String resourceName, String fieldName,
-                                     String fieldValue) {
-        super(String.format("%s not found with %s: '%s'",
-                resourceName, fieldName, fieldValue));
-        this.resourceName = resourceName;
-        this.fieldName = fieldName;
-        this.fieldValue = fieldValue;
-    }
+@Override
+public Mono&lt;User&gt; createUser(User user) {
+    return userRepository.existsByEmail(user.getEmail())
+            .flatMap(exists -&gt; {
+                if (exists) {
+                    return Mono.error(new DuplicateResourceException(
+                            "Email already exists: " + user.getEmail()));
+                }
+                return userRepository.save(user);
+            })
+            .doOnSuccess(saved -&gt; log.info("User created: {}", saved.getId()));
 }
 
-public class DuplicateResourceException extends RuntimeException {
-    public DuplicateResourceException(String message) { super(message); }
-}</code></pre>
-<h3 id="632-userservice">6.3.2 UserService 구현체</h3>
-<p>인터페이스에서 <code>Mono&lt;User&gt; createUser(User)</code>, <code>Mono&lt;User&gt; getUserById(String)</code>, <code>Flux&lt;User&gt; getAllUsers()</code> 등의 CRUD 메서드를 정의하고, 구현체를 작성한다.</p>
-<pre class="highlight"><code class="language-java">@Service
-@RequiredArgsConstructor
-@Slf4j
-public class UserServiceImpl implements UserService {
+@Override
+public Mono&lt;User&gt; getUserById(String id) {
+    return userRepository.findById(id)
+            .switchIfEmpty(Mono.error(
+                    new ResourceNotFoundException("User", "id", id)));
+}
 
-    private final UserRepository userRepository;
+@Override
+public Flux&lt;User&gt; getAllUsers() { return userRepository.findAll(); }
 
-    @Override
-    public Mono&lt;User&gt; createUser(User user) {
-        return userRepository.existsByEmail(user.getEmail())
-                .flatMap(exists -&gt; {
-                    if (exists) {
-                        return Mono.error(new DuplicateResourceException(
-                                "Email already exists: " + user.getEmail()));
-                    }
-                    return userRepository.save(user);
-                })
-                .doOnSuccess(saved -&gt; log.info("User created: {}", saved.getId()));
-    }
+@Override
+public Flux&lt;User&gt; searchUsers(String keyword) {
+    return userRepository.searchByName(keyword);
+}
 
-    @Override
-    public Mono&lt;User&gt; getUserById(String id) {
-        return userRepository.findById(id)
-                .switchIfEmpty(Mono.error(
-                        new ResourceNotFoundException("User", "id", id)));
-    }
+@Override
+public Mono&lt;User&gt; updateUser(String id, User user) {
+    return userRepository.findById(id)
+            .switchIfEmpty(Mono.error(
+                    new ResourceNotFoundException("User", "id", id)))
+            .flatMap(existingUser -&gt; {
+                existingUser.updateProfile(user.getName(), user.getEmail());
+                return userRepository.save(existingUser);
+            })
+            .doOnSuccess(updated -&gt; log.info("User updated: {}", updated.getId()));
+}
 
-    @Override
-    public Flux&lt;User&gt; getAllUsers() { return userRepository.findAll(); }
-
-    @Override
-    public Flux&lt;User&gt; searchUsers(String keyword) {
-        return userRepository.searchByName(keyword);
-    }
-
-    @Override
-    public Mono&lt;User&gt; updateUser(String id, User user) {
-        return userRepository.findById(id)
-                .switchIfEmpty(Mono.error(
-                        new ResourceNotFoundException("User", "id", id)))
-                .flatMap(existingUser -&gt; {
-                    existingUser.updateProfile(user.getName(), user.getEmail());
-                    return userRepository.save(existingUser);
-                })
-                .doOnSuccess(updated -&gt; log.info("User updated: {}", updated.getId()));
-    }
-
-    @Override
-    public Mono&lt;Void&gt; deleteUser(String id) {
-        return userRepository.findById(id)
-                .switchIfEmpty(Mono.error(
-                        new ResourceNotFoundException("User", "id", id)))
-                .flatMap(userRepository::delete)
-                .doOnSuccess(v -&gt; log.info("User deleted: {}", id));
-    }
-}</code></pre>
-<p>핵심 패턴: <code>switchIfEmpty</code>는 리액티브에서 <code>null</code> 검사를 대체하고, <code>flatMap</code>은 비동기 연산을 체이닝하며, <code>doOnSuccess</code>는 로깅 등 사이드 이펙트를 수행한다.</p>
+@Override
+public Mono&lt;Void&gt; deleteUser(String id) {
+    return userRepository.findById(id)
+            .switchIfEmpty(Mono.error(
+                    new ResourceNotFoundException("User", "id", id)))
+            .flatMap(userRepository::delete)
+            .doOnSuccess(v -&gt; log.info("User deleted: {}", id));
+}
+</code></pre>
+<p>}
+```</p>
+<p>이 코드에서 핵심적으로 봐야 할 패턴들이 있다. <code>switchIfEmpty</code>는 <code>null</code> 검사를 리액티브 방식으로 대체하는 것이고, <code>flatMap</code>은 비동기 작업을 체인처럼 연결해준다. 그리고 <code>doOnSuccess</code>는 로깅처럼 사이드 이펙트를 일으키는 부분이다. 이 세 가지를 조합하면 리액티브하면서도 안전한 서비스 로직을 만들 수 있기 때문이다.</p>
 <h3 id="633-postservice">6.3.3 PostService 구현체</h3>
-<p><code>PostService</code>도 동일한 패턴을 따른다. 핵심 메서드만 발췌한다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p><code>PostService</code>도 UserService와 거의 동일한 패턴을 따른다. 여기서는 게시글 관련 핵심 메서드만 보여주겠다.</p>
+<p>```java
+@Service
 @RequiredArgsConstructor
 @Slf4j
-public class PostService {
+public class PostService {</p>
+<pre><code>private final PostRepository postRepository;
 
-    private final PostRepository postRepository;
+public Mono&lt;Post&gt; createPost(Post post) {
+    return postRepository.save(post)
+            .doOnSuccess(saved -&gt; log.info("Post created: {}", saved.getId()));
+}
 
-    public Mono&lt;Post&gt; createPost(Post post) {
-        return postRepository.save(post)
-                .doOnSuccess(saved -&gt; log.info("Post created: {}", saved.getId()));
-    }
+public Mono&lt;Post&gt; getPostById(String id) {
+    return postRepository.findById(id)
+            .switchIfEmpty(Mono.error(
+                    new ResourceNotFoundException("Post", "id", id)));
+}
 
-    public Mono&lt;Post&gt; getPostById(String id) {
-        return postRepository.findById(id)
-                .switchIfEmpty(Mono.error(
-                        new ResourceNotFoundException("Post", "id", id)));
-    }
+public Flux&lt;Post&gt; getPostsByAuthor(String authorId, int page, int size) {
+    PageRequest pageable = PageRequest.of(page, size,
+            Sort.by(Sort.Direction.DESC, "createdAt"));
+    return postRepository.findByAuthorId(authorId, pageable);
+}
 
-    public Flux&lt;Post&gt; getPostsByAuthor(String authorId, int page, int size) {
-        PageRequest pageable = PageRequest.of(page, size,
-                Sort.by(Sort.Direction.DESC, "createdAt"));
-        return postRepository.findByAuthorId(authorId, pageable);
-    }
+public Mono&lt;Long&gt; countPostsByAuthor(String authorId) { return postRepository.countByAuthorId(authorId); }
 
-    public Mono&lt;Long&gt; countPostsByAuthor(String authorId) { return postRepository.countByAuthorId(authorId); }
+public Mono&lt;Post&gt; updatePost(String id, Post post) {
+    return postRepository.findById(id)
+            .switchIfEmpty(Mono.error(
+                    new ResourceNotFoundException("Post", "id", id)))
+            .flatMap(existing -&gt; {
+                existing.update(post.getTitle(), post.getContent(), post.getTags());
+                return postRepository.save(existing);
+            });
+}
 
-    public Mono&lt;Post&gt; updatePost(String id, Post post) {
-        return postRepository.findById(id)
-                .switchIfEmpty(Mono.error(
-                        new ResourceNotFoundException("Post", "id", id)))
-                .flatMap(existing -&gt; {
-                    existing.update(post.getTitle(), post.getContent(), post.getTags());
-                    return postRepository.save(existing);
-                });
-    }
-
-    public Mono&lt;Void&gt; deletePost(String id) {
-        return postRepository.findById(id)
-                .switchIfEmpty(Mono.error(
-                        new ResourceNotFoundException("Post", "id", id)))
-                .flatMap(postRepository::delete);
-    }
-}</code></pre>
+public Mono&lt;Void&gt; deletePost(String id) {
+    return postRepository.findById(id)
+            .switchIfEmpty(Mono.error(
+                    new ResourceNotFoundException("Post", "id", id)))
+            .flatMap(postRepository::delete);
+}
+</code></pre>
+<p>}
+```</p>
 <hr>
 <h2 id="64-restcontroller-crud-api">6.4 @RestController로 CRUD API 만들기</h2>
+<p>마지막으로 클라이언트 요청을 받아서 처리하는 컨트롤러를 만든다. 리액티브 컨트롤러는 동기식 방식과 몇 가지 다른 점이 있다.</p>
 <h3 id="641-usercontroller">6.4.1 UserController</h3>
-<pre class="highlight"><code class="language-java">@RestController
+<p>```java
+@RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
-public class UserController {
+public class UserController {</p>
+<pre><code>private final UserService userService;
 
-    private final UserService userService;
+@PostMapping
+@ResponseStatus(HttpStatus.CREATED)
+public Mono&lt;UserResponse&gt; createUser(@RequestBody CreateUserRequest request) {
+    User user = User.builder()
+            .name(request.name())
+            .email(request.email())
+            .password(request.password())
+            .build();
+    return userService.createUser(user)
+            .map(UserResponse::from);
+}
 
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Mono&lt;UserResponse&gt; createUser(@RequestBody CreateUserRequest request) {
-        User user = User.builder()
-                .name(request.name())
-                .email(request.email())
-                .password(request.password())
-                .build();
-        return userService.createUser(user)
-                .map(UserResponse::from);
-    }
+@GetMapping("/{id}")
+public Mono&lt;ResponseEntity&lt;UserResponse&gt;&gt; getUserById(@PathVariable String id) {
+    return userService.getUserById(id)
+            .map(UserResponse::from)
+            .map(ResponseEntity::ok)
+            .defaultIfEmpty(ResponseEntity.notFound().build());
+}
 
-    @GetMapping("/{id}")
-    public Mono&lt;ResponseEntity&lt;UserResponse&gt;&gt; getUserById(@PathVariable String id) {
-        return userService.getUserById(id)
-                .map(UserResponse::from)
-                .map(ResponseEntity::ok)
-                .defaultIfEmpty(ResponseEntity.notFound().build());
-    }
+@GetMapping
+public Flux&lt;UserResponse&gt; getAllUsers() {
+    return userService.getAllUsers()
+            .map(UserResponse::from);
+}
 
-    @GetMapping
-    public Flux&lt;UserResponse&gt; getAllUsers() {
-        return userService.getAllUsers()
-                .map(UserResponse::from);
-    }
+@GetMapping("/search")
+public Flux&lt;UserResponse&gt; searchUsers(@RequestParam String keyword) {
+    return userService.searchUsers(keyword)
+            .map(UserResponse::from);
+}
 
-    @GetMapping("/search")
-    public Flux&lt;UserResponse&gt; searchUsers(@RequestParam String keyword) {
-        return userService.searchUsers(keyword)
-                .map(UserResponse::from);
-    }
+@PutMapping("/{id}")
+public Mono&lt;ResponseEntity&lt;UserResponse&gt;&gt; updateUser(
+        @PathVariable String id,
+        @RequestBody UpdateUserRequest request) {
+    User user = User.builder()
+            .name(request.name())
+            .email(request.email())
+            .build();
+    return userService.updateUser(id, user)
+            .map(UserResponse::from)
+            .map(ResponseEntity::ok);
+}
 
-    @PutMapping("/{id}")
-    public Mono&lt;ResponseEntity&lt;UserResponse&gt;&gt; updateUser(
-            @PathVariable String id,
-            @RequestBody UpdateUserRequest request) {
-        User user = User.builder()
-                .name(request.name())
-                .email(request.email())
-                .build();
-        return userService.updateUser(id, user)
-                .map(UserResponse::from)
-                .map(ResponseEntity::ok);
-    }
-
-    @DeleteMapping("/{id}")
-    public Mono&lt;ResponseEntity&lt;Void&gt;&gt; deleteUser(@PathVariable String id) {
-        return userService.deleteUser(id)
-                .then(Mono.just(ResponseEntity.noContent().&lt;Void&gt;build()));
-    }
-}</code></pre>
-<p>컨트롤러의 핵심 패턴은 다음과 같다.</p>
-<ul>
-<li><strong><code>@ResponseStatus</code></strong>: <code>ResponseEntity</code> 없이 상태 코드를 간편하게 지정한다.</li>
-<li><strong><code>ResponseEntity</code>를 <code>Mono</code>로 감싸기</strong>: <code>map(ResponseEntity::ok)</code>로 200 응답, <code>defaultIfEmpty(ResponseEntity.notFound().build())</code>로 404를 반환한다.</li>
-<li><strong><code>then()</code></strong>: <code>Mono&lt;Void&gt;</code> 완료 후 새로운 값을 발행한다. 삭제 후 204 응답에 활용한다.</li>
-</ul>
+@DeleteMapping("/{id}")
+public Mono&lt;ResponseEntity&lt;Void&gt;&gt; deleteUser(@PathVariable String id) {
+    return userService.deleteUser(id)
+            .then(Mono.just(ResponseEntity.noContent().&lt;Void&gt;build()));
+}
+</code></pre>
+<p>}
+```</p>
+<p>컨트롤러를 작성할 때 기억해야 할 패턴들이 있다. <code>@ResponseStatus</code>를 쓰면 <code>ResponseEntity</code> 없이 깔끔하게 상태 코드를 지정할 수 있다. 그리고 <code>ResponseEntity</code>를 <code>Mono</code>로 감싸서 <code>map(ResponseEntity::ok)</code>로 200 응답을 만들거나, <code>defaultIfEmpty</code>로 404를 처리하는 것이 관례다. 마지막으로 <code>then()</code>을 사용하면 <code>Mono&lt;Void&gt;</code>가 완료된 후 새로운 값을 내보낼 수 있는데, 삭제 후 204 응답을 줄 때 자주 쓰인다.</p>
 <h3 id="642-postcontroller">6.4.2 PostController</h3>
-<p><code>PostController</code>는 <code>UserController</code>와 동일한 패턴을 따른다. 페이징 조회 부분만 발췌한다.</p>
-<pre class="highlight"><code class="language-java">@RestController
+<p><code>PostController</code>도 UserController와 똑같은 패턴으로 작성된다. 여기서는 게시글 엔드포인트 중에서도 페이징 조회 부분을 중심으로 살펴보자.</p>
+<p>```java
+@RestController
 @RequestMapping("/api/posts")
 @RequiredArgsConstructor
-public class PostController {
+public class PostController {</p>
+<pre><code>private final PostService postService;
 
-    private final PostService postService;
+@PostMapping
+@ResponseStatus(HttpStatus.CREATED)
+public Mono&lt;PostResponse&gt; createPost(@RequestBody CreatePostRequest request) {
+    Post post = Post.builder()
+            .title(request.title())
+            .content(request.content())
+            .authorId(request.authorId())
+            .tags(request.tags())
+            .build();
+    return postService.createPost(post).map(PostResponse::from);
+}
 
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Mono&lt;PostResponse&gt; createPost(@RequestBody CreatePostRequest request) {
-        Post post = Post.builder()
-                .title(request.title())
-                .content(request.content())
-                .authorId(request.authorId())
-                .tags(request.tags())
-                .build();
-        return postService.createPost(post).map(PostResponse::from);
-    }
+@GetMapping("/{id}")
+public Mono&lt;ResponseEntity&lt;PostResponse&gt;&gt; getPostById(@PathVariable String id) {
+    return postService.getPostById(id)
+            .map(PostResponse::from)
+            .map(ResponseEntity::ok);
+}
 
-    @GetMapping("/{id}")
-    public Mono&lt;ResponseEntity&lt;PostResponse&gt;&gt; getPostById(@PathVariable String id) {
-        return postService.getPostById(id)
-                .map(PostResponse::from)
-                .map(ResponseEntity::ok);
-    }
+@GetMapping("/author/{authorId}")
+public Flux&lt;PostResponse&gt; getPostsByAuthor(
+        @PathVariable String authorId,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "10") int size) {
+    return postService.getPostsByAuthor(authorId, page, size)
+            .map(PostResponse::from);
+}
 
-    @GetMapping("/author/{authorId}")
-    public Flux&lt;PostResponse&gt; getPostsByAuthor(
-            @PathVariable String authorId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        return postService.getPostsByAuthor(authorId, page, size)
-                .map(PostResponse::from);
-    }
+@PutMapping("/{id}")
+public Mono&lt;ResponseEntity&lt;PostResponse&gt;&gt; updatePost(
+        @PathVariable String id, @RequestBody UpdatePostRequest request) {
+    Post post = Post.builder()
+            .title(request.title()).content(request.content())
+            .tags(request.tags()).build();
+    return postService.updatePost(id, post)
+            .map(PostResponse::from).map(ResponseEntity::ok);
+}
 
-    @PutMapping("/{id}")
-    public Mono&lt;ResponseEntity&lt;PostResponse&gt;&gt; updatePost(
-            @PathVariable String id, @RequestBody UpdatePostRequest request) {
-        Post post = Post.builder()
-                .title(request.title()).content(request.content())
-                .tags(request.tags()).build();
-        return postService.updatePost(id, post)
-                .map(PostResponse::from).map(ResponseEntity::ok);
-    }
-
-    @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public Mono&lt;Void&gt; deletePost(@PathVariable String id) {
-        return postService.deletePost(id);
-    }
-}</code></pre>
+@DeleteMapping("/{id}")
+@ResponseStatus(HttpStatus.NO_CONTENT)
+public Mono&lt;Void&gt; deletePost(@PathVariable String id) {
+    return postService.deletePost(id);
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="643-api">6.4.3 완성된 API 엔드포인트 정리</h3>
 <table>
 <thead>
@@ -1471,13 +1487,12 @@ public class PostController {
 <hr>
 <h2 id="65-dto">6.5 요청/응답 DTO 설계</h2>
 <h3 id="651-java-record-dto">6.5.1 Java record를 활용한 DTO</h3>
-<p>Java 16부터 도입된 <code>record</code> 클래스는 불변 데이터 캐리어에 적합하다. 생성자, <code>equals()</code>, <code>hashCode()</code>, <code>toString()</code>을 자동으로 생성하므로 DTO로 사용하기에 이상적이다.</p>
+<p>Java 16부터 <code>record</code>라는 새로운 클래스 타입이 추가되었는데, 이것은 DTO로 쓰기에 정말 좋다. 불변 데이터를 담는 용도로 설계되었고, 생성자나 <code>equals()</code>, <code>hashCode()</code>, <code>toString()</code> 같은 메서드를 자동으로 만들어주기 때문이다.</p>
 <p><strong>User 관련 DTO</strong></p>
-<pre class="highlight"><code class="language-java">public record CreateUserRequest(String name, String email, String password) {}
-
-public record UpdateUserRequest(String name, String email) {}
-
-public record UserResponse(
+<p>```java
+public record CreateUserRequest(String name, String email, String password) {}</p>
+<p>public record UpdateUserRequest(String name, String email) {}</p>
+<p>public record UserResponse(
         String id, String name, String email, String role,
         LocalDateTime createdAt, LocalDateTime updatedAt
 ) {
@@ -1486,17 +1501,17 @@ public record UserResponse(
         return new UserResponse(user.getId(), user.getName(), user.getEmail(),
                 user.getRole(), user.getCreatedAt(), user.getUpdatedAt());
     }
-}</code></pre>
+}
+```</p>
 <p><strong>Post 관련 DTO</strong></p>
-<p>Post DTO도 동일한 패턴이다. <code>PostResponse</code>의 <code>from()</code> 정적 팩토리 메서드만 발췌한다.</p>
-<pre class="highlight"><code class="language-java">public record CreatePostRequest(String title, String content,
-                                 String authorId, List&lt;String&gt; tags) {}
-
-public record UpdatePostRequest(String title, String content, List&lt;String&gt; tags) {}
-
-public record PostResponse(
+<p>Post DTO도 User와 동일한 방식으로 만들면 된다. 여기서는 <code>PostResponse</code>의 <code>from()</code> 정적 팩토리 메서드만 보여주겠다.</p>
+<p>```java
+public record CreatePostRequest(String title, String content,
+                                 String authorId, List<String> tags) {}</p>
+<p>public record UpdatePostRequest(String title, String content, List<String> tags) {}</p>
+<p>public record PostResponse(
         String id, String title, String content, String authorId,
-        List&lt;String&gt; tags, int viewCount,
+        List<String> tags, int viewCount,
         LocalDateTime createdAt, LocalDateTime updatedAt
 ) {
     public static PostResponse from(Post post) {
@@ -1505,141 +1520,144 @@ public record PostResponse(
                 post.getAuthorId(), post.getTags(), post.getViewCount(),
                 post.getCreatedAt(), post.getUpdatedAt());
     }
-}</code></pre>
+}
+```</p>
 <h3 id="652-dto">6.5.2 DTO 사용의 이점</h3>
-<p>도메인 모델을 직접 API 응답으로 노출하지 않고 DTO를 사용하는 이유: (1) <code>password</code>, <code>version</code> 등 내부 필드 노출 방지(<strong>보안</strong>), (2) 도메인 변경이 API 계약에 영향을 주지 않음(<strong>안정성</strong>), (3) 용도별 다른 DTO 제공 가능(<strong>유연성</strong>), (4) Bean Validation 적용 가능(<strong>검증</strong>, Chapter 9에서 상세히 다룬다).</p>
+<p>도메인 모델을 그대로 API 응답으로 주지 않고 DTO를 따로 만드는 이유가 있다. 첫째, <code>password</code>나 <code>version</code> 같은 민감한 내부 필드가 노출되는 것을 막을 수 있다는 보안상 이점이다. 둘째, 도메인 모델이 바뀌어도 API 계약이 깨지지 않으므로 안정성이 좋다. 셋째, 용도에 따라 다른 DTO를 제공할 수 있어 유연하다. 그리고 넷째, 나중에 Bean Validation을 적용할 때도 DTO 단계에서 검증하는 것이 깔끔하다. 이런 여러 이유가 조합되어 있기 때문이다.</p>
 <h3 id="653-dto">6.5.3 페이징 응답 DTO</h3>
-<p>페이징 결과를 감싸는 범용 DTO를 만들면 클라이언트에 페이징 메타 정보를 함께 전달할 수 있다.</p>
-<pre class="highlight"><code class="language-java">package com.example.webfluxdemo.dto;
-
-import java.util.List;
-
-public record PageResponse&lt;T&gt;(
-        List&lt;T&gt; content,
+<p>페이징 결과를 감싸는 범용 DTO를 하나 만들어두면, 모든 페이징 응답에서 일관되게 페이징 메타 정보를 클라이언트에 전달할 수 있다.</p>
+<p>```java
+package com.example.webfluxdemo.dto;</p>
+<p>import java.util.List;</p>
+<p>public record PageResponse<T>(
+        List<T> content,
         int page,
         int size,
         long totalElements,
         int totalPages
 ) {
-    public static &lt;T&gt; PageResponse&lt;T&gt; of(List&lt;T&gt; content, int page,
+    public static <T> PageResponse<T> of(List<T> content, int page,
                                           int size, long totalElements) {
         int totalPages = (int) Math.ceil((double) totalElements / size);
         return new PageResponse&lt;&gt;(content, page, size, totalElements, totalPages);
     }
-}</code></pre>
+}
+```</p>
 <p>컨트롤러에서 페이징 응답을 구성하는 예시:</p>
-<pre class="highlight"><code class="language-java">@GetMapping("/author/{authorId}")
-public Mono&lt;PageResponse&lt;PostResponse&gt;&gt; getPostsByAuthorPaged(
+<p>```java
+@GetMapping("/author/{authorId}")
+public Mono<PageResponse\<PostResponse>> getPostsByAuthorPaged(
         @PathVariable String authorId,
         @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "10") int size) {
+        @RequestParam(defaultValue = "10") int size) {</p>
+<pre><code>Mono&lt;List&lt;PostResponse&gt;&gt; contentMono = postService
+        .getPostsByAuthor(authorId, page, size)
+        .map(PostResponse::from)
+        .collectList();
 
-    Mono&lt;List&lt;PostResponse&gt;&gt; contentMono = postService
-            .getPostsByAuthor(authorId, page, size)
-            .map(PostResponse::from)
-            .collectList();
+Mono&lt;Long&gt; countMono = postService.countPostsByAuthor(authorId);
 
-    Mono&lt;Long&gt; countMono = postService.countPostsByAuthor(authorId);
-
-    return Mono.zip(contentMono, countMono)
-            .map(tuple -&gt; PageResponse.of(tuple.getT1(), page, size, tuple.getT2()));
-}</code></pre>
-<p><code>Mono.zip</code>으로 콘텐츠 조회와 총 개수 조회를 <strong>동시에</strong> 실행하고, 두 결과를 <code>PageResponse</code>로 조합한다. 리액티브 병렬 처리의 관용적 패턴이다.</p>
+return Mono.zip(contentMono, countMono)
+        .map(tuple -&gt; PageResponse.of(tuple.getT1(), page, size, tuple.getT2()));
+</code></pre>
+<p>}
+```</p>
+<p><code>Mono.zip</code>을 사용하면 콘텐츠 조회와 총 개수 조회를 <strong>동시에</strong> 실행할 수 있고, 나중에 두 결과를 조합해서 <code>PageResponse</code>로 만든다. 이것이 리액티브 환경에서 여러 비동기 작업을 병렬로 처리하는 관용적인 방법이다.</p>
 <hr>
 <h2 id="66-api">6.6 API 테스트</h2>
-<p>애플리케이션을 실행한 후, 다양한 도구로 API를 호출하여 동작을 검증한다.</p>
-<pre class="highlight"><code class="language-bash"># 애플리케이션 실행
-./gradlew bootRun</code></pre>
+<p>API를 제대로 만들었는지 확인하는 가장 좋은 방법은 직접 호출해보는 것이다. 여러 도구를 이용해서 이를 해보자.</p>
+<p>```bash</p>
+<h1 id="_7">애플리케이션 실행</h1>
+<p>./gradlew bootRun
+```</p>
 <h3 id="661-curl">6.6.1 cURL 테스트</h3>
 <p><strong>사용자 생성 (POST)</strong></p>
-<pre class="highlight"><code class="language-bash">curl -X POST http://localhost:8080/api/users \
+<p><code>bash
+curl -X POST http://localhost:8080/api/users \
   -H "Content-Type: application/json" \
   -d '{
     "name": "홍길동",
     "email": "hong@example.com",
     "password": "securePass123"
-  }'</code></pre>
+  }'</code></p>
 <p>응답 예시:</p>
-<pre class="highlight"><code class="language-json">{
+<p><code>json
+{
   "id": "65f1a2b3c4d5e6f7a8b9c0d1",
   "name": "홍길동",
   "email": "hong@example.com",
   "role": "USER",
   "createdAt": "2025-06-15T10:30:00",
   "updatedAt": "2025-06-15T10:30:00"
-}</code></pre>
+}</code></p>
 <p><strong>사용자 조회 (GET)</strong></p>
-<pre class="highlight"><code class="language-bash"># 전체 조회
-curl http://localhost:8080/api/users
-
-# 단건 조회
-curl http://localhost:8080/api/users/65f1a2b3c4d5e6f7a8b9c0d1</code></pre>
+<p>```bash</p>
+<h1 id="_8">전체 조회</h1>
+<p>curl http://localhost:8080/api/users</p>
+<h1 id="_9">단건 조회</h1>
+<p>curl http://localhost:8080/api/users/65f1a2b3c4d5e6f7a8b9c0d1
+```</p>
 <p><strong>수정 / 삭제 / 게시글</strong></p>
-<pre class="highlight"><code class="language-bash"># 사용자 수정
-curl -X PUT http://localhost:8080/api/users/65f1a2b3c4d5e6f7a8b9c0d1 \
+<p>```bash</p>
+<h1 id="_10">사용자 수정</h1>
+<p>curl -X PUT http://localhost:8080/api/users/65f1a2b3c4d5e6f7a8b9c0d1 \
   -H "Content-Type: application/json" \
-  -d '{ "name": "홍길동(수정)", "email": "hong-updated@example.com" }'
-
-# 사용자 삭제
-curl -X DELETE http://localhost:8080/api/users/65f1a2b3c4d5e6f7a8b9c0d1 -v
-
-# 게시글 생성
-curl -X POST http://localhost:8080/api/posts \
+  -d '{ "name": "홍길동(수정)", "email": "hong-updated@example.com" }'</p>
+<h1 id="_11">사용자 삭제</h1>
+<p>curl -X DELETE http://localhost:8080/api/users/65f1a2b3c4d5e6f7a8b9c0d1 -v</p>
+<h1 id="_12">게시글 생성</h1>
+<p>curl -X POST http://localhost:8080/api/posts \
   -H "Content-Type: application/json" \
   -d '{ "title": "WebFlux 첫 글", "content": "리액티브 API 구현",
-        "authorId": "65f1a2b3c4d5e6f7a8b9c0d1", "tags": ["spring","webflux"] }'
-
-# 게시글 검색
-curl "http://localhost:8080/api/posts/search?keyword=WebFlux"
-
-# 작성자별 페이징 조회
-curl "http://localhost:8080/api/posts/author/65f1a2b3c4d5e6f7a8b9c0d1?page=0&amp;size=5"</code></pre>
+        "authorId": "65f1a2b3c4d5e6f7a8b9c0d1", "tags": ["spring","webflux"] }'</p>
+<h1 id="_13">게시글 검색</h1>
+<p>curl "http://localhost:8080/api/posts/search?keyword=WebFlux"</p>
+<h1 id="_14">작성자별 페이징 조회</h1>
+<p>curl "http://localhost:8080/api/posts/author/65f1a2b3c4d5e6f7a8b9c0d1?page=0&amp;size=5"
+```</p>
 <h3 id="662-httpie">6.6.2 HTTPie 테스트</h3>
-<p>HTTPie는 cURL보다 직관적인 문법을 제공하는 HTTP 클라이언트다.</p>
-<pre class="highlight"><code class="language-bash"># 사용자 생성 — JSON 필드를 key=value 형식으로 전달
-http POST localhost:8080/api/users \
-  name="김철수" email="kim@example.com" password="pass1234"
-
-# 조회
-http localhost:8080/api/users
-
-# 게시글 생성 — JSON 배열은 := 연산자로 전달
-http POST localhost:8080/api/posts \
+<p>cURL도 좋지만, HTTPie라는 도구를 쓰면 더 직관적으로 API를 테스트할 수 있다.</p>
+<p>```bash</p>
+<h1 id="json-keyvalue">사용자 생성 — JSON 필드를 key=value 형식으로 전달</h1>
+<p>http POST localhost:8080/api/users \
+  name="김철수" email="kim@example.com" password="pass1234"</p>
+<h1 id="_15">조회</h1>
+<p>http localhost:8080/api/users</p>
+<h1 id="json">게시글 생성 — JSON 배열은 := 연산자로 전달</h1>
+<p>http POST localhost:8080/api/posts \
   title="HTTPie 테스트" content="HTTPie로 API를 테스트합니다." \
-  authorId="65f1a2b3c4d5e6f7a8b9c0d1" tags:='["test", "httpie"]'</code></pre>
+  authorId="65f1a2b3c4d5e6f7a8b9c0d1" tags:='["test", "httpie"]'
+```</p>
 <blockquote>
 <p><strong>팁</strong>: HTTPie에서 <code>=</code>는 문자열, <code>:=</code>는 JSON 리터럴(숫자, 배열, 객체, boolean)을 전달한다.</p>
 </blockquote>
 <h3 id="663-intellij-http-client">6.6.3 IntelliJ HTTP Client</h3>
-<p>IntelliJ IDEA에 내장된 HTTP Client를 사용하면 <code>.http</code> 파일로 요청을 관리할 수 있다. 프로젝트 루트에 <code>.http</code> 파일을 작성한다.</p>
-<pre class="highlight"><code class="language-http">### 사용자 생성
-POST http://localhost:8080/api/users
-Content-Type: application/json
-
-{
+<p>IntelliJ IDEA를 쓰는 개발자라면, 내장된 HTTP Client 기능을 활용하는 게 제일 편하다. <code>.http</code> 파일로 모든 API 요청을 관리할 수 있기 때문이다. 프로젝트 루트에 <code>.http</code> 파일을 만들어보자.</p>
+<p>```http</p>
+<h3 id="_16">사용자 생성</h3>
+<p>POST http://localhost:8080/api/users
+Content-Type: application/json</p>
+<p>{
   "name": "이영희",
   "email": "lee@example.com",
   "password": "myPassword456"
-}
-
-### 전체 사용자 조회
-GET http://localhost:8080/api/users
-
-### 사용자 수정
-PUT http://localhost:8080/api/users/{{userId}}
-Content-Type: application/json
-
-{
+}</p>
+<h3 id="_17">전체 사용자 조회</h3>
+<p>GET http://localhost:8080/api/users</p>
+<h3 id="_18">사용자 수정</h3>
+<p>PUT http://localhost:8080/api/users/{{userId}}
+Content-Type: application/json</p>
+<p>{
   "name": "이영희(수정)",
   "email": "lee-updated@example.com"
-}
-
-### 사용자 삭제
-DELETE http://localhost:8080/api/users/{{userId}}</code></pre>
-<p><code>{{userId}}</code>와 같은 변수는 <code>http-client.env.json</code> 파일에서 환경별로 관리한다. <code>.http</code> 파일을 Git으로 관리하면 팀원과 API 테스트를 공유할 수 있다는 것이 큰 장점이다.</p>
+}</p>
+<h3 id="_19">사용자 삭제</h3>
+<p>DELETE http://localhost:8080/api/users/{{userId}}
+```</p>
+<p><code>{{userId}}</code>처럼 변수화한 부분은 <code>http-client.env.json</code>에서 환경별로 관리한다. 그리고 <code>.http</code> 파일을 Git에 넣어서 관리하면 팀원들과 같은 API 테스트를 공유할 수 있다는 게 정말 큰 장점이다.</p>
 <hr>
 <h2 id="6">6장 정리</h2>
-<p>이번 장에서 다룬 핵심 내용을 정리한다.</p>
+<p>이번 장에서 배운 것들을 한번 정리해보자.</p>
 <table>
 <thead>
 <tr>
@@ -1674,14 +1692,13 @@ DELETE http://localhost:8080/api/users/{{userId}}</code></pre>
 </tr>
 </tbody>
 </table>
-<p>다음 Chapter 7에서는 어노테이션 방식 대신 <strong>함수형 엔드포인트(Router Functions)</strong> 를 사용하여 동일한 API를 구현하고, 두 방식의 차이점과 장단점을 비교한다.</p>
-<hr>
+<p>이제 기본적인 REST API를 어노테이션 방식으로 만들어봤다. 다음 Chapter 7에서는 다른 방식으로 <strong>함수형 엔드포인트(Router Functions)</strong> 를 사용해서 똑같은 API를 구현해보고, 어떤 차이가 있는지 비교해볼 예정이다.</p>
 <h1 id="chapter-7-router-functions">Chapter 7. 함수형 엔드포인트 (Router Functions)</h1>
-<p>앞선 Chapter 6에서는 <code>@RestController</code>와 어노테이션 기반으로 REST API를 구현했다. Spring WebFlux는 또 다른 프로그래밍 모델인 <strong>함수형 엔드포인트</strong>를 제공한다. 이번 장에서는 <code>RouterFunction</code>과 <code>HandlerFunction</code>을 사용하여 동일한 API를 함수형 방식으로 구현하고, 두 방식의 차이를 비교한다.</p>
+<p>Chapter 6에서는 <code>@RestController</code>와 어노테이션 기반 방식으로 REST API를 구현했는데, Spring WebFlux는 이와는 다른 접근 방식을 하나 더 제공한다. 바로 <strong>함수형 엔드포인트(Functional Endpoints)</strong>라는 프로그래밍 모델이다. 이번 장에서는 <code>RouterFunction</code>과 <code>HandlerFunction</code>을 활용해 동일한 API를 함수형 방식으로 구현해보고, 두 방식 사이의 장단점을 실제로 비교해볼 것이다.</p>
 <hr>
 <h2 id="71-handlerfunction-routerfunction">7.1 HandlerFunction과 RouterFunction 이해</h2>
 <h3 id="711">7.1.1 함수형 엔드포인트의 핵심 구성 요소</h3>
-<p>함수형 엔드포인트는 두 가지 핵심 인터페이스로 구성된다.</p>
+<p>함수형 엔드포인트는 사실 그리 복잡하지 않다. 두 가지 핵심 인터페이스만 이해하면 충분하다.</p>
 <table>
 <thead>
 <tr>
@@ -1714,27 +1731,31 @@ DELETE http://localhost:8080/api/users/{{userId}}</code></pre>
 </tbody>
 </table>
 <h3 id="712-handlerfunction">7.1.2 HandlerFunction 인터페이스</h3>
-<p><code>HandlerFunction&lt;T extends ServerResponse&gt;</code>는 <code>ServerRequest</code>를 받아 <code>Mono&lt;T&gt;</code>를 반환하는 함수형 인터페이스다.</p>
-<pre class="highlight"><code class="language-java">@FunctionalInterface
+<p><code>HandlerFunction&lt;T extends ServerResponse&gt;</code>를 먼저 살펴보자. 이것은 <code>ServerRequest</code>를 받아 <code>Mono&lt;T&gt;</code>를 반환하는 함수형 인터페이스이기 때문에</p>
+<p><code>java
+@FunctionalInterface
 public interface HandlerFunction&lt;T extends ServerResponse&gt; {
     Mono&lt;T&gt; handle(ServerRequest request);
-}</code></pre>
-<p>개념적으로 보면 <code>Function&lt;ServerRequest, Mono&lt;ServerResponse&gt;&gt;</code>와 동일하다. 이 단순한 시그니처 덕분에 람다로 간결하게 핸들러를 작성할 수 있다.</p>
-<pre class="highlight"><code class="language-java">// 람다로 작성한 간단한 핸들러
+}</code></p>
+<p>개념상으로는 <code>Function&lt;ServerRequest, Mono&lt;ServerResponse&gt;&gt;</code>와 다를 바 없다. 그래서 이 단순한 시그니처 덕분에 람다로 아주 간결하게 핸들러를 작성할 수 있는 장점이 생기는 거다.</p>
+<p><code>java
+// 람다로 작성한 간단한 핸들러
 HandlerFunction&lt;ServerResponse&gt; helloHandler = request -&gt;
     ServerResponse.ok()
         .contentType(MediaType.TEXT_PLAIN)
-        .bodyValue("Hello, WebFlux!");</code></pre>
+        .bodyValue("Hello, WebFlux!");</code></p>
 <h3 id="713-routerfunction">7.1.3 RouterFunction 인터페이스</h3>
-<p><code>RouterFunction&lt;T extends ServerResponse&gt;</code>는 요청을 분석하여 적절한 <code>HandlerFunction</code>으로 연결하는 역할을 한다.</p>
-<pre class="highlight"><code class="language-java">@FunctionalInterface
+<p>한편 <code>RouterFunction&lt;T extends ServerResponse&gt;</code>는 들어오는 요청을 분석해서 적절한 <code>HandlerFunction</code>으로 보내주는 역할을 담당한다.</p>
+<p><code>java
+@FunctionalInterface
 public interface RouterFunction&lt;T extends ServerResponse&gt; {
     Mono&lt;HandlerFunction&lt;T&gt;&gt; route(ServerRequest request);
-}</code></pre>
-<p>직접 구현하기보다는 <code>RouterFunctions.route()</code> 헬퍼 메서드를 사용하여 선언적으로 라우팅을 정의한다.</p>
+}</code></p>
+<p>물론 직접 구현할 수도 있지만, 보통은 <code>RouterFunctions.route()</code> 같은 헬퍼 메서드를 사용해서 선언적으로 라우팅을 정의하는 방식을 선호한다.</p>
 <h3 id="714-serverrequest-serverresponse">7.1.4 ServerRequest와 ServerResponse</h3>
-<p><strong>ServerRequest</strong>는 불변 객체로, HTTP 메서드, URI, 헤더, 쿼리 파라미터, 요청 바디에 접근하는 메서드를 제공한다.</p>
-<pre class="highlight"><code class="language-java">// ServerRequest 주요 메서드
+<p><strong>ServerRequest</strong>는 불변 객체인데, HTTP 메서드, URI, 헤더, 쿼리 파라미터, 요청 바디 등 필요한 모든 정보에 접근할 수 있는 메서드들을 제공한다.</p>
+<p><code>java
+// ServerRequest 주요 메서드
 request.method();                          // HTTP 메서드
 request.uri();                             // 전체 URI
 request.path();                            // 경로
@@ -1742,111 +1763,113 @@ request.pathVariable("id");               // 경로 변수
 request.queryParam("name");               // 쿼리 파라미터 (Optional)
 request.headers();                         // 헤더 접근
 request.bodyToMono(Product.class);        // 바디를 Mono로 변환
-request.bodyToFlux(Product.class);        // 바디를 Flux로 변환</code></pre>
-<p><strong>ServerResponse</strong>는 빌더 패턴으로 HTTP 응답을 구성한다.</p>
-<pre class="highlight"><code class="language-java">// 200 OK + JSON 바디
+request.bodyToFlux(Product.class);        // 바디를 Flux로 변환</code></p>
+<p>한편 <strong>ServerResponse</strong>는 빌더 패턴을 사용해서 HTTP 응답을 유연하게 구성할 수 있도록 해준다.</p>
+<p>```java
+// 200 OK + JSON 바디
 ServerResponse.ok()
     .contentType(MediaType.APPLICATION_JSON)
-    .bodyValue(product);
-
-// 201 Created + Location 헤더
+    .bodyValue(product);</p>
+<p>// 201 Created + Location 헤더
 ServerResponse.created(URI.create("/api/products/" + id))
-    .bodyValue(savedProduct);
-
-// 204 No Content
-ServerResponse.noContent().build();
-
-// 404 Not Found
-ServerResponse.notFound().build();
-
-// Mono/Flux를 바디로 설정
+    .bodyValue(savedProduct);</p>
+<p>// 204 No Content
+ServerResponse.noContent().build();</p>
+<p>// 404 Not Found
+ServerResponse.notFound().build();</p>
+<p>// Mono/Flux를 바디로 설정
 ServerResponse.ok().body(productMono, Product.class);
-ServerResponse.ok().body(productFlux, Product.class);</code></pre>
+ServerResponse.ok().body(productFlux, Product.class);
+```</p>
 <hr>
 <h2 id="72-routerfunction">7.2 RouterFunction으로 라우팅 정의하기</h2>
 <h3 id="721">7.2.1 기본 라우팅 정의</h3>
-<p><code>RouterFunctions.route()</code>와 <code>RequestPredicates</code>를 조합하여 라우팅 규칙을 정의한다.</p>
-<pre class="highlight"><code class="language-java">import static org.springframework.web.reactive.function.server.RouterFunctions.route;
-import static org.springframework.web.reactive.function.server.RequestPredicates.*;
-
-@Configuration
-public class ProductRouter {
-
-    @Bean
-    public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
-        return route(GET("/api/products"), handler::getAll)
-            .andRoute(GET("/api/products/{id}"), handler::getById)
-            .andRoute(POST("/api/products"), handler::create)
-            .andRoute(PUT("/api/products/{id}"), handler::update)
-            .andRoute(DELETE("/api/products/{id}"), handler::delete);
-    }
-}</code></pre>
-<p><code>RequestPredicates</code>는 요청 조건을 표현하는 유틸리티 클래스다. HTTP 메서드, 경로, 콘텐츠 타입 등 다양한 조건을 조합할 수 있다.</p>
-<pre class="highlight"><code class="language-java">// 메서드 + 경로
-GET("/api/products")
-POST("/api/products")
-
-// 경로만
-path("/api/products")
-
-// 콘텐츠 타입 조건 추가
-POST("/api/products").and(contentType(MediaType.APPLICATION_JSON))
-
-// Accept 헤더 조건
-GET("/api/products").and(accept(MediaType.APPLICATION_JSON))
-
-// 조건 결합
-method(HttpMethod.GET).and(path("/api/products")).and(accept(MediaType.APPLICATION_JSON))</code></pre>
-<h3 id="722-nest">7.2.2 nest()로 라우팅 그룹화</h3>
-<p>공통 경로 접두사나 조건을 공유하는 라우트를 <code>nest()</code>로 그룹화하면 중복을 제거하고 가독성을 높일 수 있다.</p>
-<pre class="highlight"><code class="language-java">@Configuration
-public class ProductRouter {
-
-    @Bean
-    public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
-        return nest(path("/api/products"),
-            route(GET(""), handler::getAll)
-            .andRoute(GET("/{id}"), handler::getById)
-            .andRoute(POST("").and(contentType(MediaType.APPLICATION_JSON)), handler::create)
-            .andRoute(PUT("/{id}").and(contentType(MediaType.APPLICATION_JSON)), handler::update)
-            .andRoute(DELETE("/{id}"), handler::delete)
-        );
-    }
-}</code></pre>
-<p>여러 리소스를 하나의 설정 클래스에서 관리할 수도 있다.</p>
-<pre class="highlight"><code class="language-java">@Configuration
-public class AppRouter {
-
-    @Bean
-    public RouterFunction&lt;ServerResponse&gt; routes(
-            ProductHandler productHandler,
-            CategoryHandler categoryHandler,
-            OrderHandler orderHandler) {
-
-        return nest(path("/api"),
-            nest(path("/products"),
-                route(GET(""), productHandler::getAll)
-                .andRoute(GET("/{id}"), productHandler::getById)
-                .andRoute(POST(""), productHandler::create)
-                .andRoute(PUT("/{id}"), productHandler::update)
-                .andRoute(DELETE("/{id}"), productHandler::delete)
-            )
-            .andNest(path("/categories"),
-                route(GET(""), categoryHandler::getAll)
-                .andRoute(GET("/{id}"), categoryHandler::getById)
-                .andRoute(POST(""), categoryHandler::create)
-            )
-            .andNest(path("/orders"),
-                route(GET(""), orderHandler::getAll)
-                .andRoute(POST(""), orderHandler::create)
-            )
-        );
-    }
-}</code></pre>
-<h3 id="723">7.2.3 필터 적용</h3>
-<p><code>RouterFunction</code>에 <code>filter()</code>를 적용하여 요청/응답을 가로채는 공통 로직을 추가할 수 있다. 어노테이션 방식의 <code>WebFilter</code>나 <code>HandlerInterceptor</code>에 대응하는 개념이다.</p>
-<pre class="highlight"><code class="language-java">@Bean
+<p>실제로 라우팅을 정의할 때는 <code>RouterFunctions.route()</code>와 <code>RequestPredicates</code>를 조합해서 사용한다. 어렵지 않으니 바로 코드로 살펴보자.</p>
+<p>```java
+import static org.springframework.web.reactive.function.server.RouterFunctions.route;
+import static org.springframework.web.reactive.function.server.RequestPredicates.*;</p>
+<p>@Configuration
+public class ProductRouter {</p>
+<pre><code>@Bean
 public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
+    return route(GET("/api/products"), handler::getAll)
+        .andRoute(GET("/api/products/{id}"), handler::getById)
+        .andRoute(POST("/api/products"), handler::create)
+        .andRoute(PUT("/api/products/{id}"), handler::update)
+        .andRoute(DELETE("/api/products/{id}"), handler::delete);
+}
+</code></pre>
+<p>}
+```</p>
+<p><code>RequestPredicates</code>는 요청 조건을 표현하는 유틸리티 클래스다. HTTP 메서드, 경로, 콘텐츠 타입 등 다양한 조건을 조합할 수 있다.</p>
+<p>```java
+// 메서드 + 경로
+GET("/api/products")
+POST("/api/products")</p>
+<p>// 경로만
+path("/api/products")</p>
+<p>// 콘텐츠 타입 조건 추가
+POST("/api/products").and(contentType(MediaType.APPLICATION_JSON))</p>
+<p>// Accept 헤더 조건
+GET("/api/products").and(accept(MediaType.APPLICATION_JSON))</p>
+<p>// 조건 결합
+method(HttpMethod.GET).and(path("/api/products")).and(accept(MediaType.APPLICATION_JSON))
+```</p>
+<h3 id="722-nest">7.2.2 nest()로 라우팅 그룹화</h3>
+<p>같은 경로 접두사를 쓰는 라우트들이 많을 때는 <code>nest()</code>를 사용해서 그룹화하면 중복 코드를 줄일 수 있다. 또한 코드도 훨씬 읽기 쉬워진다.</p>
+<p>```java
+@Configuration
+public class ProductRouter {</p>
+<pre><code>@Bean
+public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
+    return nest(path("/api/products"),
+        route(GET(""), handler::getAll)
+        .andRoute(GET("/{id}"), handler::getById)
+        .andRoute(POST("").and(contentType(MediaType.APPLICATION_JSON)), handler::create)
+        .andRoute(PUT("/{id}").and(contentType(MediaType.APPLICATION_JSON)), handler::update)
+        .andRoute(DELETE("/{id}"), handler::delete)
+    );
+}
+</code></pre>
+<p>}
+```</p>
+<p>당연히 여러 리소스를 함께 관리하는 것도 가능하다. 한 설정 클래스에서 <code>products</code>, <code>categories</code>, <code>orders</code> 같은 여러 엔드포인트를 한 번에 정의할 수 있다.</p>
+<p>```java
+@Configuration
+public class AppRouter {</p>
+<pre><code>@Bean
+public RouterFunction&lt;ServerResponse&gt; routes(
+        ProductHandler productHandler,
+        CategoryHandler categoryHandler,
+        OrderHandler orderHandler) {
+
+    return nest(path("/api"),
+        nest(path("/products"),
+            route(GET(""), productHandler::getAll)
+            .andRoute(GET("/{id}"), productHandler::getById)
+            .andRoute(POST(""), productHandler::create)
+            .andRoute(PUT("/{id}"), productHandler::update)
+            .andRoute(DELETE("/{id}"), productHandler::delete)
+        )
+        .andNest(path("/categories"),
+            route(GET(""), categoryHandler::getAll)
+            .andRoute(GET("/{id}"), categoryHandler::getById)
+            .andRoute(POST(""), categoryHandler::create)
+        )
+        .andNest(path("/orders"),
+            route(GET(""), orderHandler::getAll)
+            .andRoute(POST(""), orderHandler::create)
+        )
+    );
+}
+</code></pre>
+<p>}
+```</p>
+<h3 id="723">7.2.3 필터 적용</h3>
+<p><code>RouterFunction</code>에 <code>filter()</code>를 적용해서 요청과 응답을 가로채고 공통 로직을 추가할 수 있다. 어노테이션 방식의 <code>WebFilter</code>나 <code>HandlerInterceptor</code>와 비슷한 역할을 한다고 생각하면 된다.</p>
+<p>```java
+@Bean
+public RouterFunction<ServerResponse> productRoutes(ProductHandler handler) {
     return nest(path("/api/products"),
         route(GET(""), handler::getAll)
         .andRoute(GET("/{id}"), handler::getById)
@@ -1854,18 +1877,20 @@ public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler
     )
     .filter((request, next) -&gt; {
         long startTime = System.currentTimeMillis();
-        log.info("Request: {} {}", request.method(), request.path());
-
-        return next.handle(request)
-            .doOnSuccess(response -&gt; {
-                long duration = System.currentTimeMillis() - startTime;
-                log.info("Response: {} ({}ms)", response.statusCode(), duration);
-            });
-    });
-}</code></pre>
+        log.info("Request: {} {}", request.method(), request.path());</p>
+<pre><code>    return next.handle(request)
+        .doOnSuccess(response -&gt; {
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("Response: {} ({}ms)", response.statusCode(), duration);
+        });
+});
+</code></pre>
+<p>}
+```</p>
 <h3 id="724-before-after">7.2.4 before()와 after()</h3>
-<p><code>filter()</code> 외에도 <code>before()</code>와 <code>after()</code>로 요청 전/후 처리를 분리할 수 있다.</p>
-<pre class="highlight"><code class="language-java">@Bean
+<p>만약 요청 전/후 처리를 좀 더 깔끔하게 분리하고 싶다면, <code>filter()</code> 대신 <code>before()</code>와 <code>after()</code>를 사용할 수 있다.</p>
+<p><code>java
+@Bean
 public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
     return route(GET("/api/products"), handler::getAll)
         .andRoute(POST("/api/products"), handler::create)
@@ -1877,232 +1902,247 @@ public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler
             log.info("[After] {} -&gt; {}", request.path(), response.statusCode());
             return response;
         });
-}</code></pre>
+}</code></p>
 <hr>
 <h2 id="73-handlerfunction">7.3 HandlerFunction 구현</h2>
 <h3 id="731-handler">7.3.1 Handler 클래스 구조</h3>
-<p>실전에서는 핸들러를 별도의 클래스로 분리하여 관리한다. 어노테이션 방식의 컨트롤러에 대응하는 역할을 한다.</p>
-<pre class="highlight"><code class="language-java">@Component
+<p>실제 프로젝트에서는 핸들러를 별도의 클래스로 빼서 관리한다. 어노테이션 방식의 컨트롤러처럼 생각하면 된다.</p>
+<p>```java
+@Component
 @RequiredArgsConstructor
-public class ProductHandler {
+public class ProductHandler {</p>
+<pre><code>private final ProductService productService;
 
-    private final ProductService productService;
+/**
+ * 전체 상품 조회
+ */
+public Mono&lt;ServerResponse&gt; getAll(ServerRequest request) {
+    Flux&lt;Product&gt; products = productService.findAll();
+    return ServerResponse.ok()
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(products, Product.class);
+}
 
-    /**
-     * 전체 상품 조회
-     */
-    public Mono&lt;ServerResponse&gt; getAll(ServerRequest request) {
-        Flux&lt;Product&gt; products = productService.findAll();
-        return ServerResponse.ok()
+/**
+ * 단일 상품 조회
+ */
+public Mono&lt;ServerResponse&gt; getById(ServerRequest request) {
+    String id = request.pathVariable("id");
+    return productService.findById(id)
+        .flatMap(product -&gt; ServerResponse.ok()
             .contentType(MediaType.APPLICATION_JSON)
-            .body(products, Product.class);
-    }
+            .bodyValue(product))
+        .switchIfEmpty(ServerResponse.notFound().build());
+}
 
-    /**
-     * 단일 상품 조회
-     */
-    public Mono&lt;ServerResponse&gt; getById(ServerRequest request) {
-        String id = request.pathVariable("id");
-        return productService.findById(id)
-            .flatMap(product -&gt; ServerResponse.ok()
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(product))
-            .switchIfEmpty(ServerResponse.notFound().build());
-    }
+/**
+ * 상품 생성
+ */
+public Mono&lt;ServerResponse&gt; create(ServerRequest request) {
+    return request.bodyToMono(Product.class)
+        .flatMap(productService::save)
+        .flatMap(saved -&gt; ServerResponse
+            .created(URI.create("/api/products/" + saved.getId()))
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(saved));
+}
 
-    /**
-     * 상품 생성
-     */
-    public Mono&lt;ServerResponse&gt; create(ServerRequest request) {
-        return request.bodyToMono(Product.class)
-            .flatMap(productService::save)
-            .flatMap(saved -&gt; ServerResponse
-                .created(URI.create("/api/products/" + saved.getId()))
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(saved));
-    }
+/**
+ * 상품 수정
+ */
+public Mono&lt;ServerResponse&gt; update(ServerRequest request) {
+    String id = request.pathVariable("id");
+    return request.bodyToMono(Product.class)
+        .flatMap(product -&gt; productService.update(id, product))
+        .flatMap(updated -&gt; ServerResponse.ok()
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(updated))
+        .switchIfEmpty(ServerResponse.notFound().build());
+}
 
-    /**
-     * 상품 수정
-     */
-    public Mono&lt;ServerResponse&gt; update(ServerRequest request) {
-        String id = request.pathVariable("id");
-        return request.bodyToMono(Product.class)
-            .flatMap(product -&gt; productService.update(id, product))
-            .flatMap(updated -&gt; ServerResponse.ok()
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(updated))
-            .switchIfEmpty(ServerResponse.notFound().build());
-    }
-
-    /**
-     * 상품 삭제
-     */
-    public Mono&lt;ServerResponse&gt; delete(ServerRequest request) {
-        String id = request.pathVariable("id");
-        return productService.deleteById(id)
-            .then(ServerResponse.noContent().build());
-    }
-}</code></pre>
+/**
+ * 상품 삭제
+ */
+public Mono&lt;ServerResponse&gt; delete(ServerRequest request) {
+    String id = request.pathVariable("id");
+    return productService.deleteById(id)
+        .then(ServerResponse.noContent().build());
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="732">7.3.2 도메인 모델과 서비스 계층</h3>
-<p>핸들러가 사용하는 도메인 모델과 서비스 계층은 어노테이션 방식과 동일하게 재사용할 수 있다.</p>
-<pre class="highlight"><code class="language-java">@Document(collection = "products")
+<p>핸들러를 위한 도메인 모델과 서비스 계층은 어노테이션 방식과 완전히 같은 방식으로 작성할 수 있다. 결국 비즈니스 로직은 바뀌지 않으니까.</p>
+<p>```java
+@Document(collection = "products")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Product {
-
-    @Id
-    private String id;
-    private String name;
-    private String description;
-    private BigDecimal price;
-    private String category;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-}</code></pre>
-<pre class="highlight"><code class="language-java">@Service
+public class Product {</p>
+<pre><code>@Id
+private String id;
+private String name;
+private String description;
+private BigDecimal price;
+private String category;
+private LocalDateTime createdAt;
+private LocalDateTime updatedAt;
+</code></pre>
+<p>}
+```</p>
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class ProductService {
+public class ProductService {</p>
+<pre><code>private final ReactiveMongoRepository&lt;Product, String&gt; productRepository;
 
-    private final ReactiveMongoRepository&lt;Product, String&gt; productRepository;
+public Flux&lt;Product&gt; findAll() { return productRepository.findAll(); }
+public Mono&lt;Product&gt; findById(String id) { return productRepository.findById(id); }
 
-    public Flux&lt;Product&gt; findAll() { return productRepository.findAll(); }
-    public Mono&lt;Product&gt; findById(String id) { return productRepository.findById(id); }
+public Mono&lt;Product&gt; save(Product product) {
+    product.setCreatedAt(LocalDateTime.now());
+    product.setUpdatedAt(LocalDateTime.now());
+    return productRepository.save(product);
+}
 
-    public Mono&lt;Product&gt; save(Product product) {
-        product.setCreatedAt(LocalDateTime.now());
-        product.setUpdatedAt(LocalDateTime.now());
-        return productRepository.save(product);
-    }
+public Mono&lt;Product&gt; update(String id, Product product) {
+    return productRepository.findById(id)
+        .map(existing -&gt; {
+            existing.setName(product.getName());
+            existing.setPrice(product.getPrice());
+            existing.setCategory(product.getCategory());
+            existing.setUpdatedAt(LocalDateTime.now());
+            return existing;
+        })
+        .flatMap(productRepository::save);
+}
 
-    public Mono&lt;Product&gt; update(String id, Product product) {
-        return productRepository.findById(id)
-            .map(existing -&gt; {
-                existing.setName(product.getName());
-                existing.setPrice(product.getPrice());
-                existing.setCategory(product.getCategory());
-                existing.setUpdatedAt(LocalDateTime.now());
-                return existing;
-            })
-            .flatMap(productRepository::save);
-    }
-
-    public Mono&lt;Void&gt; deleteById(String id) { return productRepository.deleteById(id); }</code></pre>
+public Mono&lt;Void&gt; deleteById(String id) { return productRepository.deleteById(id); }
+</code></pre>
+<p>```</p>
 <h3 id="733">7.3.3 에러 처리가 포함된 핸들러</h3>
-<p>실전에서는 검증 실패, 데이터 없음 등 다양한 에러 상황을 핸들러 내에서 처리해야 한다.</p>
-<pre class="highlight"><code class="language-java">@Component
+<p>실무에서는 입력값 검증, 리소스 없음 등 여러 가지 에러 상황을 처리해야 한다. 함수형 방식에서는 이를 어떻게 다룰까.</p>
+<p>```java
+@Component
 @RequiredArgsConstructor
-public class ProductHandler {
+public class ProductHandler {</p>
+<pre><code>private final ProductService productService;
+private final Validator validator;
 
-    private final ProductService productService;
-    private final Validator validator;
+public Mono&lt;ServerResponse&gt; create(ServerRequest request) {
+    return request.bodyToMono(Product.class)
+        .doOnNext(this::validate)
+        .flatMap(productService::save)
+        .flatMap(saved -&gt; ServerResponse
+            .created(URI.create("/api/products/" + saved.getId()))
+            .bodyValue(saved))
+        .onErrorResume(ValidationException.class, e -&gt;
+            ServerResponse.badRequest()
+                .bodyValue(new ErrorResponse("VALIDATION_ERROR", e.getMessage())))
+        .onErrorResume(e -&gt;
+            ServerResponse.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .bodyValue(new ErrorResponse("INTERNAL_ERROR", "서버 내부 오류가 발생했습니다.")));
+}
 
-    public Mono&lt;ServerResponse&gt; create(ServerRequest request) {
-        return request.bodyToMono(Product.class)
-            .doOnNext(this::validate)
-            .flatMap(productService::save)
-            .flatMap(saved -&gt; ServerResponse
-                .created(URI.create("/api/products/" + saved.getId()))
-                .bodyValue(saved))
-            .onErrorResume(ValidationException.class, e -&gt;
-                ServerResponse.badRequest()
-                    .bodyValue(new ErrorResponse("VALIDATION_ERROR", e.getMessage())))
-            .onErrorResume(e -&gt;
-                ServerResponse.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .bodyValue(new ErrorResponse("INTERNAL_ERROR", "서버 내부 오류가 발생했습니다.")));
+private void validate(Product product) {
+    Errors errors = new BeanPropertyBindingResult(product, "product");
+    validator.validate(product, errors);
+    if (errors.hasErrors()) {
+        String message = errors.getFieldErrors().stream()
+            .map(e -&gt; e.getField() + ": " + e.getDefaultMessage())
+            .collect(Collectors.joining(", "));
+        throw new ValidationException(message);
     }
-
-    private void validate(Product product) {
-        Errors errors = new BeanPropertyBindingResult(product, "product");
-        validator.validate(product, errors);
-        if (errors.hasErrors()) {
-            String message = errors.getFieldErrors().stream()
-                .map(e -&gt; e.getField() + ": " + e.getDefaultMessage())
-                .collect(Collectors.joining(", "));
-            throw new ValidationException(message);
-        }
-    }
-}</code></pre>
-<pre class="highlight"><code class="language-java">@Data
+}
+</code></pre>
+<p>}
+```</p>
+<p><code>java
+@Data
 @AllArgsConstructor
 public class ErrorResponse {
     private String code;
     private String message;
-}</code></pre>
+}</code></p>
 <hr>
 <h2 id="74">7.4 요청 파라미터 및 바디 처리</h2>
 <h3 id="741-path-variable">7.4.1 경로 변수 (Path Variable)</h3>
-<p>경로 패턴에 <code>{변수명}</code>으로 선언하고, <code>ServerRequest.pathVariable()</code>로 추출한다.</p>
-<pre class="highlight"><code class="language-java">// Router 정의
-route(GET("/api/products/{id}"), handler::getById)
-
-// Handler에서 추출
-public Mono&lt;ServerResponse&gt; getById(ServerRequest request) {
+<p>경로에서 값을 추출하려면 <code>{변수명}</code> 형태로 선언해야 하고, 핸들러에서 <code>ServerRequest.pathVariable()</code>로 꺼내면 된다.</p>
+<p>```java
+// Router 정의
+route(GET("/api/products/{id}"), handler::getById)</p>
+<p>// Handler에서 추출
+public Mono<ServerResponse> getById(ServerRequest request) {
     String id = request.pathVariable("id");
     return productService.findById(id)
         .flatMap(product -&gt; ServerResponse.ok().bodyValue(product))
         .switchIfEmpty(ServerResponse.notFound().build());
-}</code></pre>
-<p>여러 경로 변수를 사용하는 경우도 동일하다.</p>
-<pre class="highlight"><code class="language-java">// 중첩 리소스 라우팅
-route(GET("/api/categories/{categoryId}/products/{productId}"), handler::getProductInCategory)
-
-// Handler
-public Mono&lt;ServerResponse&gt; getProductInCategory(ServerRequest request) {
+}
+```</p>
+<p>경로 변수가 여러 개인 경우도 마찬가지다. 각각 <code>pathVariable()</code>로 꺼내면 된다.</p>
+<p>```java
+// 중첩 리소스 라우팅
+route(GET("/api/categories/{categoryId}/products/{productId}"), handler::getProductInCategory)</p>
+<p>// Handler
+public Mono<ServerResponse> getProductInCategory(ServerRequest request) {
     String categoryId = request.pathVariable("categoryId");
     String productId = request.pathVariable("productId");
     return productService.findByCategoryAndId(categoryId, productId)
         .flatMap(product -&gt; ServerResponse.ok().bodyValue(product))
         .switchIfEmpty(ServerResponse.notFound().build());
-}</code></pre>
+}
+```</p>
 <h3 id="742-query-parameter">7.4.2 쿼리 파라미터 (Query Parameter)</h3>
-<p><code>ServerRequest.queryParam()</code>은 <code>Optional&lt;String&gt;</code>을 반환한다. <code>queryParams()</code>로 전체 파라미터 맵을 얻을 수도 있다.</p>
-<pre class="highlight"><code class="language-java">// GET /api/products?category=electronics&amp;minPrice=10000&amp;page=0&amp;size=20
-public Mono&lt;ServerResponse&gt; search(ServerRequest request) {
-    Optional&lt;String&gt; category = request.queryParam("category");
-    Optional&lt;String&gt; minPrice = request.queryParam("minPrice");
+<p>쿼리 파라미터는 <code>ServerRequest.queryParam()</code>으로 꺼내는데, 이 메서드는 <code>Optional&lt;String&gt;</code>을 반환한다기 때문에 존재 여부 확인을 명시적으로 해야 한다. 필요하면 <code>queryParams()</code>로 전체 파라미터 맵을 받을 수도 있다.</p>
+<p>```java
+// GET /api/products?category=electronics&amp;minPrice=10000&amp;page=0&amp;size=20
+public Mono<ServerResponse> search(ServerRequest request) {
+    Optional<String> category = request.queryParam("category");
+    Optional<String> minPrice = request.queryParam("minPrice");
     int page = request.queryParam("page")
         .map(Integer::parseInt)
         .orElse(0);
     int size = request.queryParam("size")
         .map(Integer::parseInt)
-        .orElse(20);
+        .orElse(20);</p>
+<pre><code>Flux&lt;Product&gt; results = productService.search(
+    category.orElse(null),
+    minPrice.map(BigDecimal::new).orElse(null),
+    PageRequest.of(page, size)
+);
 
-    Flux&lt;Product&gt; results = productService.search(
-        category.orElse(null),
-        minPrice.map(BigDecimal::new).orElse(null),
-        PageRequest.of(page, size)
-    );
-
-    return ServerResponse.ok()
-        .contentType(MediaType.APPLICATION_JSON)
-        .body(results, Product.class);
-}</code></pre>
+return ServerResponse.ok()
+    .contentType(MediaType.APPLICATION_JSON)
+    .body(results, Product.class);
+</code></pre>
+<p>}
+```</p>
 <h3 id="743-bodytomono-bodytoflux">7.4.3 요청 바디 처리: bodyToMono / bodyToFlux</h3>
-<p>단일 객체는 <code>bodyToMono()</code>, 컬렉션은 <code>bodyToFlux()</code>로 역직렬화한다.</p>
-<pre class="highlight"><code class="language-java">// 단일 객체 수신
-public Mono&lt;ServerResponse&gt; create(ServerRequest request) {
+<p>요청 바디는 포함된 데이터의 특성에 따라 다르게 처리하면 된다. 단일 객체면 <code>bodyToMono()</code>, 여러 개의 스트리밍 데이터면 <code>bodyToFlux()</code>를 쓰자.</p>
+<p>```java
+// 단일 객체 수신
+public Mono<ServerResponse> create(ServerRequest request) {
     return request.bodyToMono(Product.class)
         .flatMap(productService::save)
         .flatMap(saved -&gt; ServerResponse.created(
             URI.create("/api/products/" + saved.getId()))
             .bodyValue(saved));
-}
-
-// 여러 객체 일괄 수신
-public Mono&lt;ServerResponse&gt; createBatch(ServerRequest request) {
-    Flux&lt;Product&gt; products = request.bodyToFlux(Product.class);
+}</p>
+<p>// 여러 객체 일괄 수신
+public Mono<ServerResponse> createBatch(ServerRequest request) {
+    Flux<Product> products = request.bodyToFlux(Product.class);
     return productService.saveAll(products)
         .collectList()
         .flatMap(savedList -&gt; ServerResponse.ok()
             .contentType(MediaType.APPLICATION_JSON)
             .bodyValue(savedList));
-}</code></pre>
+}
+```</p>
 <h3 id="744-parameterizedtypereference">7.4.4 ParameterizedTypeReference 활용</h3>
-<p>제네릭 타입을 역직렬화할 때는 <code>ParameterizedTypeReference</code>를 사용한다.</p>
-<pre class="highlight"><code class="language-java">// Map&lt;String, Object&gt; 형태의 바디 수신
+<p>복잡한 제네릭 타입이 포함된 데이터를 역직렬화해야 할 때가 있다. 이 경우 <code>ParameterizedTypeReference</code>를 사용해야 하기 때문에 알아두면 유용하다.</p>
+<p><code>java
+// Map&lt;String, Object&gt; 형태의 바디 수신
 public Mono&lt;ServerResponse&gt; handleDynamic(ServerRequest request) {
     return request.bodyToMono(new ParameterizedTypeReference&lt;Map&lt;String, Object&gt;&gt;() {})
         .flatMap(body -&gt; {
@@ -2110,165 +2150,174 @@ public Mono&lt;ServerResponse&gt; handleDynamic(ServerRequest request) {
             // 동적 처리
             return ServerResponse.ok().bodyValue(Map.of("received", name));
         });
-}</code></pre>
+}</code></p>
 <h3 id="745">7.4.5 헤더 및 쿠키 접근</h3>
-<pre class="highlight"><code class="language-java">public Mono&lt;ServerResponse&gt; withHeaders(ServerRequest request) {
+<p>요청에 포함된 헤더와 쿠키도 당연히 접근할 수 있다. 다음과 같이 처리한다.</p>
+<p>```java
+public Mono<ServerResponse> withHeaders(ServerRequest request) {
     // 헤더 접근
     ServerRequest.Headers headers = request.headers();
-    List&lt;MediaType&gt; acceptTypes = headers.accept();
-    Optional&lt;String&gt; authHeader = headers.firstHeader("Authorization");
-    OptionalLong contentLength = headers.contentLength();
+    List<MediaType> acceptTypes = headers.accept();
+    Optional<String> authHeader = headers.firstHeader("Authorization");
+    OptionalLong contentLength = headers.contentLength();</p>
+<pre><code>// 쿠키 접근
+MultiValueMap&lt;String, HttpCookie&gt; cookies = request.cookies();
+HttpCookie sessionCookie = cookies.getFirst("SESSION_ID");
 
-    // 쿠키 접근
-    MultiValueMap&lt;String, HttpCookie&gt; cookies = request.cookies();
-    HttpCookie sessionCookie = cookies.getFirst("SESSION_ID");
-
-    return ServerResponse.ok()
-        .bodyValue(Map.of(
-            "accept", acceptTypes.toString(),
-            "hasAuth", authHeader.isPresent()
-        ));
-}</code></pre>
+return ServerResponse.ok()
+    .bodyValue(Map.of(
+        "accept", acceptTypes.toString(),
+        "hasAuth", authHeader.isPresent()
+    ));
+</code></pre>
+<p>}
+```</p>
 <h3 id="746">7.4.6 멀티파트 파일 업로드</h3>
-<p>함수형 엔드포인트에서도 멀티파트 요청을 처리할 수 있다.</p>
-<pre class="highlight"><code class="language-java">// Router 정의
+<p>파일 업로드 같은 멀티파트 요청도 함수형 방식에서 충분히 처리할 수 있다. 어렵지도 않다.</p>
+<p><code>java
+// Router 정의
 route(POST("/api/products/{id}/image")
-    .and(contentType(MediaType.MULTIPART_FORM_DATA)), handler::uploadImage)</code></pre>
-<pre class="highlight"><code class="language-java">// Handler 구현
-public Mono&lt;ServerResponse&gt; uploadImage(ServerRequest request) {
-    String productId = request.pathVariable("id");
-
-    return request.multipartData()
-        .flatMap(parts -&gt; {
-            Part filePart = parts.getFirst("file");
-            if (filePart instanceof FilePart fp) {
-                String filename = fp.filename();
-                Path destination = Path.of("/uploads", productId + "_" + filename);
-                return fp.transferTo(destination)
-                    .then(productService.updateImagePath(productId, destination.toString()))
-                    .flatMap(updated -&gt; ServerResponse.ok().bodyValue(updated));
-            }
-            return ServerResponse.badRequest()
-                .bodyValue(new ErrorResponse("INVALID_FILE", "파일이 전송되지 않았습니다."));
-        });
-}</code></pre>
-<p>여러 파트를 개별 처리할 때는 <code>BodyExtractors.toMultipartData()</code>를 사용하여 텍스트 필드(<code>FormFieldPart</code>)와 파일(<code>FilePart</code>)을 각각 추출할 수 있다.</p>
+    .and(contentType(MediaType.MULTIPART_FORM_DATA)), handler::uploadImage)</code></p>
+<p>```java
+// Handler 구현
+public Mono<ServerResponse> uploadImage(ServerRequest request) {
+    String productId = request.pathVariable("id");</p>
+<pre><code>return request.multipartData()
+    .flatMap(parts -&gt; {
+        Part filePart = parts.getFirst("file");
+        if (filePart instanceof FilePart fp) {
+            String filename = fp.filename();
+            Path destination = Path.of("/uploads", productId + "_" + filename);
+            return fp.transferTo(destination)
+                .then(productService.updateImagePath(productId, destination.toString()))
+                .flatMap(updated -&gt; ServerResponse.ok().bodyValue(updated));
+        }
+        return ServerResponse.badRequest()
+            .bodyValue(new ErrorResponse("INVALID_FILE", "파일이 전송되지 않았습니다."));
+    });
+</code></pre>
+<p>}
+```</p>
+<p>만약 여러 파트를 세분화해서 처리해야 하면 <code>BodyExtractors.toMultipartData()</code>를 쓰면 텍스트 필드(<code>FormFieldPart</code>)와 파일(<code>FilePart</code>)을 구분해서 다룰 수 있다.</p>
 <hr>
 <h2 id="75">7.5 어노테이션 방식과 함수형 방식 비교</h2>
 <h3 id="751-api">7.5.1 같은 API를 두 방식으로 구현</h3>
-<p>동일한 상품 CRUD API를 어노테이션 방식과 함수형 방식으로 구현하여 비교한다.</p>
+<p>이제 실제로 같은 기능을 하는 API를 어노테이션 방식과 함수형 방식으로 각각 만들어보고, 어떤 차이가 있는지 살펴보자. 상품 CRUD API를 예로 든다.</p>
 <p><strong>어노테이션 방식 (@RestController)</strong></p>
-<pre class="highlight"><code class="language-java">@RestController
+<p>```java
+@RestController
 @RequestMapping("/api/products")
 @RequiredArgsConstructor
-public class ProductController {
+public class ProductController {</p>
+<pre><code>private final ProductService productService;
 
-    private final ProductService productService;
-
-    @GetMapping
-    public Flux&lt;Product&gt; getAll() {
-        return productService.findAll();
-    }
-
-    @GetMapping("/{id}")
-    public Mono&lt;ResponseEntity&lt;Product&gt;&gt; getById(@PathVariable String id) {
-        return productService.findById(id)
-            .map(ResponseEntity::ok)
-            .defaultIfEmpty(ResponseEntity.notFound().build());
-    }
-
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Mono&lt;Product&gt; create(@Valid @RequestBody Product product) {
-        return productService.save(product);
-    }
-
-    @PutMapping("/{id}")
-    public Mono&lt;ResponseEntity&lt;Product&gt;&gt; update(
-            @PathVariable String id,
-            @Valid @RequestBody Product product) {
-        return productService.update(id, product)
-            .map(ResponseEntity::ok)
-            .defaultIfEmpty(ResponseEntity.notFound().build());
-    }
-
-    @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public Mono&lt;Void&gt; delete(@PathVariable String id) {
-        return productService.deleteById(id);
-    }
-}</code></pre>
-<p><strong>함수형 방식 (RouterFunction + HandlerFunction)</strong></p>
-<pre class="highlight"><code class="language-java">// Router
-@Configuration
-public class ProductRouter {
-
-    @Bean
-    public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
-        return nest(path("/api/products"),
-            route(GET(""), handler::getAll)
-            .andRoute(GET("/{id}"), handler::getById)
-            .andRoute(POST("").and(contentType(MediaType.APPLICATION_JSON)),
-                      handler::create)
-            .andRoute(PUT("/{id}").and(contentType(MediaType.APPLICATION_JSON)),
-                      handler::update)
-            .andRoute(DELETE("/{id}"), handler::delete)
-        );
-    }
+@GetMapping
+public Flux&lt;Product&gt; getAll() {
+    return productService.findAll();
 }
 
-// Handler
+@GetMapping("/{id}")
+public Mono&lt;ResponseEntity&lt;Product&gt;&gt; getById(@PathVariable String id) {
+    return productService.findById(id)
+        .map(ResponseEntity::ok)
+        .defaultIfEmpty(ResponseEntity.notFound().build());
+}
+
+@PostMapping
+@ResponseStatus(HttpStatus.CREATED)
+public Mono&lt;Product&gt; create(@Valid @RequestBody Product product) {
+    return productService.save(product);
+}
+
+@PutMapping("/{id}")
+public Mono&lt;ResponseEntity&lt;Product&gt;&gt; update(
+        @PathVariable String id,
+        @Valid @RequestBody Product product) {
+    return productService.update(id, product)
+        .map(ResponseEntity::ok)
+        .defaultIfEmpty(ResponseEntity.notFound().build());
+}
+
+@DeleteMapping("/{id}")
+@ResponseStatus(HttpStatus.NO_CONTENT)
+public Mono&lt;Void&gt; delete(@PathVariable String id) {
+    return productService.deleteById(id);
+}
+</code></pre>
+<p>}
+```</p>
+<p><strong>함수형 방식 (RouterFunction + HandlerFunction)</strong></p>
+<p>```java
+// Router
+@Configuration
+public class ProductRouter {</p>
+<pre><code>@Bean
+public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler) {
+    return nest(path("/api/products"),
+        route(GET(""), handler::getAll)
+        .andRoute(GET("/{id}"), handler::getById)
+        .andRoute(POST("").and(contentType(MediaType.APPLICATION_JSON)),
+                  handler::create)
+        .andRoute(PUT("/{id}").and(contentType(MediaType.APPLICATION_JSON)),
+                  handler::update)
+        .andRoute(DELETE("/{id}"), handler::delete)
+    );
+}
+</code></pre>
+<p>}</p>
+<p>// Handler
 @Component
 @RequiredArgsConstructor
-public class ProductHandler {
+public class ProductHandler {</p>
+<pre><code>private final ProductService productService;
 
-    private final ProductService productService;
+public Mono&lt;ServerResponse&gt; getAll(ServerRequest request) {
+    return ServerResponse.ok()
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(productService.findAll(), Product.class);
+}
 
-    public Mono&lt;ServerResponse&gt; getAll(ServerRequest request) {
-        return ServerResponse.ok()
+public Mono&lt;ServerResponse&gt; getById(ServerRequest request) {
+    String id = request.pathVariable("id");
+    return productService.findById(id)
+        .flatMap(product -&gt; ServerResponse.ok()
             .contentType(MediaType.APPLICATION_JSON)
-            .body(productService.findAll(), Product.class);
-    }
+            .bodyValue(product))
+        .switchIfEmpty(ServerResponse.notFound().build());
+}
 
-    public Mono&lt;ServerResponse&gt; getById(ServerRequest request) {
-        String id = request.pathVariable("id");
-        return productService.findById(id)
-            .flatMap(product -&gt; ServerResponse.ok()
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(product))
-            .switchIfEmpty(ServerResponse.notFound().build());
-    }
+public Mono&lt;ServerResponse&gt; create(ServerRequest request) {
+    return request.bodyToMono(Product.class)
+        .flatMap(productService::save)
+        .flatMap(saved -&gt; ServerResponse
+            .created(URI.create("/api/products/" + saved.getId()))
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(saved));
+}
 
-    public Mono&lt;ServerResponse&gt; create(ServerRequest request) {
-        return request.bodyToMono(Product.class)
-            .flatMap(productService::save)
-            .flatMap(saved -&gt; ServerResponse
-                .created(URI.create("/api/products/" + saved.getId()))
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(saved));
-    }
+public Mono&lt;ServerResponse&gt; update(ServerRequest request) {
+    String id = request.pathVariable("id");
+    return request.bodyToMono(Product.class)
+        .flatMap(product -&gt; productService.update(id, product))
+        .flatMap(updated -&gt; ServerResponse.ok()
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(updated))
+        .switchIfEmpty(ServerResponse.notFound().build());
+}
 
-    public Mono&lt;ServerResponse&gt; update(ServerRequest request) {
-        String id = request.pathVariable("id");
-        return request.bodyToMono(Product.class)
-            .flatMap(product -&gt; productService.update(id, product))
-            .flatMap(updated -&gt; ServerResponse.ok()
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(updated))
-            .switchIfEmpty(ServerResponse.notFound().build());
-    }
-
-    public Mono&lt;ServerResponse&gt; delete(ServerRequest request) {
-        String id = request.pathVariable("id");
-        return productService.deleteById(id)
-            .then(ServerResponse.noContent().build());
-    }
-}</code></pre>
+public Mono&lt;ServerResponse&gt; delete(ServerRequest request) {
+    String id = request.pathVariable("id");
+    return productService.deleteById(id)
+        .then(ServerResponse.noContent().build());
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="752">7.5.2 핵심 차이점 분석</h3>
-<p>두 방식의 주요 차이를 항목별로 비교한다.</p>
-<p><strong>라우팅 정의</strong>: 어노테이션 방식은 라우팅 정보(<code>@GetMapping</code>)와 비즈니스 로직이 한 곳에 위치한다. 함수형 방식은 Router(라우팅 정의)와 Handler(로직)가 물리적으로 분리된다.</p>
-<p><strong>파라미터 바인딩</strong>: 어노테이션 방식은 <code>@PathVariable</code>, <code>@RequestBody</code> 등으로 자동 바인딩된다. 함수형 방식은 <code>ServerRequest</code>의 <code>pathVariable()</code>, <code>bodyToMono()</code> 등을 직접 호출한다.</p>
-<p><strong>검증 처리</strong>: 어노테이션 방식은 <code>@Valid</code>로 자동 검증된다. 함수형 방식은 <code>Validator</code>를 수동 호출해야 한다.</p>
+<p>두 방식을 찬찬히 비교해보면 여러 차이점이 눈에 띈다.</p>
+<p><strong>라우팅 정의</strong>: 어노테이션 방식에서는 라우팅 정보(<code>@GetMapping</code>)와 비즈니스 로직이 같은 클래스, 같은 메서드에 있다. 함수형 방식은 Router에서 라우팅을 정의하고, Handler에서 로직을 구현하기 때문에 역할이 명확히 분리된다는 게 큰 특징이다.</p>
+<p><strong>파라미터 바인딩</strong>: 어노테이션 방식이 <code>@PathVariable</code>, <code>@RequestBody</code> 같은 어노테이션으로 자동으로 바인딩해주는 반면, 함수형 방식에서는 <code>ServerRequest.pathVariable()</code>, <code>bodyToMono()</code> 같은 메서드를 직접 호출해야 한다. 더 명시적이라고 볼 수 있다.</p>
+<p><strong>검증 처리</strong>: 어노테이션 방식은 <code>@Valid</code> 어노테이션 하나로 자동 검증이 되는데, 함수형 방식에서는 <code>Validator</code>를 직접 주입받아서 수동으로 호출해야 한다.</p>
 <h3 id="753">7.5.3 장단점 비교표</h3>
 <table>
 <thead>
@@ -2332,52 +2381,55 @@ public class ProductHandler {
 </tbody>
 </table>
 <h3 id="754">7.5.4 실무 선택 기준</h3>
-<p>두 방식은 동일한 <code>DispatcherHandler</code>에서 처리되므로 <strong>같은 애플리케이션에 공존할 수 있다</strong>. 실무에서는 상황에 따라 적절한 방식을 선택하면 된다.</p>
+<p>흥미로운 점은 두 방식을 같은 애플리케이션에 섞어서 쓸 수 있다는 것이다. 둘 다 결국 같은 <code>DispatcherHandler</code>에서 처리되기 때문이다. 따라서 팀의 상황과 필요에 맞춰 선택하면 된다.</p>
 <p><strong>어노테이션 방식이 적합한 경우</strong></p>
 <ul>
-<li>팀에 Spring MVC 경험자가 많을 때</li>
-<li>CRUD 위주의 표준적인 REST API</li>
-<li><code>@Valid</code>, <code>@ControllerAdvice</code> 등 Spring의 자동 지원이 필요할 때</li>
-<li>Swagger/OpenAPI 문서 자동 생성이 중요할 때</li>
+<li>팀 내에 Spring MVC를 이미 경험한 개발자가 많다면 학습 곡선이 낮은 편이다.</li>
+<li>대부분이 CRUD 중심의 표준적인 REST API라면 어노테이션으로 충분하다.</li>
+<li>Spring의 자동 검증(<code>@Valid</code>)이나 전역 예외 처리(<code>@ControllerAdvice</code>) 같은 기능을 활용하고 싶을 때.</li>
+<li>Swagger/OpenAPI 문서를 자동으로 생성하는 것이 중요한 프로젝트.</li>
 </ul>
 <p><strong>함수형 방식이 적합한 경우</strong></p>
 <ul>
-<li>라우팅 로직이 동적으로 변해야 할 때</li>
-<li>라우팅 정의와 비즈니스 로직을 명확히 분리하고 싶을 때</li>
-<li>특정 라우트 그룹에만 필터를 적용해야 할 때</li>
-<li>경량 마이크로서비스에서 불필요한 어노테이션 처리를 줄이고 싶을 때</li>
-<li>함수형 프로그래밍 스타일을 선호하는 팀</li>
+<li>라우팅이 동적으로 변해야 하는 경우가 있다면 프로그래밍 방식의 유연성이 빛난다.</li>
+<li>라우팅과 로직을 명확히 분리해야 한다는 설계 원칙이 있을 때.</li>
+<li>특정 엔드포인트 그룹에만 필터를 적용하고 싶을 때 함수형 방식이 더 수월하다.</li>
+<li>경량 마이크로서비스에서 리플렉션 기반의 어노테이션 처리 오버헤드를 줄이고 싶을 때.</li>
+<li>팀이 함수형 프로그래밍 스타일을 좋아하거나 이미 익숙한 경우.</li>
 </ul>
 <p><strong>혼합 사용 예시</strong></p>
-<pre class="highlight"><code class="language-java">// 어노테이션 방식 — 일반 CRUD API
+<p>필자의 경험상, 실제 프로젝트에서는 두 방식을 함께 쓰는 게 가장 실용적이다. 예를 들어, 표준 CRUD는 어노테이션으로 빠르게 구현하고, 복잡한 라우팅이 필요한 부분만 함수형으로 구현하는 식이다.</p>
+<p>```java
+// 어노테이션 방식 — 일반 CRUD API
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
     // 표준적인 CRUD 엔드포인트
-}
-
-// 함수형 방식 — 동적 라우팅이 필요한 특수 API
+}</p>
+<p>// 함수형 방식 — 동적 라우팅이 필요한 특수 API
 @Configuration
-public class WebhookRouter {
-
-    @Bean
-    public RouterFunction&lt;ServerResponse&gt; webhookRoutes(WebhookHandler handler) {
-        return nest(path("/api/webhooks"),
-            route(POST("/{provider}"), handler::handle)
-            .filter((request, next) -&gt; {
-                // 웹훅 제공자별 서명 검증
-                String provider = request.pathVariable("provider");
-                return verifySignature(request, provider)
-                    .flatMap(valid -&gt; valid
-                        ? next.handle(request)
-                        : ServerResponse.status(HttpStatus.UNAUTHORIZED).build());
-            })
-        );
-    }
-}</code></pre>
+public class WebhookRouter {</p>
+<pre><code>@Bean
+public RouterFunction&lt;ServerResponse&gt; webhookRoutes(WebhookHandler handler) {
+    return nest(path("/api/webhooks"),
+        route(POST("/{provider}"), handler::handle)
+        .filter((request, next) -&gt; {
+            // 웹훅 제공자별 서명 검증
+            String provider = request.pathVariable("provider");
+            return verifySignature(request, provider)
+                .flatMap(valid -&gt; valid
+                    ? next.handle(request)
+                    : ServerResponse.status(HttpStatus.UNAUTHORIZED).build());
+        })
+    );
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="755-openapi">7.5.5 함수형 엔드포인트에서 OpenAPI 문서화</h3>
-<p>함수형 방식에서는 SpringDoc이 라우팅 정보를 자동 감지하지 못한다. <code>@RouterOperation</code>으로 API 명세를 수동 추가해야 한다.</p>
-<pre class="highlight"><code class="language-java">@Bean
+<p>함수형 방식의 유일한 단점을 꼽으라면, SpringDoc 라이브러리가 라우팅을 자동으로 감지하지 못한다는 것이다. OpenAPI 문서를 원하면 <code>@RouterOperation</code>으로 수동 추가해야 한다.</p>
+<p><code>java
+@Bean
 @RouterOperations({
     @RouterOperation(path = "/api/products", method = RequestMethod.GET,
         beanClass = ProductHandler.class, beanMethod = "getAll",
@@ -2394,10 +2446,10 @@ public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler
         route(GET(""), handler::getAll)
         .andRoute(GET("/{id}"), handler::getById)
     );
-}</code></pre>
+}</code></p>
 <hr>
-<h2 id="_2">요약</h2>
-<p>이번 장에서 다룬 핵심 내용을 정리한다.</p>
+<h2 id="_20">요약</h2>
+<p>이번 장에서 배운 핵심 내용을 간단히 정리해보자.</p>
 <table>
 <thead>
 <tr>
@@ -2432,7 +2484,7 @@ public RouterFunction&lt;ServerResponse&gt; productRoutes(ProductHandler handler
 </tr>
 </tbody>
 </table>
-<p>다음 장에서는 MongoDB 리액티브 데이터 접근을 심화하여, <code>ReactiveMongoTemplate</code>, 커스텀 쿼리, Aggregation Pipeline, 변경 스트림 등을 다룬다.</p>
+<p>다음 장에서는 MongoDB와의 반응형 데이터 접근을 좀 더 깊이 있게 다룬다. <code>ReactiveMongoTemplate</code>, 커스텀 쿼리, Aggregation Pipeline, 변경 스트림(Change Stream) 같은 고급 기능들을 살펴보게 될 것이다.</p>
     </main>
     <footer class="site-footer">
       &copy; 2024 Spring Boot + WebFlux + JPA (MongoDB) Book

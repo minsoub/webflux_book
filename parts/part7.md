@@ -1,12 +1,14 @@
 # Chapter 21. 실전 프로젝트: 실시간 게시판 서비스
 
-지금까지 배운 WebFlux, MongoDB 리액티브, JWT 인증, SSE, 테스트 등의 개념을 하나의 완전한 프로젝트로 통합할 차례다. 이번 장에서는 **실시간 게시판 서비스**를 처음부터 끝까지 구축한다. 회원가입과 JWT 기반 인증, 게시글 CRUD, 댓글 시스템, MongoDB Change Streams를 활용한 실시간 알림, 페이징과 검색, GridFS 파일 업로드, 테스트 작성, Docker Compose 배포까지 실전에서 필요한 전 과정을 다룬다.
+이제 앞서 배운 WebFlux, MongoDB 리액티브, JWT 인증, SSE, 테스트 같은 개념들을 모두 모아서 하나의 실제 프로젝트에 적용할 시간이다. 이 장에서는 **실시간 게시판 서비스**를 밑바닥부터 만들어볼 것인데, 회원가입과 JWT 인증은 물론 게시글 CRUD, 댓글 시스템, MongoDB Change Streams로 구현한 실시간 알림, 페이징과 검색, GridFS를 이용한 파일 업로드, 그리고 테스트 작성과 Docker Compose를 통한 배포까지 실무에서 자주 마주치는 거의 모든 것을 다뤄보겠다.
 
 ---
 
 ## 21.1 요구사항 분석 및 설계
 
 ### 21.1.1 기능 요구사항과 기술 스택
+
+먼저 어떤 기능이 필요하고 그걸 구현하기 위해 어떤 기술을 쓸지 정리해보자.
 
 | 기능 영역 | 세부 기능 | 기술 |
 |-----------|----------|------|
@@ -17,7 +19,7 @@
 | **검색** | 제목/본문 키워드 검색 | ReactiveMongoTemplate |
 | **파일 업로드** | 첨부파일 업로드/다운로드 | GridFS |
 
-전체 스택은 Spring Boot 3.x + WebFlux + MongoDB 7.x(Reactive) + Testcontainers + Docker Compose로 구성한다.
+기술 스택은 Spring Boot 3.x + WebFlux + MongoDB 7.x(Reactive) + Testcontainers + Docker Compose 조합으로 구성할 것이다.
 
 ### 21.1.2 프로젝트 구조
 
@@ -51,6 +53,8 @@ reactive-board/
 
 ### 21.2.1 의존성 설정
 
+필요한 의존성을 먼저 추가해보자.
+
 ```groovy
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
@@ -70,6 +74,8 @@ dependencies {
 
 ### 21.2.2 User 도메인 모델
 
+사용자 정보를 저장할 기본 도메인 모델을 정의하자.
+
 ```java
 @Document(collection = "users")
 @Data @NoArgsConstructor @AllArgsConstructor @Builder
@@ -84,6 +90,8 @@ public class User {
 ```
 
 ### 21.2.3 JWT 토큰 제공자
+
+JWT 토큰 생성과 검증을 담당하는 컴포넌트를 만들어보자. 필자의 경험상 JWT 구현에서 가장 자주 실수하는 부분은 토큰 만료 처리인데, 여기서는 명확하게 처리했다.
 
 ```java
 @Component
@@ -120,7 +128,7 @@ public class JwtTokenProvider {
 
 ### 21.2.4 JWT 인증 필터와 Security 설정
 
-WebFlux 환경에서는 서블릿 필터 대신 `WebFilter`를 사용한다. Bearer 토큰을 추출하고, 유효하면 `ReactiveSecurityContextHolder`에 인증 정보를 설정한다.
+WebFlux에서는 서블릿 필터 대신 `WebFilter`를 사용해야 한다. Bearer 토큰을 추출한 후, 유효성을 검증하고 `ReactiveSecurityContextHolder`에 인증 정보를 저장하는 방식인데, 리액티브 컨텍스트 전파에 주의해야 한다.
 
 ```java
 @Component
@@ -153,7 +161,7 @@ public class JwtAuthenticationFilter implements WebFilter {
 }
 ```
 
-Security 설정에서는 인증/비인증 엔드포인트를 구분하고, JWT 필터를 등록한다.
+다음으로 Security 설정에서 어떤 엔드포인트는 인증 없이 허용하고, 어떤 것은 인증을 요구할지 명시하고 JWT 필터를 연결해야 한다.
 
 ```java
 @Configuration @EnableWebFluxSecurity @RequiredArgsConstructor
@@ -182,6 +190,8 @@ public class SecurityConfig {
 ```
 
 ### 21.2.5 회원가입/로그인 서비스
+
+이제 실제 인증 로직을 구현해보자. 회원가입 시 이메일 중복 체크가 중요한데, 리액티브 환경에서는 예외 처리 방식이 약간 다르다.
 
 ```java
 @Service @RequiredArgsConstructor
@@ -219,6 +229,8 @@ public class UserService {
 
 ### 21.3.1 Post 도메인 모델
 
+게시글에는 기본적인 제목, 내용 외에 조회수와 댓글 수를 추적해야 한다. 이들은 이후에 집계(aggregation) 작업 없이 빠르게 조회하기 위함이다.
+
 ```java
 @Document(collection = "posts")
 @Data @NoArgsConstructor @AllArgsConstructor @Builder
@@ -238,7 +250,7 @@ public class Post {
 
 ### 21.3.2 PostService
 
-조회수 증가는 `ReactiveMongoTemplate`의 원자적 업데이트를 사용하고, 수정/삭제 시 작성자 권한을 검증한다.
+게시글 조회수 증가는 `ReactiveMongoTemplate`의 원자적(atomic) 업데이트를 활용해야 경합 문제(race condition)를 피할 수 있다. 수정과 삭제에서는 반드시 작성자 권한을 검증하는 것이 중요하다.
 
 ```java
 @Service @RequiredArgsConstructor
@@ -282,6 +294,8 @@ public class PostService {
 ```
 
 ### 21.3.3 PostController
+
+Controller는 다양한 엔드포인트를 제공해야 한다. 특히 목록 조회 시 검색과 페이징을 함께 처리한다.
 
 ```java
 @RestController @RequestMapping("/api/posts") @RequiredArgsConstructor
@@ -334,15 +348,19 @@ public class PostController {
 
 ### 21.4.1 설계 선택
 
+댓글을 저장하는 방식을 선택할 때는 여러 가지를 고려해야 한다. 아래 표를 보자.
+
 | 기준 | 임베디드(Embedded) | 참조(Reference) |
 |------|-------------------|----------------|
 | **문서 크기** | 댓글 증가 시 16MB 제한 위험 | 안정적 |
 | **독립 쿼리** | 댓글만 별도 조회 어려움 | 페이징/정렬 가능 |
 | **Change Stream** | 활용 제한적 | 댓글 컬렉션 감시 가능 |
 
-댓글이 무제한 증가할 수 있고, Change Streams 기반 실시간 알림이 필요하므로 **참조 방식**을 선택한다.
+우리 프로젝트에서는 댓글 수가 무제한으로 증가할 수 있고, 곧 다룰 Change Streams 기반의 실시간 알림 기능이 필요하므로 **참조 방식**이 최선의 선택이다.
 
 ### 21.4.2 Comment 모델과 서비스
+
+댓글 모델과 이를 처리하는 서비스를 구현해보자.
 
 ```java
 @Document(collection = "comments")
@@ -396,7 +414,7 @@ public class CommentService {
 
 ## 21.5 실시간 알림 (SSE)
 
-MongoDB Change Streams로 `comments` 컬렉션의 insert 이벤트를 감지하고, `Sinks.Many`를 통해 SSE로 클라이언트에 전송한다.
+이제 게시글에 새 댓글이 달리면 브라우저에 즉시 알림을 보내는 기능을 구현해보자. MongoDB Change Streams로 `comments` 컬렉션의 insert 이벤트를 감지하고, `Sinks.Many`를 통해 SSE로 클라이언트에 전송하는 방식이다. 필자의 경험상 이 부분이 가장 흥미로우면서도 까다로운데, 특히 메모리 누수를 방지하기 위해 onBackpressureBuffer 크기를 신중하게 설정해야 한다.
 
 ```
 [댓글 작성] → MongoDB insert → Change Stream 감지 → Sinks.Many → SSE → 클라이언트
@@ -466,13 +484,13 @@ public class NotificationController {
 }
 ```
 
-Change Streams는 MongoDB **레플리카 셋(Replica Set)** 모드에서만 동작한다. 21.9절에서 이를 설정한다.
+한 가지 중요한 제약이 있는데, Change Streams는 MongoDB **레플리카 셋(Replica Set)** 모드에서만 동작한다. 로컬 개발 환경에서도 레플리카 셋을 구성해야 하는데, 21.9절에서 Docker Compose로 이를 설정하는 방법을 다루겠다.
 
 ---
 
 ## 21.6 페이징과 검색 기능
 
-리액티브 환경에서는 Spring Data의 `Page` 객체를 직접 사용할 수 없으므로 커스텀 DTO를 구성한다.
+리액티브 환경에서 조금 까다로운 부분 중 하나가 페이징이다. Spring Data의 `Page` 객체를 리액티브 스트림과 직접 함께 사용할 수 없기 때문에, 커스텀 DTO로 직접 구성해야 한다.
 
 ```java
 @Data @NoArgsConstructor @AllArgsConstructor @Builder
@@ -496,7 +514,7 @@ public class PageResponse<T> {
 }
 ```
 
-`ReactiveMongoTemplate`으로 동적 쿼리, 정렬, 페이징을 처리한다.
+이제 `ReactiveMongoTemplate`을 사용해서 동적 쿼리, 정렬, 페이징을 한 번에 처리해보자.
 
 ```java
 @Service @RequiredArgsConstructor
@@ -522,7 +540,7 @@ public class PostSearchService {
 }
 ```
 
-검색 성능을 위해 텍스트 인덱스(Text Index)를 추가할 수 있다.
+검색 성능을 조금 더 끌어올리려면 MongoDB의 텍스트 인덱스(Text Index)를 활용할 수 있다. 정규표현식보다 훨씬 효율적이다.
 
 ```java
 @Configuration
@@ -542,7 +560,7 @@ public class MongoConfig {
 
 ## 21.7 파일 업로드 (GridFS)
 
-MongoDB GridFS는 파일을 청크(Chunk)로 분할하여 저장한다. 리액티브 환경에서는 `ReactiveGridFsTemplate`을 사용한다.
+게시글에 파일을 첨부하는 기능도 필요할 것이다. MongoDB의 GridFS 기능을 활용하면 파일을 청크(Chunk) 단위로 쪼개서 저장할 수 있고, 리액티브 환경에서는 `ReactiveGridFsTemplate`을 사용하면 된다.
 
 ```java
 @Service @RequiredArgsConstructor
@@ -593,11 +611,13 @@ public class FileController {
 }
 ```
 
-반환된 `fileId`를 게시글의 `attachmentIds`에 저장하면 게시글과 첨부파일을 연결할 수 있다.
+업로드 후 반환된 `fileId`를 게시글의 `attachmentIds` 리스트에 저장하면 게시글과 첨부파일의 관계를 유지할 수 있다.
 
 ---
 
 ## 21.8 전체 테스트 작성
+
+이번엔 우리가 만든 기능들이 제대로 작동하는지 테스트해야 한다. Testcontainers로 실제 MongoDB를 띄워서 테스트하는 방식을 사용할 것인데, Change Streams를 지원하려면 레플리카 셋으로 시작해야 한다.
 
 ```java
 @Testcontainers
@@ -618,6 +638,8 @@ public abstract class IntegrationTestBase {
 ```
 
 ### 21.8.2 PostService 단위 테스트
+
+이제 각 서비스의 단위 테스트를 작성해보자. Mock을 사용해서 의존성을 주입하고, StepVerifier로 리액티브 스트림을 검증한다.
 
 ```java
 @ExtendWith(MockitoExtension.class)
@@ -657,6 +679,8 @@ class PostServiceTest {
 ```
 
 ### 21.8.3 PostController 통합 테스트
+
+단위 테스트만으로는 부족하다. WebTestClient를 사용해서 전체 통합 테스트도 작성해야 한다.
 
 ```java
 class PostControllerTest extends IntegrationTestBase {
@@ -721,6 +745,8 @@ class PostControllerTest extends IntegrationTestBase {
 
 ### 21.9.1 설정 파일
 
+개발 환경에서 테스트한 코드를 이제 컨테이너화해서 배포해야 한다. 먼저 설정 파일부터 준비하자.
+
 ```yaml
 # application.yml
 spring:
@@ -740,7 +766,7 @@ EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
 
-MongoDB를 레플리카 셋으로 구성해야 Change Streams가 동작한다.
+이제 docker-compose.yml을 작성할 차례인데, 여기서 핵심은 MongoDB를 레플리카 셋으로 구성하는 것이다. 그래야만 Change Streams가 제대로 동작한다.
 
 ```yaml
 # docker-compose.yml
@@ -771,6 +797,8 @@ volumes:
 
 ### 21.9.2 빌드 및 API 동작 확인
 
+이제 빌드해서 실제로 띄워보고 API가 잘 작동하는지 확인해보자.
+
 ```bash
 ./gradlew clean build && docker compose up --build -d
 
@@ -789,6 +817,8 @@ curl -X POST http://localhost:8080/api/files -H "Authorization: Bearer $TOKEN" -
 
 ### 21.9.3 전체 요청 흐름
 
+시스템이 실제로 어떻게 동작하는지 한 번 그려보자.
+
 ```
 [사용자 A] POST /api/posts → JWT 검증 → MongoDB insert → 201 Created
 [사용자 B] GET /api/notifications/stream (SSE 연결 유지)
@@ -797,4 +827,4 @@ curl -X POST http://localhost:8080/api/files -H "Authorization: Bearer $TOKEN" -
 
 ---
 
-이번 장에서 구축한 실시간 게시판 서비스는 Part 1부터 Part 6까지 다룬 핵심 개념을 모두 통합한 결과물이다. Reactor 기반의 논블로킹 처리, MongoDB 리액티브 드라이버, JWT 인증, SSE 실시간 통신, GridFS 파일 관리, StepVerifier와 WebTestClient를 활용한 테스트, Docker Compose 배포까지 전 과정을 실전 코드로 경험했다. 다음 장에서는 이 프로젝트를 확장하여 실시간 채팅 서비스를 구축하며 WebSocket과 고급 메시징 패턴을 다룬다.
+이렇게 해서 실시간 게시판 서비스를 완성했다. 우리가 앞에서 배운 Reactor 기반의 논블로킹 처리, MongoDB 리액티브 드라이버, JWT 인증, SSE 실시간 통신, GridFS 파일 관리, StepVerifier와 WebTestClient를 사용한 테스트, 그리고 Docker Compose를 통한 배포까지 모든 것을 한 프로젝트에 녹여냈다. 필자의 경험상 이 정도 규모의 프로젝트를 직접 만들어보면 WebFlux의 리액티브 패러다임이 훨씬 더 명확하게 이해된다. 다음 장에서는 이 프로젝트를 한 단계 더 발전시켜서 실시간 채팅 서비스를 구축해보면서 WebSocket과 고급 메시징 패턴까지 살펴보겠다.

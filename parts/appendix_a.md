@@ -1,6 +1,6 @@
 # 부록 A. Reactor 주요 연산자 레퍼런스
 
-이 부록은 Project Reactor에서 실무적으로 자주 사용하는 연산자를 카테고리별로 정리한 레퍼런스이다. 각 연산자에 대해 간결한 설명, 코드 예제, 마블 다이어그램의 텍스트 표현을 제공한다. 본문 3장~5장에서 다룬 내용을 빠르게 참조할 수 있도록 구성했다.
+이 부록은 실무에서 자주 마주치는 Reactor 연산자들을 카테고리별로 정리해 놓은 참고 자료다. 각 연산자마다 핵심만 짚은 설명, 실행 가능한 코드 예제, 마블 다이어그램으로 한눈에 동작을 파악할 수 있게 구성했다. 본문 3장~5장의 내용을 빠르게 찾아볼 수 있으니 필요할 때마다 펼쳐 보면 좋다.
 
 > **표기 규칙**: 마블 다이어그램에서 `──>` 는 시간 흐름, `|` 는 onComplete, `X` 는 onError를 나타낸다.
 
@@ -8,7 +8,7 @@
 
 ## A.1 생성 연산자 (Creation Operators)
 
-스트림의 출발점을 만드는 연산자들이다. 데이터 소스를 리액티브 파이프라인으로 진입시킨다.
+리액티브 파이프라인은 어딘가에서 출발해야 하는데, 이 역할을 맡는 연산자들을 소개한다. 기존의 데이터 소스를 리액티브 스트림으로 변환하거나, 처음부터 새로운 스트림을 만들어낼 수 있다.
 
 | 연산자 | 반환 타입 | 설명 |
 |--------|-----------|------|
@@ -24,7 +24,7 @@
 
 ### just / empty / error
 
-`just`는 지정한 값을 즉시 발행한다. `empty`는 요소 없이 완료하고, `error`는 즉시 에러를 발행한다.
+가장 단순한 경우부터 생각해 보자. `just`는 주어진 값을 바로 흘려보내고, `empty`는 아무것도 하지 않고 끝내며, `error`는 즉각 예외를 던진다.
 
 ```java
 Mono<String> mono = Mono.just("Hello");
@@ -41,7 +41,7 @@ error:  ──X──>
 
 ### fromIterable / fromStream / range
 
-기존 컬렉션, Stream, 정수 범위를 리액티브 스트림으로 변환한다.
+이미 있는 컬렉션이나 스트림, 또는 간단한 정수 범위를 리액티브 형태로 바꾸고 싶을 때 쓴다.
 
 ```java
 Flux<String> fromList = Flux.fromIterable(List.of("A", "B", "C"));
@@ -55,7 +55,7 @@ range:  ──(1)──(2)──(3)──(4)──(5)──|──>
 
 ### interval
 
-지정 주기마다 0부터 증가하는 Long 값을 무한히 발행한다. `Schedulers.parallel()`에서 실행된다.
+주기적으로 계속 신호를 보내는 상황이라면 `interval`을 쓰면 된다. 0부터 1, 2, 3... 하는 식으로 증가하는 숫자를 일정 간격으로 무한히 내보낸다. 기본적으로 `Schedulers.parallel()` 스레드에서 동작한다.
 
 ```java
 Flux<Long> tick = Flux.interval(Duration.ofSeconds(1));       // 0, 1, 2, ...
@@ -69,7 +69,7 @@ Flux<Long> delayed = Flux.interval(Duration.ofSeconds(5), Duration.ofSeconds(1))
 
 ### defer
 
-구독 시점마다 새로운 Publisher를 생성한다. 구독 시점의 상태에 의존하는 로직에 필수적이다.
+필자의 경험상, `defer`는 '뭔가 늦게 결정하고 싶을 때'의 해답이다. 구독되는 순간에 Publisher를 만들도록 미루는 것인데, 그 시점의 상태를 반영할 수 있어서 동적 로직에 매우 유용하다.
 
 ```java
 Mono<Long> deferred = Mono.defer(() -> Mono.just(System.currentTimeMillis()));
@@ -78,7 +78,7 @@ Mono<Long> deferred = Mono.defer(() -> Mono.just(System.currentTimeMillis()));
 
 ### create
 
-`FluxSink`를 통해 프로그래밍 방식으로 요소를 발행한다. 콜백 기반 API를 리액티브로 브릿지할 때 사용한다.
+콜백 중심의 레거시 API를 리액티브 세계로 끌어들일 때 `create`를 쓰면 된다. `FluxSink`를 통해 프로그래밍 방식으로 원하는 시점에 요소를 발행할 수 있다.
 
 ```java
 Flux<String> bridge = Flux.create(sink -> {
@@ -94,7 +94,7 @@ Flux<String> bridge = Flux.create(sink -> {
 
 ## A.2 변환 연산자 (Transformation Operators)
 
-스트림의 각 요소를 다른 형태로 변환하거나 스트림 구조를 재구성한다.
+이제 흘러오는 데이터를 가공하는 차례다. 각 요소를 다른 형태로 바꾸거나 스트림 전체의 구조를 뜯어고칠 수 있다.
 
 | 연산자 | 설명 | 비동기 |
 |--------|------|--------|
@@ -110,7 +110,7 @@ Flux<String> bridge = Flux.create(sink -> {
 
 ### map
 
-각 요소에 동기 함수를 적용하여 1:1로 변환한다.
+가장 단순한 변환. 각 요소에 함수를 먹이면 1:1로 매핑되어 나온다. 동기적으로만 작동하니 주의하자.
 
 ```java
 Flux<String> upper = Flux.just("a", "b", "c").map(String::toUpperCase);
@@ -123,7 +123,7 @@ Flux<String> upper = Flux.just("a", "b", "c").map(String::toUpperCase);
 
 ### flatMap
 
-각 요소를 비동기 Publisher로 변환하고 결과를 병합한다. **결과 순서가 보장되지 않는다**.
+복잡한 변환이 필요하면 flatMap으로 간다. 각 요소를 Publisher로 바꾼 뒤 펼쳐서 섞는다. 다만 **순서가 섞일 수 있으니** 주의—가장 빨리 도착하는 결과부터 나간다.
 
 ```java
 Flux<String> result = Flux.just(1, 2, 3)
@@ -139,7 +139,7 @@ Flux<String> result = Flux.just(1, 2, 3)
 
 ### flatMapSequential / concatMap
 
-`flatMapSequential`은 내부 Publisher를 **동시에** 구독하되 **원래 순서대로** 결과를 발행한다. `concatMap`은 이전 Publisher가 **완료된 후** 다음을 구독한다(직렬 실행).
+이 두 연산자는 flatMap의 순서 문제를 해결해 준다. `flatMapSequential`은 여러 개를 동시에 돌리되 결과는 원래 순서를 지킨다. 반면 `concatMap`은 하나씩 꼬박꼬박 기다렸다가 다음 것을 시작한다(순서는 당연히 보장).
 
 ```java
 Flux.just(1, 2, 3).flatMapSequential(id -> fetchUser(id)); // 병렬 실행, 순서 보장
@@ -156,7 +156,7 @@ concatMap:
 
 ### switchMap
 
-새 요소가 발행되면 진행 중인 내부 Publisher를 **즉시 취소**한다. 자동 완성 검색에 적합하다.
+사용자가 검색어를 계속 바꾼다면? 매번 새로운 검색을 시작할 때 이전 것을 버려야 한다. `switchMap`이 바로 그 역할—새 요소가 들어오는 순간 기존 작업을 **싹 날린다**.
 
 ```java
 Flux<String> results = userInput.switchMap(query -> searchService.search(query));
@@ -169,6 +169,8 @@ Flux<String> results = userInput.switchMap(query -> searchService.search(query))
 ```
 
 ### collectList / collectMap / reduce / scan
+
+한곳으로 모아서 처리해야 할 때가 있다. 아래 예제를 보면 차이를 알 수 있다:
 
 ```java
 Mono<List<String>> list = Flux.just("A", "B", "C").collectList();       // ["A","B","C"]
@@ -186,7 +188,7 @@ scan:   소스 ──(1)──(2)──(3)──(4)──(5)──|──>
 
 ## A.3 필터링 연산자 (Filtering Operators)
 
-스트림에서 조건에 맞는 요소만 선별하거나 특정 위치의 요소를 추출한다.
+들어오는 데이터 중에 필요한 것만 고르거나, 앞에서 몇 개만 따내는 식의 선별 작업들이다.
 
 | 연산자 | 설명 |
 |--------|------|
@@ -201,7 +203,7 @@ scan:   소스 ──(1)──(2)──(3)──(4)──(5)──|──>
 
 ### filter / filterWhen
 
-`filter`는 동기적 Predicate를, `filterWhen`은 비동기 조건을 평가한다.
+단순히 불(Boolean)로 판단하면 되면 `filter`를 쓴다. 조건 검사 자체가 비동기(DB 조회 같은)라면 `filterWhen`을 써야 한다.
 
 ```java
 Flux<Integer> even = Flux.range(1, 10).filter(n -> n % 2 == 0);   // 2,4,6,8,10
@@ -215,7 +217,7 @@ Flux<User> active = userFlux.filterWhen(u -> userRepo.isActive(u.getId()));
 
 ### distinct
 
-중복 요소를 제거한다. 키 추출 함수를 지정할 수도 있다.
+중복을 없애고 싶다면 이걸 쓴다. 특정 필드 기준으로 중복을 판단하도록 함수를 따로 줄 수도 있다.
 
 ```java
 Flux.just("A", "B", "A", "C", "B").distinct();            // "A", "B", "C"
@@ -224,7 +226,7 @@ userFlux.distinct(User::getName);                           // 이름 기준 중
 
 ### take / skip
 
-`take(n)`은 처음 n개만, `skip(n)`은 처음 n개를 건너뛴다. Duration 기반 변형도 있다.
+처음 n개만 원하면 `take`, 처음 n개를 버리려면 `skip`을 쓰면 된다. 시간 기반으로도 가능하다.
 
 ```java
 Flux.range(1, 10).take(3);    // 1, 2, 3
@@ -238,6 +240,8 @@ take(3): ──(1)──(2)──(3)──|──>   (이후 상류 취소)
 
 ### next / last / elementAt
 
+단일 요소만 뽑아내는 방법들:
+
 ```java
 Flux.just("A", "B", "C").next();         // Mono<"A">
 Flux.just("A", "B", "C").last();         // Mono<"C">
@@ -248,7 +252,7 @@ Flux.just("A", "B", "C").elementAt(1);   // Mono<"B">
 
 ## A.4 결합 연산자 (Combining Operators)
 
-여러 스트림을 하나로 합친다. 합치는 방식에 따라 결과가 크게 달라진다.
+여러 스트림을 한데 모으는 방법들이다. 어떻게 합치느냐에 따라 완전히 달라진다.
 
 | 연산자 | 설명 | 순서 보장 | 동시 구독 |
 |--------|------|-----------|-----------|
@@ -259,7 +263,7 @@ Flux.just("A", "B", "C").elementAt(1);   // Mono<"B">
 
 ### zip / zipWith
 
-여러 소스의 요소를 **위치(인덱스) 기준**으로 쌍을 만든다. 가장 짧은 소스가 완료되면 전체가 완료된다.
+위치 기반으로 맞춰서 짝을 만든다. 첫 번째끼리, 두 번째끼리 묶는 식이다. 가장 짧은 쪽이 끝나면 전체가 끝난다.
 
 ```java
 Flux<String> names = Flux.just("Alice", "Bob");
@@ -276,7 +280,7 @@ Flux<String> result = Flux.zip(names, ages, (n, a) -> n + " is " + a);
 
 ### merge / mergeWith
 
-여러 소스를 **동시에** 구독하고, 도착 순서대로 발행한다.
+여러 개를 동시에 받아놓고, 빨리 도착하는 순서대로 내보낸다. 순서는 무시한다.
 
 ```java
 Flux<String> merged = Flux.merge(
@@ -293,7 +297,7 @@ Flux<String> merged = Flux.merge(
 
 ### concat / concatWith
 
-첫 번째 소스가 완료된 후 두 번째 소스를 구독한다. 순서가 완벽하게 보장된다.
+하나가 다 끝난 뒤에 다음을 시작한다. 순서는 절대 섞이지 않는다.
 
 ```java
 Flux<String> concat = Flux.concat(Flux.just("A", "B"), Flux.just("C", "D"));
@@ -308,7 +312,7 @@ Flux<String> concat = Flux.concat(Flux.just("A", "B"), Flux.just("C", "D"));
 
 ### combineLatest
 
-각 소스가 요소를 발행할 때마다 **다른 소스의 최신 값**과 결합한다.
+어느 한쪽에서 새 값이 나올 때마다 반대쪽의 최신 값과 짝을 만든다. 두 스트림의 최신 상태를 항상 조합하고 싶을 때 유용하다.
 
 ```java
 Flux<String> combined = Flux.combineLatest(
@@ -327,7 +331,7 @@ Flux<String> combined = Flux.combineLatest(
 
 ## A.5 에러 처리 연산자 (Error Handling Operators)
 
-리액티브 스트림에서 에러를 복구하거나, 재시도하거나, 대체 값을 제공한다.
+뭔가 잘못되었을 때 어떻게 대응할지를 정하는 연산자들이다. 복구하기도, 재시도하기도, 때론 포기하기도 한다.
 
 | 연산자 | 설명 |
 |--------|------|
@@ -339,6 +343,8 @@ Flux<String> combined = Flux.combineLatest(
 | `timeout` | 지정 시간 초과 시 에러를 발생시킨다 |
 
 ### onErrorReturn / onErrorResume / onErrorMap
+
+에러가 나면 어떻게 할지에 따라 고르면 된다:
 
 ```java
 // onErrorReturn: 정적 대체 값
@@ -362,7 +368,7 @@ onErrorResume:  소스 ──(데이터)──X    결과 ──(데이터)─�
 
 ### retry / retryWhen
 
-`retry(n)`은 최대 n회 재구독한다. `retryWhen`은 지수 백오프, 재시도 조건 등을 세밀하게 제어한다.
+단순히 다시 시도만 하면 되면 `retry(n)`을 쓴다. 지수 백오프나 특정 에러만 재시도하는 식의 세밀한 제어가 필요하면 `retryWhen`으로 전략을 짠다.
 
 ```java
 Mono<String> result = callApi().retry(3);
@@ -381,7 +387,7 @@ Mono<String> robust = callApi()
 
 ### timeout
 
-지정 시간 내에 요소가 발행되지 않으면 `TimeoutException`을 발생시킨다.
+어떤 작업이 너무 오래 걸리면? 시간을 초과하면 에러를 던진다. 아니면 대신 기본값을 건네줄 수도 있다.
 
 ```java
 Mono<String> result = callSlowApi().timeout(Duration.ofSeconds(5));
@@ -393,7 +399,7 @@ Mono<String> withFallback = callSlowApi()
 
 ## A.6 유틸리티 연산자 (Utility Operators)
 
-스트림 데이터를 변경하지 않으면서 부수 효과를 수행하거나, 동작을 관찰/공유한다.
+데이터 자체는 건드리지 않으면서 옆에서 뭔가 일을 하거나, 흐름을 들여다보거나, 여러 곳에 공유한다.
 
 | 연산자 | 설명 |
 |--------|------|
@@ -410,7 +416,7 @@ Mono<String> withFallback = callSlowApi()
 
 ### doOn* 시리즈
 
-스트림의 시그널을 관찰하되 스트림 자체를 변경하지 않는다. 로깅, 메트릭 수집에 사용한다.
+스트림이 흘러가는 걸 봐야 할 때가 있다. 로깅, 메트릭 수집, 부수 효과 같은 것들에 쓴다. 데이터는 그대로 통과한다.
 
 ```java
 Flux<User> pipeline = userService.findAll()
@@ -422,7 +428,7 @@ Flux<User> pipeline = userService.findAll()
 
 ### doFinally
 
-스트림이 어떤 이유로든 종료될 때 실행된다. 리소스 정리에 적합하다.
+스트림이 어떻게 끝나든(성공, 실패, 취소) 반드시 실행된다. 리소스 정리가 필요할 때 딱이다.
 
 ```java
 Flux<Data> stream = dataSource.stream()
@@ -434,7 +440,7 @@ Flux<Data> stream = dataSource.stream()
 
 ### log
 
-리액티브 시그널을 SLF4J 로거로 출력한다. 디버깅 시 파이프라인 동작을 추적할 때 유용하다.
+파이프라인을 추적하고 싶을 땐 이걸 끼워넣으면 SLF4J로 모든 신호가 로깅된다. 디버깅할 때 매우 유용하다.
 
 ```java
 Flux<Integer> traced = Flux.range(1, 3).log("my.category").map(i -> i * 10);
@@ -443,6 +449,8 @@ Flux<Integer> traced = Flux.range(1, 3).log("my.category").map(i -> i * 10);
 
 ### delayElements / cache
 
+발행을 의도적으로 늦추거나, 계산 결과를 임시 저장하고 싶을 때:
+
 ```java
 Flux.just("A", "B", "C").delayElements(Duration.ofMillis(500));  // 500ms 간격 발행
 Mono<Config> config = configService.load().cache(Duration.ofMinutes(5)); // 5분 캐싱
@@ -450,7 +458,7 @@ Mono<Config> config = configService.load().cache(Duration.ofMinutes(5)); // 5분
 
 ### share / replay
 
-`share`는 여러 구독자가 하나의 구독을 공유한다. `replay`는 과거 요소를 새 구독자에게 재생한다.
+여러 곳에서 같은 스트림을 구독할 때, `share`면 하나의 구독을 나눠 쓴다. `replay`를 쓰면 예전 값들을 새 구독자에게도 줄 수 있다.
 
 ```java
 Flux<Long> shared = Flux.interval(Duration.ofSeconds(1)).share();
@@ -465,7 +473,7 @@ Flux<Long> replayed = Flux.interval(Duration.ofSeconds(1))
 
 ## A.7 배압 연산자 (Backpressure Operators)
 
-생산자의 발행 속도가 소비자의 처리 속도를 초과할 때 초과분을 제어한다.
+생산자가 너무 빨리 내보내는데 소비자가 못 따라가면? 그럴 때 초과분을 어떻게 처리할지 정한다.
 
 | 연산자 | 초과 요소 처리 방식 |
 |--------|---------------------|
@@ -475,6 +483,8 @@ Flux<Long> replayed = Flux.interval(Duration.ofSeconds(1))
 | `limitRate` | 하류의 request 크기를 제한 |
 
 ### onBackpressureBuffer / onBackpressureDrop / onBackpressureLatest
+
+초과분을 어떻게 처리할지:
 
 ```java
 // 버퍼: 최대 1000개 저장
@@ -497,7 +507,7 @@ onBackpressureLatest:
 
 ### limitRate
 
-하류가 상류에 요청하는 `request(n)` 크기를 제한한다. 프리페치와 보충 전략을 적용한다.
+상류에 요청하는 양을 조절한다. 한 번에 얼마나 가져올지, 언제 다시 채울지를 정할 수 있다.
 
 ```java
 Flux<Data> controlled = dataFlux.limitRate(100);          // 100개씩 요청
@@ -508,7 +518,7 @@ Flux<Data> precise = dataFlux.limitRate(100, 50);         // prefetch 100, lowTi
 
 ## A.8 연산자 선택 가이드
 
-상황에 따라 어떤 연산자를 사용할지 빠르게 판단하기 위한 의사 결정표이다.
+뭔가 하려고 할 때 어떤 연산자를 써야 할지 모르겠다면 이 표를 보면 된다.
 
 | 요구 사항 | 추천 연산자 |
 |-----------|-------------|
@@ -534,6 +544,8 @@ Flux<Data> precise = dataFlux.limitRate(100, 50);         // prefetch 100, lowTi
 
 ## A.9 자주 사용하는 연산자 조합 패턴
 
+실제 코드에서 자주 보는 패턴들을 모아봤다. 이런 식으로 여러 연산자를 조합하면 견고한 리액티브 파이프라인을 만들 수 있다.
+
 ### 패턴 1: 안전한 외부 API 호출
 
 ```java
@@ -546,6 +558,8 @@ Mono<Response> safeCall = webClient.get()
 ```
 
 ### 패턴 2: 병렬 호출 후 결합
+
+여러 작업을 동시에 실행하되 결과를 합쳐야 할 때:
 
 ```java
 Mono<Dashboard> dashboard = Mono.zip(
@@ -568,6 +582,8 @@ Flux<ProcessedItem> pipeline = itemFlux
 
 ### 패턴 4: 캐싱과 공유
 
+필자의 경험상, 자주 접근하는 데이터는 캐싱해서 반복 호출을 줄이는 게 좋다:
+
 ```java
 Mono<Config> sharedConfig = configService.load()
     .cache(Duration.ofMinutes(10))
@@ -577,4 +593,4 @@ Mono<Config> sharedConfig = configService.load()
 
 ---
 
-> **참고**: 이 부록은 Reactor 3.x 기준으로 작성되었다. 각 연산자의 전체 시그니처와 오버로드 변형은 [Project Reactor 공식 문서](https://projectreactor.io/docs/core/release/api/)를 참조하라.
+> **참고**: 이 부록은 Reactor 3.x 기준으로 작성했다. 각 연산자의 세부 사항과 여러 오버로드는 [Project Reactor 공식 문서](https://projectreactor.io/docs/core/release/api/)를 참고하면 된다.

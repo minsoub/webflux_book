@@ -1,16 +1,18 @@
 # 부록 C. 자주 발생하는 문제와 해결 방법 (FAQ)
 
-Spring WebFlux와 MongoDB 리액티브 스택으로 개발하다 보면 명령형 프로그래밍에서는 만나지 못했던 새로운 유형의 문제들을 마주하게 된다. 이 부록에서는 실무에서 빈번하게 발생하는 15가지 문제를 선별하여, 증상 파악부터 원인 분석, 해결 방법까지 체계적으로 정리한다.
+Spring WebFlux와 MongoDB 리액티브 스택을 사용하며 프로젝트를 진행하다 보면, 명령형 프로그래밍에서는 경험하지 못했던 새로운 종류의 이슈들과 마주하게 된다. 필자의 경험상 이런 문제들은 대부분 리액티브의 핵심 개념—특히 스레드 모델과 Context 전파 메커니즘—을 명확히 이해하면 자연스럽게 해결된다.
+
+이 부록에서는 실무에서 가장 자주 발생하는 15가지 문제를 모았다. 각 항목마다 증상을 먼저 보여주고, 왜 그런 일이 생기는지 원인을 분석한 뒤, 어떻게 대처할 수 있을지 구체적인 해결책을 제시했다.
 
 ---
 
 ## FAQ 1. "block()/blockFirst()/blockLast() are blocking" 에러
 
-**증상**: 리액티브 파이프라인 내부에서 `block()`을 호출하면 `IllegalStateException`이 발생한다.
+**증상**: 리액티브 파이프라인 내부에서 `block()`을 호출하면 `IllegalStateException`이 튀어나온다.
 
-**원인 분석**: Netty의 이벤트 루프 스레드에서 `block()`을 호출하면 해당 스레드가 차단된다. 이벤트 루프가 멈추면 모든 요청 처리가 중단되므로, Reactor는 이를 감지하고 예외를 던진다.
+**원인 분석**: Netty의 이벤트 루프 스레드에서 `block()`을 부르면 그 스레드가 대기 상태(blocking)로 빠진다. 이벤트 루프 스레드가 멈추는 순간 다른 모든 요청들의 처리가 중단되어 버린다. Reactor는 이 위험한 상황을 미리 감지하고 예외를 던져서 문제를 드러낸다.
 
-**해결 방법**: `block()` 대신 `flatMap`, `zip`, `then` 등 리액티브 연산자로 체이닝한다.
+**해결 방법**: `block()` 대신 `flatMap`, `zip`, `then` 같은 리액티브 연산자로 흐름을 이어가자.
 
 ```java
 // 잘못된 코드
@@ -21,7 +23,7 @@ return userRepository.findById(userId)
     .flatMap(user -> profileRepository.findByUser(user));
 ```
 
-부득이하게 블로킹 코드를 호출해야 한다면 `Schedulers.boundedElastic()`으로 전환한다.
+혹시 레거시 코드를 호출해야 하거나, 부득이하게 블로킹 호출이 필요하다면 `Schedulers.boundedElastic()`으로 스레드를 전환해서 처리한다.
 
 ```java
 Mono.fromCallable(() -> legacyBlockingService.call())
@@ -32,11 +34,11 @@ Mono.fromCallable(() -> legacyBlockingService.call())
 
 ## FAQ 2. "Scheduler was blocked" 에러와 BlockHound
 
-**증상**: BlockHound 활성화 후 `BlockingOperationError: Blocking call!` 에러가 발생한다.
+**증상**: BlockHound를 켜면 갑자기 `BlockingOperationError: Blocking call!` 같은 에러가 날아온다.
 
-**원인 분석**: BlockHound는 논블로킹 스레드에서 발생하는 블로킹 호출(파일 I/O, `Thread.sleep` 등)을 런타임에 감지한다. 서드파티 라이브러리에 숨어 있는 블로킹 지점이 원인인 경우가 많다.
+**원인 분석**: BlockHound는 개발/테스트 단계에서 코드의 블로킹 호출(파일 I/O, `Thread.sleep` 등)을 런타임에 적발하는 도구다. 의도하지 않은 블로킹이 발견되는데, 특히 서드파티 라이브러리나 드라이버에 숨어 있는 경우가 많다.
 
-**해결 방법**: BlockHound를 테스트 의존성으로 추가하고, 허용 가능한 블로킹 호출은 화이트리스트에 등록한다.
+**해결 방법**: BlockHound를 테스트 의존성으로 등록한 후, 불가피한 블로킹 호출들을 화이트리스트에 추가해서 허용한다.
 
 ```java
 BlockHound.install(builder -> builder
@@ -52,11 +54,11 @@ BlockHound.install(builder -> builder
 
 ## FAQ 3. MongoDB 연결 실패 및 타임아웃 문제
 
-**증상**: `MongoTimeoutException: Timed out after 30000 ms while waiting for a server`가 발생한다.
+**증상**: 운영 중에 갑자기 `MongoTimeoutException: Timed out after 30000 ms while waiting for a server` 같은 에러가 터진다.
 
-**원인 분석**: 커넥션 풀 크기 부족, 네트워크 지연, 레플리카 셋 구성 변경, DNS 해석 지연 등이 원인이다.
+**원인 분석**: 원인은 여러 가지일 수 있다. 커넥션 풀이 꽉 찬 경우, 네트워크 지연이 심한 경우, MongoDB 레플리카 셋 구성이 변경된 경우, DNS 조회가 지연되는 경우 등 다양한 시나리오가 있다.
 
-**해결 방법**: `MongoClientSettings`를 직접 구성하여 커넥션 풀과 타임아웃을 조정한다.
+**해결 방법**: `MongoClientSettings`를 적절하게 구성해서 커넥션 풀 크기와 타임아웃 값들을 직접 조정해 보자.
 
 ```java
 @Override
@@ -78,11 +80,11 @@ protected void configureClientSettings(MongoClientSettings.Builder builder) {
 
 ## FAQ 4. ReactiveSecurityContext에서 인증 정보가 null인 경우
 
-**증상**: `ReactiveSecurityContextHolder.getContext()`가 빈 `Mono`를 반환한다.
+**증상**: `ReactiveSecurityContextHolder.getContext()`를 호출했는데 빈 `Mono`만 돌아온다.
 
-**원인 분석**: Spring Security 리액티브 구현은 `ThreadLocal`이 아닌 Reactor Context를 통해 `SecurityContext`를 전파한다. 파이프라인이 끊기면 Context가 전파되지 않아 인증 정보가 사라진다.
+**원인 분석**: Spring Security의 리액티브 구현은 전통적인 `ThreadLocal` 방식이 아니라 Reactor Context를 기반으로 동작한다. 리액티브 체인이 끊어지거나 맥락을 잃으면, 보안 정보도 함께 사라진다.
 
-**해결 방법**: 리액티브 체인을 끊지 않고 유지하거나, 컨트롤러에서 파라미터로 전달한다.
+**해결 방법**: 가장 좋은 방법은 리액티브 체인을 계속 유지하는 것이고, 그것이 어렵다면 컨트롤러의 메서드 파라미터로 직접 주입받자.
 
 ```java
 // 올바른 코드: 체인 유지
@@ -101,11 +103,11 @@ public Mono<UserDto> getMyInfo(@AuthenticationPrincipal Mono<UserDetails> princi
 
 ## FAQ 5. WebFlux에서 @Transactional이 작동하지 않는 경우
 
-**증상**: `@Transactional`을 선언했는데 MongoDB 작업이 트랜잭션으로 묶이지 않는다.
+**증상**: `@Transactional` 어노테이션을 달았는데 MongoDB 작업이 트랜잭션으로 처리되지 않는 것처럼 보인다.
 
-**원인 분석**: MongoDB 트랜잭션은 레플리카 셋(Replica Set) 구성이 필수다. 또한 `ReactiveMongoTransactionManager` 빈이 등록되어 있어야 한다.
+**원인 분석**: MongoDB 트랜잭션을 지원하려면 먼저 레플리카 셋(Replica Set) 구성이 있어야 한다. 추가로 Spring이 제공하는 `ReactiveMongoTransactionManager` 빈이 정확히 등록되어 있어야 작동한다.
 
-**해결 방법**: 레플리카 셋을 구성하고 트랜잭션 매니저를 등록한다.
+**해결 방법**: MongoDB를 레플리카 셋으로 초기화하고, Spring 설정에서 트랜잭션 매니저를 명시적으로 빈으로 등록한다.
 
 ```bash
 mongosh --eval "rs.initiate({_id:'rs0', members:[{_id:0, host:'localhost:27017'}]})"
@@ -122,11 +124,11 @@ ReactiveMongoTransactionManager transactionManager(ReactiveMongoDatabaseFactory 
 
 ## FAQ 6. Flux 데이터가 중복으로 발행되는 경우 (Cold vs Hot)
 
-**증상**: 하나의 `Flux`를 여러 곳에서 구독하면 DB 쿼리가 구독 횟수만큼 반복 실행된다.
+**증상**: 같은 `Flux`를 여러 군데서 구독하면, DB 쿼리가 구독할 때마다 중복 실행된다.
 
-**원인 분석**: Reactor의 `Flux`/`Mono`는 기본적으로 Cold Publisher다. 각 구독자에 대해 독립적으로 데이터 생성을 시작하므로 소스 작업이 중복 실행된다.
+**원인 분석**: Reactor의 `Flux`와 `Mono`는 기본적으로 Cold Publisher 패턴으로 설계되어 있다. 즉, 새로운 구독자가 나타날 때마다 데이터 생성 로직이 처음부터 독립적으로 시작되므로, 데이터베이스 쿼리도 반복해서 실행되는 것이다.
 
-**해결 방법**: `cache()` 또는 `share()`로 Hot Publisher로 변환한다.
+**해결 방법**: 상황에 맞춰 `cache()` 또는 `share()`를 사용해서 Hot Publisher 특성으로 변환하자.
 
 ```java
 Flux<Product> products = productRepository.findAll().cache(); // 결과 캐싱
@@ -142,11 +144,11 @@ Flux<Product> products = productRepository.findAll().cache(); // 결과 캐싱
 
 ## FAQ 7. WebClient에서 DataBufferLimitException 발생
 
-**증상**: 대용량 응답 수신 시 `Exceeded limit on max bytes to buffer : 262144` 에러가 발생한다.
+**증상**: 서버에서 큰 파일이나 응답을 받으려고 하면 `Exceeded limit on max bytes to buffer : 262144` 같은 에러가 뜬다.
 
-**원인 분석**: WebClient는 기본적으로 응답 본문을 최대 256KB까지만 버퍼링한다.
+**원인 분석**: WebClient는 기본값으로 응답 전체를 메모리에 버퍼링할 때 256KB 제한을 두고 있다. 그 이상의 데이터를 받으려고 하면 자동으로 차단한다.
 
-**해결 방법**: 버퍼 크기를 조정하거나, 스트리밍으로 처리한다.
+**해결 방법**: 버퍼 크기를 늘리거나, 대용량 응답은 스트리밍 방식으로 처리한다.
 
 ```java
 // 방법 1: 버퍼 크기 확장
@@ -165,11 +167,11 @@ webClient.get().uri("/api/products/export")
 
 ## FAQ 8. 리액티브 환경에서 ThreadLocal/MDC 사용 문제
 
-**증상**: MDC에 설정한 `traceId`가 리액티브 파이프라인을 타면서 `null`로 나타난다.
+**증상**: MDC에 넣어놓은 `traceId` 값이 리액티브 파이프라인을 거치면서 어느 순간 `null`이 되어 있다.
 
-**원인 분석**: MDC는 `ThreadLocal` 기반이므로, 하나의 요청이 여러 스레드를 오가는 리액티브 환경에서는 스레드 전환 시 MDC 값이 사라진다.
+**원인 분석**: MDC는 `ThreadLocal` 메커니즘에 의존한다. 한 번의 요청이 여러 스레드를 거쳐 처리되는 리액티브 환경에서는, 스레드가 바뀔 때마다 MDC 값이 전달되지 않는다.
 
-**해결 방법**: Micrometer Context Propagation을 활용하여 자동 동기화한다.
+**해결 방법**: Micrometer Context Propagation 라이브러리를 사용하면, Context 값이 자동으로 동기화되도록 할 수 있다.
 
 ```xml
 <dependency>
@@ -197,11 +199,11 @@ public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
 
 ## FAQ 9. MongoDB Change Streams 연결 끊김 처리
 
-**증상**: Change Streams 수신 중 MongoDB 장애나 네트워크 단절 시 스트림이 영구적으로 끊어진다.
+**증상**: Change Streams로 변경 이벤트를 수신하다가 MongoDB 장애나 네트워크 단절이 발생하면 스트림이 완전히 끊어져 버린다.
 
-**원인 분석**: 네트워크 단절이나 프라이머리 전환 시 롱 커넥션이 끊기며, 자동 재연결 로직이 없으면 이벤트 수신이 중단된다.
+**원인 분석**: 네트워크가 끊기거나 MongoDB 레플리카 셋의 프라이머리가 바뀌면 자동으로 롱 커넥션이 종료된다. 이때 자동 재연결 및 재시작 로직이 없으면, 애플리케이션은 이벤트를 받을 수 없는 상태에 빠진다.
 
-**해결 방법**: `retryWhen`과 Resume Token을 활용하여 끊긴 지점부터 재수신한다.
+**해결 방법**: `retryWhen`으로 재시도 로직을 구성하고, Resume Token을 저장했다가 활용하면 끊긴 지점부터 다시 받을 수 있다.
 
 ```java
 private volatile BsonValue lastResumeToken;
@@ -231,11 +233,11 @@ private Flux<ChangeStreamEvent<Order>> createChangeStream() {
 
 ## FAQ 10. 테스트에서 StepVerifier가 타임아웃되는 경우
 
-**증상**: `StepVerifier` 테스트가 기본 타임아웃(10초) 이후 `AssertionError`로 실패한다.
+**증상**: `StepVerifier` 테스트를 실행했는데 기본 타임아웃인 10초를 넘기고 `AssertionError`로 실패한다.
 
-**원인 분석**: 테스트 대상이 완료 신호(`onComplete`)를 발행하지 않으면 `StepVerifier`가 무한 대기한다. 빈 결과, 누락된 구독, 무한 스트림이 원인이다.
+**원인 분석**: 테스트하는 코드가 완료 신호(`onComplete`)를 발행하지 않으면, `StepVerifier`는 계속 대기한다. 빈 결과가 나오거나, 구독이 제대로 안 되었거나, 의도하지 않은 무한 스트림이 있는 경우들이 원인이다.
 
-**해결 방법**: 상황에 맞는 검증 전략을 선택한다.
+**해결 방법**: 테스트 상황에 맞춰 적절한 검증 메서드를 선택해서 사용한다.
 
 ```java
 // 빈 Mono: verifyComplete()
@@ -262,11 +264,11 @@ StepVerifier.withVirtualTime(() ->
 
 ## FAQ 11. Native Image 빌드 시 리플렉션 관련 에러
 
-**증상**: GraalVM Native Image 빌드 후 런타임에 `ClassNotFoundException`이 발생한다.
+**증상**: GraalVM Native Image로 빌드한 후 실행하면 `ClassNotFoundException`이 터진다.
 
-**원인 분석**: Native Image는 빌드 시점에 정적 분석으로 클래스를 판별하므로, 리플렉션으로 접근하는 클래스가 바이너리에 포함되지 않을 수 있다.
+**원인 분석**: Native Image는 빌드 당시의 정적 분석만으로 어떤 클래스들이 필요한지 판단한다. 런타임에 리플렉션으로 동적으로 로드하는 클래스들은 빌드 결과에 포함되지 않을 가능성이 높다.
 
-**해결 방법**: Spring Boot 3.x의 AOT 기능을 활용하고, 커스텀 리플렉션은 힌트를 등록한다.
+**해결 방법**: Spring Boot 3.x부터 제공하는 AOT(Ahead-of-Time) 기능을 활용하고, 필요한 클래스들을 힌트로 명시한다.
 
 ```java
 @Configuration
@@ -287,11 +289,11 @@ public class MongoModelHints implements RuntimeHintsRegistrar {
 
 ## FAQ 12. CORS 관련 문제 해결
 
-**증상**: 프론트엔드에서 API 호출 시 브라우저 콘솔에 CORS 에러가 표시된다.
+**증상**: 프론트엔드 애플리케이션에서 백엔드 API를 호출했는데 브라우저 콘솔에 CORS 에러가 떠 있다.
 
-**원인 분석**: 브라우저의 동일 출처 정책에 의해 다른 도메인/포트의 요청이 차단된다. Spring Security를 함께 쓸 경우 보안 필터에서도 CORS를 설정해야 한다.
+**원인 분석**: 브라우저는 보안상 다른 도메인이나 포트로의 요청을 차단하는 정책을 기본으로 가지고 있다. Spring Security를 사용하는 경우, WebFlux 레벨의 CORS 설정만으로는 부족하고 보안 필터 레벨에서도 별도로 설정해야 한다.
 
-**해결 방법**: WebFlux 설정과 Security 설정 양쪽에서 CORS를 구성한다.
+**해결 방법**: WebFlux 설정과 Security 설정 두 곳 모두에서 CORS를 제대로 구성해야 한다.
 
 ```java
 // WebFlux CORS 설정
@@ -317,11 +319,11 @@ SecurityWebFilterChain securityFilterChain(ServerHttpSecurity http) {
 
 ## FAQ 13. WebSocket 연결이 끊어지는 경우
 
-**증상**: WebSocket 연결이 일정 시간 후 끊어지며 `onClose` 이벤트가 발생한다.
+**증상**: WebSocket 연결을 맺은 후 한동안 놔두면 일정 시간이 지나서 자동으로 끊어진다.
 
-**원인 분석**: 프록시/로드밸런서의 유휴 타임아웃(Nginx 기본 60초)이 주요 원인이다.
+**원인 분석**: 필자의 경험상 이것은 대부분 중간의 프록시나 로드밸런서의 유휴 타임아웃 때문이다. Nginx는 기본으로 60초 동안 활동이 없는 연결을 종료한다.
 
-**해결 방법**: 핑/퐁 메커니즘으로 연결을 유지한다.
+**해결 방법**: WebSocket 연결을 주기적으로 ping/pong 메시지로 살려두면 타임아웃을 피할 수 있다.
 
 ```java
 @Override
@@ -336,17 +338,17 @@ public Mono<Void> handle(WebSocketSession session) {
 }
 ```
 
-Nginx에서는 `proxy_read_timeout`을 충분히 늘려야 한다(예: `3600s`).
+Nginx 설정에서 `proxy_read_timeout`을 충분히 큰 값으로 늘려주는 것도 좋은 방법이다(예: `3600s`).
 
 ---
 
 ## FAQ 14. 메모리 누수 (구독 해제 미처리)
 
-**증상**: 가동 시간이 길어질수록 힙 메모리가 지속 증가하며 `OutOfMemoryError`가 발생한다.
+**증상**: 애플리케이션이 오래 실행될수록 힙 메모리가 계속 증가해서 결국 `OutOfMemoryError`가 난다.
 
-**원인 분석**: 무한 `Flux`(`interval`, SSE, WebSocket 등)를 구독한 후 해제하지 않으면, 구독 객체와 내부 버퍼가 GC 대상이 되지 않아 메모리가 누적된다.
+**원인 분석**: `interval`, SSE, WebSocket 등으로 만든 무한 `Flux`를 구독한 후 제대로 종료하지 않으면, 구독 객체와 내부 버퍼들이 GC의 대상이 되지 않아 메모리에 계속 쌓인다.
 
-**해결 방법**: `Disposable`을 관리하고 라이프사이클에 맞춰 해제한다.
+**해결 방법**: `Disposable` 객체를 적절히 관리하고, 애플리케이션이나 컴포넌트의 생명주기에 맞춰 제때 해제해야 한다.
 
 ```java
 @Service
@@ -367,17 +369,17 @@ public class EventMonitorService implements DisposableBean {
 }
 ```
 
-SSE 엔드포인트에서는 `doOnCancel()`로 클라이언트 연결 종료를 감지하여 리소스를 정리한다.
+SSE 엔드포인트의 경우, `doOnCancel()` 콜백으로 클라이언트 연결이 끊어지는 순간을 감지해서 필요한 리소스를 즉시 정리하는 것이 좋은 패턴이다.
 
 ---
 
 ## FAQ 15. Reactor Context 전파 문제
 
-**증상**: `contextWrite()`로 저장한 값을 `deferContextual()`로 읽으면 값이 존재하지 않는다.
+**증상**: `contextWrite()`로 값을 저장하고 `deferContextual()`로 읽으려 하는데 값이 없다고 나온다.
 
-**원인 분석**: Reactor Context는 구독자에서 발행자 방향(아래에서 위)으로 전파된다. `contextWrite()`가 체인의 상류에 위치하면 하류의 연산자가 해당 Context를 참조할 수 없다.
+**원인 분석**: Reactor Context는 구독자 쪽에서 발행자 쪽으로(즉, 아래에서 위로) 향해 전파된다. 만약 `contextWrite()`가 체인의 상류에 있으면, 그 아래의 연산자들은 해당 Context를 볼 수 없다.
 
-**해결 방법**: `contextWrite()`를 체인의 하류(구독자 쪽)에 배치한다.
+**해결 방법**: `contextWrite()`를 체인의 하류(구독자가 있는 쪽)에 배치해야 값이 제대로 전파된다.
 
 ```java
 // 잘못된 코드: contextWrite가 상류에 위치
@@ -393,7 +395,7 @@ Mono.just("data")
     .contextWrite(ctx -> ctx.put("key", "value"));
 ```
 
-여러 레이어에 걸쳐 Context를 전파하려면 `WebFilter`에서 설정하면 전체 파이프라인에서 접근 가능하다.
+실무에서는 여러 레이어를 거치는 Context를 일관되게 전파하려면, `WebFilter`에서 한 번에 설정하는 방식이 가장 깔끔하다.
 
 ```java
 @Override
@@ -409,12 +411,12 @@ public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
 
 ## 정리
 
-리액티브 프로그래밍에서 발생하는 대부분의 문제는 다음 세 가지 원칙을 이해하면 예방할 수 있다.
+15가지 문제를 훑어본 결과, 리액티브 프로그래밍에서 발생하는 대부분의 이슈는 근본적으로 다음 세 가지 원칙과 맞닿아 있음을 알 수 있다.
 
-1. **체인을 끊지 마라**: 리액티브 파이프라인은 하나의 연속된 체인이어야 한다. `block()`, 새로운 구독, 중간 변수 할당 등으로 체인이 끊기면 Context 전파, 에러 처리, 백프레셔 등이 제대로 작동하지 않는다.
+1. **체인을 끊지 마라**: 리액티브 파이프라인은 연속된 하나의 체인으로 유지되어야 한다. `block()` 호출, 새로운 구독 시점 추가, 중간에 변수로 빼내기 등으로 체인을 끊으면, Context 전파가 끊어지고 에러 처리와 백프레셔가 제대로 작동하지 않는다.
 
-2. **스레드를 가정하지 마라**: 리액티브 코드는 어떤 스레드에서든 실행될 수 있다. `ThreadLocal`, `synchronized`, 가변 상태 등 특정 스레드에 의존하는 패턴은 피해야 한다.
+2. **스레드를 가정하지 마라**: 리액티브 코드는 어떤 스레드에서 실행될지 예측할 수 없다. 따라서 `ThreadLocal`, `synchronized` 블록, 특정 스레드에 고정된 가변 상태 같은 것은 피해야 한다.
 
-3. **구독 생명주기를 관리하라**: 모든 구독은 반드시 완료되거나 명시적으로 해제되어야 한다. 무한 스트림을 구독할 때는 반드시 해제 로직을 함께 작성한다.
+3. **구독 생명주기를 관리하라**: 모든 구독은 정상적으로 완료되거나 명시적으로 해제되어야 한다. 특히 무한 스트림(`interval`, SSE, WebSocket 등)을 구독할 때는 반드시 해제 로직을 함께 작성해야 한다.
 
-이 세 가지 원칙을 기억하며 개발한다면, 이 부록에서 다룬 문제 대부분을 사전에 방지할 수 있을 것이다.
+이 세 가지 원칙을 머릿속에 새기고 개발한다면, 이 부록에서 다룬 거의 모든 문제를 미리 방지할 수 있을 것이다.

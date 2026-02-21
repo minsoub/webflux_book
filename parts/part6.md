@@ -1,6 +1,10 @@
 # Chapter 18. 모니터링과 관측 가능성
 
-운영 환경에서 리액티브 애플리케이션을 안정적으로 관리하려면 세 가지 관측 가능성(Observability) 축이 필요하다. **메트릭(Metrics)**, **트레이스(Traces)**, **로그(Logs)**다. 전통적인 서블릿 기반 애플리케이션과 달리, WebFlux 애플리케이션은 하나의 요청이 여러 스레드를 넘나들며 처리되므로 `ThreadLocal` 기반의 기존 모니터링 방식만으로는 한계가 있다. 이번 장에서는 Spring Boot Actuator를 기반으로 메트릭을 노출하고, Micrometer와 Prometheus로 수집하며, Grafana로 시각화하는 전체 파이프라인을 구성한다. 나아가 Reactor 스트림 내부의 메트릭 수집, 분산 추적(Zipkin/Jaeger), 그리고 리액티브 환경에서의 구조화된 로깅까지 실전에서 필요한 관측 가능성 전략을 종합적으로 다룬다.
+배포 후 운영 환경에서 리액티브 애플리케이션을 안정적으로 관리하는 일은 생각보다 복잡하다. 그래서 우리에게는 세 가지 핵심 관측 가능성(Observability) 축이 필요한 것인데, 바로 **메트릭(Metrics)**, **트레이스(Traces)**, **로그(Logs)**다.
+
+특히 WebFlux의 경우 전통적인 서블릿 기반 애플리케이션과는 다르다. 하나의 요청이 여러 스레드를 넘나들며 처리되기 때문에, 단순한 `ThreadLocal` 기반의 기존 모니터링 방식으로는 충분하지 않다.
+
+이 장에서는 실제 운영 환경에 필요한 관측 가능성을 어떻게 구축할지 배워볼 것이다. Spring Boot Actuator로 메트릭을 노출하는 것부터 시작해서, Micrometer와 Prometheus로 수집하고, Grafana로 시각화하는 전체 파이프라인을 함께 구성해보자. 그리고 Reactor 스트림 내부에서 메트릭을 수집하는 방법, 분산 추적(Zipkin/Jaeger) 구성, 그리고 리액티브 환경에 맞춘 구조화된 로깅까지 실전에서 필요한 전략들을 차근차근 살펴보겠다.
 
 ---
 
@@ -8,7 +12,7 @@
 
 ### 18.1.1 Actuator 소개와 의존성
 
-Spring Boot Actuator는 애플리케이션의 상태, 메트릭, 환경 정보 등을 HTTP 엔드포인트로 노출하는 운영 도구 모듈이다. WebFlux 환경에서도 동일하게 동작하며, 리액티브 기반의 Health Indicator를 제공한다.
+Spring Boot Actuator는 애플리케이션의 상태, 메트릭, 환경 정보 같은 것들을 HTTP 엔드포인트로 손쉽게 노출할 수 있게 해주는 운영 도구 모듈이다. WebFlux 환경에서도 동일하게 동작하며, 무엇보다 리액티브 기반의 Health Indicator를 제공한다는 점이 중요하다.
 
 ```groovy
 dependencies {
@@ -20,7 +24,7 @@ dependencies {
 
 ### 18.1.2 엔드포인트 활성화와 노출 설정
 
-기본적으로 Actuator는 대부분의 엔드포인트를 활성화하지만, HTTP로 노출되는 것은 `health`뿐이다. 운영에 필요한 엔드포인트를 선택적으로 노출한다.
+Actuator를 처음 설정할 때 주의할 점이 하나 있는데, 기본적으로 대부분의 엔드포인트는 활성화되지만 HTTP로 노출되는 것은 `health`뿐이라는 것이다. 따라서 운영에 필요한 엔드포인트를 선택적으로 노출해야 한다.
 
 ```yaml
 # application.yml
@@ -57,7 +61,7 @@ management:
 
 ### 18.1.3 커스텀 Health Indicator
 
-MongoDB Reactive 스타터를 사용하면 `ReactiveMongoHealthIndicator`가 자동 등록된다. 자동 감지되지 않는 외부 서비스의 상태를 확인하려면 `ReactiveHealthIndicator`를 직접 구현한다.
+MongoDB Reactive 스타터를 사용하면 `ReactiveMongoHealthIndicator`가 자동으로 등록되어 매우 편하다. 그런데 외부 결제 서비스라던가, 자동 감지되지 않는 외부 서비스의 상태를 확인하려면? 이럴 때는 `ReactiveHealthIndicator`를 직접 구현해서 처리해야 한다.
 
 ```java
 @Component
@@ -91,7 +95,7 @@ public class ExternalPaymentServiceHealthIndicator
 
 ### 18.1.4 Actuator 보안 설정
 
-Actuator 엔드포인트에는 민감한 정보가 포함될 수 있으므로, Spring Security WebFlux와 연동하여 접근을 제한해야 한다.
+Actuator 엔드포인트를 운영 환경에 배포할 때 반드시 신경 써야 할 부분이 보안이다. 엔드포인트에는 민감한 정보들이 포함될 수 있으니까, Spring Security WebFlux와 연동하여 접근을 제한하는 것이 필수다.
 
 ```java
 @Configuration
@@ -116,7 +120,7 @@ public class ActuatorSecurityConfig {
 }
 ```
 
-운영 환경에서는 Actuator 포트를 별도로 분리하는 것도 권장된다.
+더 나아가, 운영 환경에서는 Actuator 포트를 애플리케이션 포트와 완전히 분리하는 방식을 강력히 권장한다.
 
 ```yaml
 # application-prod.yml
@@ -129,7 +133,7 @@ management:
         include: health, prometheus
 ```
 
-이렇게 하면 애플리케이션은 8080 포트에서, Actuator는 9090 포트에서 서비스되므로 방화벽 규칙으로 외부 접근을 차단할 수 있다.
+이 방식을 사용하면 애플리케이션은 8080 포트에서, Actuator는 9090 포트에서 서비스되므로, 방화벽 규칙으로 내부 네트워크만 접근 가능하도록 제한할 수 있다는 이점이 있다.
 
 ---
 
@@ -137,7 +141,7 @@ management:
 
 ### 18.2.1 Micrometer 소개
 
-Micrometer는 JVM 기반 애플리케이션을 위한 **벤더 중립적 메트릭 파사드**다. SLF4J가 로깅 구현체를 추상화하듯, Micrometer는 Prometheus, Datadog, CloudWatch 등 메트릭 수집 구현체를 추상화한다. Spring Boot Actuator는 내부적으로 Micrometer를 사용한다.
+Micrometer를 처음 들을 때, 사람들은 보통 "또 다른 라이브러리?"라고 생각한다. 그런데 이것은 정말 훌륭한 설계다. 흔히 말하는 **벤더 중립적 메트릭 파사드**로서, SLF4J가 로깅 구현체를 추상화하는 것처럼, Micrometer는 Prometheus, Datadog, CloudWatch 등 메트릭 수집 구현체를 모두 추상화한다. Spring Boot Actuator는 내부적으로 이 Micrometer를 활용하고 있으니, 우리가 제대로 이해하고 사용해야 할 필요가 있다.
 
 ```groovy
 dependencies {
@@ -150,7 +154,7 @@ dependencies {
 
 ### 18.2.2 자동 수집 메트릭
 
-Spring Boot와 Micrometer는 별도 코드 없이도 다양한 메트릭을 자동 수집한다.
+설정을 하면, Spring Boot와 Micrometer가 자동으로 많은 메트릭을 수집해준다는 점이 정말 편하다. 별도의 코드 없이도 다양한 메트릭이 자동으로 수집되기 때문이다.
 
 | 카테고리 | 메트릭 예시 | 설명 |
 |---------|-----------|------|
@@ -163,7 +167,7 @@ Spring Boot와 Micrometer는 별도 코드 없이도 다양한 메트릭을 자�
 
 ### 18.2.3 커스텀 메트릭 -- Counter
 
-`Counter`는 단조 증가하는 값을 추적한다. 주문 건수, 에러 발생 횟수 등을 기록하는 데 적합하다.
+이제 본격적으로 메트릭을 직접 정의해서 사용해보자. 가장 간단한 형태인 `Counter`부터 시작하면, 이것은 단조 증가하는 값을 추적한다. 주문 건수, 에러 발생 횟수 같은 것들을 기록할 때 매우 유용하다.
 
 ```java
 @Service
@@ -194,7 +198,7 @@ public class OrderService {
 
 ### 18.2.4 커스텀 메트릭 -- Gauge
 
-`Gauge`는 현재 값을 나타낸다. 대기열 크기, 활성 연결 수 등 증감이 모두 가능한 값에 사용한다.
+`Gauge`는 Counter와 달리, 현재 시점의 값을 나타낸다. 대기열 크기, 활성 연결 수처럼 증가했다 감소했다를 반복하는 값에 사용하면 좋다.
 
 ```java
 @Component
@@ -215,7 +219,7 @@ public class QueueMetrics {
 
 ### 18.2.5 커스텀 메트릭 -- Timer
 
-`Timer`는 작업의 소요 시간과 호출 횟수를 함께 기록한다. 성능 분석에 필수적이다.
+마지막으로 소개할 `Timer`는 실무에서 정말 자주 쓰이는 메트릭인데, 작업의 소요 시간과 호출 횟수를 동시에 기록한다. 성능 분석에 필수적이고, 필자의 경험상 성능 문제를 추적할 때 가장 먼저 확인하는 메트릭이다.
 
 ```java
 @Service
@@ -246,6 +250,8 @@ public class ProductSearchService {
 
 ### 18.2.6 공통 태그와 메트릭 사전 등록
 
+모든 메트릭에 공통적으로 적용할 태그가 있다면, 중복 코드 대신 한 곳에서 관리하자.
+
 ```java
 @Configuration
 public class MetricsConfig {
@@ -271,7 +277,7 @@ public class MetricsConfig {
 
 ### 18.2.7 Prometheus 설정 (prometheus.yml)
 
-Prometheus가 애플리케이션의 메트릭을 주기적으로 스크래핑하도록 설정한다.
+이제 Prometheus가 우리 애플리케이션의 메트릭을 주기적으로 수집하도록 설정해야 한다.
 
 ```yaml
 # prometheus.yml
@@ -298,7 +304,7 @@ scrape_configs:
           - 'webflux-app-3:9090'
 ```
 
-Docker Compose로 Prometheus를 실행한다. Prometheus UI(`http://localhost:9090`)에서 `up{job="webflux-app"}` 쿼리로 타겟 연결 상태를 확인할 수 있다.
+그리고 Docker Compose로 Prometheus를 실행하면 되는데, 제대로 설정되었는지 확인하려면 Prometheus UI(`http://localhost:9090`)에서 `up{job="webflux-app"}` 쿼리를 실행해서 타겟 연결 상태를 확인하면 된다.
 
 ```yaml
 # docker-compose-monitoring.yml
@@ -317,7 +323,7 @@ services:
 
 ### 18.3.1 Grafana Docker 설치와 데이터소스 연결
 
-기존 `docker-compose-monitoring.yml`에 Grafana를 추가한다.
+Prometheus에서 수집한 메트릭을 이제 시각화해야 한다. 기존 `docker-compose-monitoring.yml`에 Grafana를 추가하자.
 
 ```yaml
 services:
@@ -335,7 +341,7 @@ services:
       - prometheus
 ```
 
-`docker compose -f docker-compose-monitoring.yml up -d`로 실행한 후, `http://localhost:3000`에 접속하여 로그인한다. 프로비저닝 기능으로 Prometheus 데이터소스를 자동 등록한다.
+`docker compose -f docker-compose-monitoring.yml up -d`로 실행하고, `http://localhost:3000`에 접속해서 로그인하면 된다. Grafana의 프로비저닝 기능을 사용하면 Prometheus 데이터소스를 자동으로 등록할 수 있다.
 
 ```yaml
 # grafana/provisioning/datasources/prometheus.yml
@@ -351,7 +357,7 @@ datasources:
 
 ### 18.3.3 대시보드 임포트
 
-Grafana 커뮤니티에서 제공하는 대시보드를 임포트하면 빠르게 모니터링 환경을 구축할 수 있다.
+Grafana 커뮤니티에서 이미 만들어놓은 훌륭한 대시보드들이 있다. 이걸 임포트하면 처음부터 모두 직접 만들 필요 없이 빠르게 모니터링 환경을 구축할 수 있으니, 실무에서 자주 활용하면 좋다.
 
 | 대시보드 ID | 이름 | 용도 |
 |------------|------|------|
@@ -363,7 +369,7 @@ Grafana UI에서 **Dashboards > Import** 메뉴로 이동하여 대시보드 ID�
 
 ### 18.3.4 커스텀 대시보드 PromQL 쿼리
 
-프로젝트에 맞는 커스텀 패널을 구성할 때 자주 사용하는 PromQL 쿼리는 다음과 같다.
+프로젝트에 맞게 커스텀 패널을 만들어야 할 때가 분명히 온다. 그럴 때를 위해 자주 사용하는 PromQL 쿼리들을 정리해놨으니, 필요할 때 참고하자.
 
 **초당 요청 수 (RPS)**:
 ```promql
@@ -386,7 +392,7 @@ sum(rate(http_server_requests_seconds_count[5m]))
 
 ### 18.3.5 알림 규칙 설정
 
-Grafana의 알림 기능으로 이상 상태를 감지하고 Slack, Email, PagerDuty 등으로 알림을 발송한다. Grafana UI의 **Alerting > Alert Rules > New alert rule**에서 생성하며, 주요 설정 항목은 다음과 같다.
+대시보드를 만들었으면 이제 문제 상황을 자동으로 감지하고 알려주는 알림 기능을 설정해야 한다. Grafana의 알림 기능을 사용하면 Slack, Email, PagerDuty 등으로 문제를 바로 알릴 수 있다. Grafana UI의 **Alerting > Alert Rules > New alert rule**에서 생성하면 되며, 주요 설정 항목은 다음과 같다.
 
 | 설정 항목 | 값 | 설명 |
 |----------|---|------|
@@ -403,7 +409,7 @@ Grafana의 알림 기능으로 이상 상태를 감지하고 Slack, Email, Pager
 
 ### 18.4.1 Reactor 메트릭 활성화
 
-Reactor는 Micrometer와 통합된 내장 메트릭 기능을 제공한다. 이를 활성화하면 Reactor 파이프라인 내부의 구독 상태, 요청 수, 에러 등을 추적할 수 있다.
+Reactor는 Micrometer와 깊게 통합되어 있는데, 내장 메트릭 기능을 제공한다. 이 기능을 활성화하면 Reactor 파이프라인 내부의 구독 상태, 요청 수, 에러 등을 추적할 수 있으니 매우 유용하다.
 
 ```java
 @SpringBootApplication
@@ -419,7 +425,7 @@ public class WebFluxApplication {
 
 ### 18.4.2 개별 연산자 메트릭 수집
 
-특정 Reactor 체인에 `.name()`과 `.tag()` 연산자를 사용하여 세밀한 메트릭을 수집한다. `.metrics()`를 체인 끝에 추가하면 해당 시점까지의 메트릭이 Micrometer로 기록된다.
+특정 Reactor 체인에 대해 더 세밀한 메트릭을 수집하려면 `.name()`과 `.tag()` 연산자를 활용하면 된다. 그리고 체인 끝에 `.metrics()`를 추가하면 해당 시점까지의 모든 메트릭이 Micrometer로 자동 기록된다.
 
 ```java
 @Service
@@ -440,7 +446,7 @@ public class NotificationService {
 }
 ```
 
-이렇게 하면 다음 메트릭이 자동으로 생성된다.
+이렇게 구성하면 다음과 같은 메트릭이 자동으로 생성되는데, 한번 생기면 Grafana에서 바로 확인할 수 있다.
 
 | 메트릭 이름 | 설명 |
 |------------|------|
@@ -451,7 +457,7 @@ public class NotificationService {
 
 ### 18.4.3 Schedulers 메트릭
 
-`Schedulers.enableMetrics()` 호출 후 수집되는 스케줄러 관련 메트릭은 다음과 같다.
+스레드 풀 성능을 모니터링할 필요가 있을 때는 `Schedulers.enableMetrics()` 호출 후 다음 메트릭들이 수집된다.
 
 | 메트릭 | 설명 |
 |--------|------|
@@ -460,7 +466,7 @@ public class NotificationService {
 | `executor_queued_tasks` | 대기열 태스크 수 |
 | `executor_completed_tasks_total` | 완료된 태스크 수 |
 
-이름을 부여한 커스텀 스케줄러를 생성하면 스케줄러별로 메트릭을 구분하여 모니터링할 수 있다.
+만약 여러 개의 스케줄러를 사용하고 있다면, 각 스케줄러에 이름을 부여해서 생성하면 스케줄러별로 메트릭을 구분하여 모니터링할 수 있다는 점이 도움이 된다.
 
 ```java
 @Configuration
@@ -483,7 +489,7 @@ public class SchedulerMetricsConfig {
 
 ### 18.5.1 분산 추적의 필요성
 
-마이크로서비스 환경에서 하나의 사용자 요청은 여러 서비스를 거쳐 처리된다. 분산 추적은 이 과정을 **Trace ID**와 **Span ID**로 연결하여 전체 호출 흐름을 시각화한다.
+우리의 애플리케이션이 점점 커지고 마이크로서비스 구조로 변하면, 하나의 사용자 요청이 수십 개의 서비스를 거쳐 처리되는 일이 생긴다. 이런 상황에서 "어디서 느려졌어?"라는 질문에 답하기 위해서는 분산 추적이 필수다. 분산 추적은 **Trace ID**와 **Span ID**로 요청 전체의 호출 흐름을 연결해서 보여준다.
 
 ```
 [사용자 요청]
@@ -497,7 +503,7 @@ public class SchedulerMetricsConfig {
 
 ### 18.5.2 Micrometer Tracing 설정
 
-Spring Boot 3.x에서는 Micrometer Tracing이 분산 추적의 표준 추상화 계층이다. Brave(Zipkin) 또는 OpenTelemetry 브릿지를 선택할 수 있다.
+Spring Boot 3.x부터는 분산 추적의 표준으로 Micrometer Tracing을 사용한다. 이것이 좋은 이유는 Brave(Zipkin) 또는 OpenTelemetry 브릿지 중 원하는 것을 선택해서 사용할 수 있다는 유연성이다.
 
 **Zipkin을 사용하는 경우**:
 
@@ -521,6 +527,8 @@ dependencies {
 
 ### 18.5.3 application.yml 설정
 
+설정은 상당히 간단한데, 주의할 점은 `sampling.probability`다. 개발 환경에서는 100%로 설정하고, 운영에서는 필자의 경험상 10% 정도로 줄이는 것이 좋다. 그래야 Zipkin 스토리지에 부담을 주지 않으면서도 충분한 샘플을 수집할 수 있기 때문이다.
+
 ```yaml
 management:
   tracing:
@@ -539,7 +547,7 @@ logging:
 
 ### 18.5.4 Zipkin / Jaeger Docker 설치
 
-Zipkin은 `docker run -d -p 9411:9411 openzipkin/zipkin`으로 간단히 실행할 수 있다. Jaeger를 사용하는 경우 다음과 같이 설정한다.
+Zipkin은 정말 간단하게 `docker run -d -p 9411:9411 openzipkin/zipkin`으로 실행할 수 있다. Jaeger를 사용하려면 다음과 같이 설정하면 된다.
 
 ```yaml
 services:
@@ -557,7 +565,7 @@ Zipkin UI는 `http://localhost:9411`, Jaeger UI는 `http://localhost:16686`에�
 
 ### 18.5.5 WebClient에서의 Trace 전파
 
-`WebClient`를 `WebClient.Builder` 빈으로 생성하면 Micrometer Tracing이 자동으로 Trace 전파 필터를 추가한다. 중요한 점은 `WebClient.create()` 대신 반드시 스프링이 관리하는 `WebClient.Builder`를 주입받아 사용해야 한다는 것이다.
+외부 서비스를 호출할 때 trace 정보가 자동으로 전파되게 하려면, `WebClient`를 `WebClient.Builder` 빈으로 생성해야 한다. 그러면 Micrometer Tracing이 자동으로 Trace 전파 필터를 추가한다. 여기서 중요한 팁은 `WebClient.create()`를 사용하면 안 되고, 반드시 스프링이 관리하는 `WebClient.Builder`를 주입받아 사용해야 한다는 것이다.
 
 ```java
 @Configuration
@@ -573,11 +581,11 @@ public class WebClientConfig {
 }
 ```
 
-이렇게 생성한 `WebClient`로 외부 API를 호출하면, Trace ID가 요청 헤더에 자동으로 포함되어 전파된다. Zipkin UI에서 트레이스를 조회하면 MongoDB 조회와 외부 API 호출이 별도의 Span으로 기록되고 동일한 Trace ID로 묶인 것을 확인할 수 있다.
+이렇게 생성한 `WebClient`로 외부 API를 호출하면, Trace ID가 자동으로 요청 헤더에 포함된다. 나중에 Zipkin UI에서 트레이스를 조회해보면 MongoDB 조회, 외부 API 호출 같은 여러 작업이 각각 별도의 Span으로 기록되면서도, 동일한 Trace ID로 하나로 연결되어 있는 것을 확인할 수 있다. 이것이 분산 추적의 진정한 가치다.
 
 ### 18.5.6 커스텀 Span 생성
 
-자동 계측으로 충분하지 않은 경우, `@Observed` 어노테이션으로 메서드 단위 Span을 생성하거나, `Observation` API로 수동 제어한다.
+자동 계측만으로는 충분하지 않을 때도 있다. 특정 메서드나 로직 블록의 성능을 더 상세하게 추적해야 한다면, `@Observed` 어노테이션으로 메서드 단위 Span을 직접 생성하거나, `Observation` API를 사용해서 더 세밀하게 제어할 수 있다.
 
 ```java
 @Service
@@ -635,7 +643,7 @@ public class PaymentProcessService {
 
 ### 18.6.1 구조화된 로깅의 필요성
 
-운영 환경에서 텍스트 기반 로그는 검색과 집계가 어렵다. ELK(Elasticsearch + Logstash + Kibana)나 Loki 같은 로그 수집 시스템과 연동하려면 **JSON 형식** 로그가 효과적이다.
+로그를 파일에 저장해뒀다가 나중에 문제를 분석하려면, 텍스트 기반 로그로는 원하는 정보를 찾기가 정말 어렵다. 검색도 어렵고 집계도 안 된다. 그래서 운영 환경에서는 ELK(Elasticsearch + Logstash + Kibana)나 Loki 같은 로그 수집 시스템과 연동하는데, 이 경우 **JSON 형식** 로그가 효과적이다.
 
 ```
 # 기존 텍스트 로그
@@ -659,7 +667,7 @@ public class PaymentProcessService {
 
 ### 18.6.2 Logback JSON 설정
 
-`logstash-logback-encoder`를 사용하여 JSON 형식 로그를 출력한다.
+로그를 JSON 형식으로 만들려면 `logstash-logback-encoder` 라이브러리를 사용하면 된다. 매우 편하다.
 
 ```groovy
 dependencies {
@@ -703,13 +711,13 @@ dependencies {
 
 ### 18.6.3 리액티브 환경에서의 MDC 문제와 해결
 
-전통적인 서블릿 환경에서 MDC는 `ThreadLocal` 기반으로 동작한다. 그러나 리액티브 환경에서는 하나의 요청이 여러 스레드를 넘나들며 처리되므로, `publishOn()`이나 `subscribeOn()`으로 스레드가 전환되면 MDC 값이 유실된다.
+전통적인 서블릿 애플리케이션에서는 MDC(Mapped Diagnostic Context)가 `ThreadLocal` 기반으로 동작하기 때문에 각 요청별로 로그를 추적하는 것이 쉽다. 그런데 리액티브 환경은 다르다. 하나의 요청이 여러 스레드를 넘나들며 처리되기 때문에, `publishOn()`이나 `subscribeOn()`으로 스레드가 전환되면 기존 MDC 값이 유실되는 문제가 생긴다.
 
-Spring Boot 3.x에서는 `context-propagation` 라이브러리와 `Hooks.enableAutomaticContextPropagation()`으로 이 문제를 해결한다. 18.4.1에서 설정한 것처럼 이를 활성화하면 `traceId`와 `spanId`가 자동으로 MDC에 전파된다. 비즈니스 컨텍스트(`userId`, `requestId`)를 추가로 전파하려면 `WebFilter`와 `ThreadLocalAccessor`를 구현한다.
+Spring Boot 3.x부터는 `context-propagation` 라이브러리와 `Hooks.enableAutomaticContextPropagation()`을 사용해서 이 문제를 깔끔하게 해결할 수 있다. 18.4.1에서 설정한 것처럼 이것을 활성화하면 `traceId`와 `spanId`가 자동으로 MDC에 전파된다. 만약 `userId`나 `requestId` 같은 비즈니스 컨텍스트를 추가로 전파하려면, `WebFilter`와 `ThreadLocalAccessor`를 구현해서 처리하면 된다.
 
 ### 18.6.4 커스텀 컨텍스트 전파
 
-`WebFilter`에서 Reactor Context에 값을 저장하고, `ThreadLocalAccessor`를 통해 MDC와 연결한다.
+이제 실제로 구현해보자. `WebFilter`에서 Reactor Context에 값을 저장하고, `ThreadLocalAccessor`를 통해 MDC와 자동으로 연결하면 된다.
 
 ```java
 @Component
@@ -734,7 +742,7 @@ public class ContextPropagationFilter implements WebFilter {
 }
 ```
 
-`ThreadLocalAccessor`를 구현하여 Reactor Context와 MDC 간의 자동 전파를 설정한다.
+그 다음, `ThreadLocalAccessor`를 구현해서 Reactor Context와 MDC 간의 자동 전파를 설정한다.
 
 ```java
 public class UserIdThreadLocalAccessor implements ThreadLocalAccessor<String> {
@@ -755,7 +763,7 @@ public class UserIdThreadLocalAccessor implements ThreadLocalAccessor<String> {
 }
 ```
 
-`ThreadLocalAccessor` 구현체는 `ContextRegistry`에 등록한다. `requestId`용도 동일한 패턴으로 구현한다.
+`ThreadLocalAccessor` 구현체는 `ContextRegistry`에 등록하면 자동으로 작동한다. `requestId`도 `userId`와 동일한 패턴으로 구현해서 등록하면 되니까 복잡하지 않다.
 
 ```java
 @Configuration
@@ -771,11 +779,11 @@ public class ContextPropagationConfig {
 }
 ```
 
-이제 스레드가 전환되더라도 `userId`와 `requestId`가 MDC에 자동 전파되며, JSON 로그에 포함된다.
+이 설정을 마치면, 스레드가 몇 번 전환되더라도 `userId`와 `requestId`가 MDC에 자동으로 전파되고, 결국 JSON 로그에 모두 포함되게 된다.
 
 ### 18.6.5 구조화된 로그 작성 패턴
 
-`logstash-logback-encoder`의 `StructuredArguments`를 사용하면 로그 메시지와 JSON 필드를 동시에 기록할 수 있다.
+마지막으로, 실제로 로그를 작성할 때는 `logstash-logback-encoder`의 `StructuredArguments`를 사용하면 로그 메시지와 JSON 필드를 동시에 기록할 수 있다. 이렇게 하면 나중에 Kibana에서 필드 기반으로 검색하고 집계하기가 훨씬 쉬워진다.
 
 ```java
 import static net.logstash.logback.argument.StructuredArguments.*;
@@ -808,6 +816,8 @@ public class OrderService {
 
 ## 요약
 
+이 장에서 다룬 내용을 정리하면 다음과 같다.
+
 | 주제 | 핵심 내용 |
 |------|----------|
 | **Actuator** | `health`, `info`, `metrics`, `prometheus` 엔드포인트 노출, `ReactiveHealthIndicator`로 논블로킹 상태 확인, 포트 분리와 Security 연동으로 보안 강화 |
@@ -817,20 +827,20 @@ public class OrderService {
 | **분산 추적** | Micrometer Tracing + Brave(Zipkin) 또는 OpenTelemetry(Jaeger), `WebClient.Builder` 빈으로 자동 Trace 전파, `@Observed`로 커스텀 Span |
 | **구조화된 로깅** | `logstash-logback-encoder`로 JSON 로그, `Hooks.enableAutomaticContextPropagation()`으로 Reactor Context-MDC 자동 전파, `ThreadLocalAccessor`로 커스텀 컨텍스트 전파 |
 
-다음 장에서는 리액티브 애플리케이션의 성능을 측정하고 최적화하는 전략을 다룬다. MongoDB 커넥션 풀 튜닝, Netty 이벤트 루프 최적화, 캐싱, BlockHound를 활용한 블로킹 코드 탐지, 그리고 Gatling/k6를 이용한 부하 테스트까지 실전 성능 최적화 기법을 종합적으로 살펴본다.
+다음 장에서는 완성된 애플리케이션의 성능을 어떻게 측정하고 최적화할지 배워보겠다. MongoDB 커넥션 풀 튜닝부터 시작해서, Netty 이벤트 루프 최적화, 캐싱, BlockHound를 활용한 블로킹 코드 탐지, 그리고 Gatling과 k6를 이용한 실전 부하 테스트까지 다룰 것이다.
 # Chapter 19. 성능 최적화
 
-리액티브 아키텍처를 도입했다고 해서 자동으로 높은 성능이 보장되는 것은 아니다. 논블로킹 모델의 이점을 실제로 누리려면, 병목 지점을 정확히 측정하고, 커넥션 풀과 이벤트 루프를 애플리케이션 특성에 맞게 조정하며, 캐싱으로 불필요한 I/O를 줄이고, 블로킹 코드를 철저히 제거해야 한다. 이번 장에서는 리액티브 애플리케이션의 **성능 측정 방법**부터 **MongoDB 커넥션 풀 튜닝**, **Netty 이벤트 루프 최적화**, **캐싱 전략**, **BlockHound를 활용한 블로킹 탐지**, 그리고 **Gatling/k6를 활용한 부하 테스트**까지 실전 성능 최적화의 전 과정을 다룬다.
+리액티브 아키텍처를 채택했다고 자동으로 높은 성능이 따라오는 건 아니다. 실제로 논블로킹 모델의 이점을 제대로 누리려면, 병목 지점을 정확히 측정하고, 커넥션 풀과 이벤트 루프를 우리 애플리케이션 특성에 맞게 조정해야 한다. 여기에 캐싱으로 불필요한 I/O를 줄이고, 블로킹 코드를 철저히 제거해야 진정한 고성능을 얻을 수 있다. 이번 장에서는 리액티브 애플리케이션의 **성능 측정 방법**부터 **MongoDB 커넥션 풀 튜닝**, **Netty 이벤트 루프 최적화**, **캐싱 전략**, **BlockHound를 활용한 블로킹 탐지**, 그리고 **Gatling/k6를 활용한 부하 테스트**까지 실전 성능 최적화의 전 과정을 살펴본다.
 
 ---
 
 ## 19.1 리액티브 애플리케이션 성능 측정
 
-성능 최적화의 첫 번째 원칙은 **측정 없이 최적화하지 않는 것**이다. 감에 의존한 최적화는 오히려 코드 복잡도만 높이고 실질적인 개선을 가져오지 못한다.
+성능 최적화의 첫 번째 원칙은 간단하다: **측정 없이 최적화하지 말 것**. 감에 의존한 최적화는 코드 복잡도만 높일 뿐, 실질적인 개선을 가져오지 않는다.
 
 ### 19.1.1 핵심 성능 지표
 
-리액티브 애플리케이션의 성능은 세 가지 축으로 평가한다.
+성능을 이야기할 때 보통 세 가지 축으로 나눠서 본다.
 
 | 지표 | 설명 | 측정 단위 |
 |------|------|----------|
@@ -838,7 +848,7 @@ public class OrderService {
 | **지연시간(Latency)** | 요청 시작부터 응답 완료까지 소요 시간 | ms (p50, p95, p99) |
 | **리소스 사용률** | CPU, 메모리, 스레드, 커넥션 점유율 | %, 개수 |
 
-리액티브 애플리케이션은 적은 스레드로 높은 처리량을 달성하는 것이 목표다. 따라서 스레드 수 대비 처리량 비율이 중요한 평가 기준이 된다. 지연시간은 단순 평균보다 백분위(p95, p99)를 기준으로 판단해야 실제 사용자 경험을 반영할 수 있다.
+리액티브 애플리케이션의 핵심은 적은 스레드로 높은 처리량을 달성하는 것이다. 그래서 스레드 수 대비 처리량의 비율이 정말 중요한 평가 기준이 된다. 지연시간을 볼 때도 단순 평균은 거의 무의미하다. p95, p99 같은 백분위를 봐야 실제 사용자가 경험하는 성능을 알 수 있다.
 
 ```
 [전통적 MVC 모델]
@@ -850,7 +860,7 @@ public class OrderService {
 
 ### 19.1.2 Micrometer 메트릭 활용
 
-Chapter 18에서 설정한 Micrometer 메트릭을 성능 분석에 활용한다. WebFlux 애플리케이션에서 자동 수집되는 핵심 메트릭은 다음과 같다.
+이전 장에서 설정한 Micrometer를 이제 성능 분석에 적극 활용해야 한다. WebFlux가 자동으로 수집하는 핵심 메트릭들을 보자.
 
 | 메트릭 이름 | 설명 |
 |------------|------|
@@ -860,7 +870,7 @@ Chapter 18에서 설정한 Micrometer 메트릭을 성능 분석에 활용한다
 | `mongodb.driver.pool.waitqueuesize` | MongoDB 커넥션 대기 큐 크기 |
 | `jvm.threads.live` | 활성 JVM 스레드 수 |
 
-커스텀 메트릭을 추가하여 비즈니스 로직의 성능도 측정할 수 있다.
+이런 기본 메트릭 외에 커스텀 메트릭을 추가하면 비즈니스 로직의 성능도 측정할 수 있다.
 
 ```java
 @Service
@@ -892,7 +902,7 @@ public class ProductService {
 
 ### 19.1.3 JMH 마이크로벤치마크
 
-JMH(Java Microbenchmark Harness)는 JVM 수준의 정밀한 벤치마크 도구다. `build.gradle`에 JMH 플러그인을 추가한다.
+JMH(Java Microbenchmark Harness)라는 도구를 알고 있나? JVM 수준의 정밀한 벤치마크를 할 때 필자도 자주 쓰는 도구인데, `build.gradle`에 플러그인을 추가하면 쉽게 시작할 수 있다.
 
 ```groovy
 plugins {
@@ -905,7 +915,7 @@ dependencies {
 }
 ```
 
-Reactor 연산자 체인의 성능을 비교하는 벤치마크 예시를 작성한다.
+Reactor 연산자들의 성능 차이를 실제로 비교해보는 벤치마크를 작성해보자.
 
 ```java
 @State(Scope.Thread)
@@ -944,6 +954,8 @@ public class ReactorBenchmark {
 
 ### 19.1.4 프로파일링 도구
 
+프로파일링 도구도 여러 가지가 있으니 상황에 맞춰 고르면 된다.
+
 | 도구 | 용도 | 특징 |
 |------|------|------|
 | **VisualVM** | CPU/메모리 프로파일링 | 무료, JDK 번들 |
@@ -961,13 +973,13 @@ java -XX:+FlightRecorder \
      -jar application.jar
 ```
 
-리액티브 애플리케이션에서 프로파일링 시 주의할 점은, 이벤트 루프 스레드(`reactor-http-nio-*`)의 CPU 사용률이 80%를 넘으면 병목 가능성이 높다는 것이다. 이 경우 무거운 연산을 별도 스케줄러로 오프로드해야 한다.
+리액티브 애플리케이션의 프로파일링에서 꼭 봐야 할 부분이 하나 있다. 이벤트 루프 스레드(`reactor-http-nio-*`)의 CPU 사용률이 80%를 넘으면 병목 가능성이 매우 높다는 신호다. 필자의 경험상 이 지표가 80%를 넘으면 대부분 무거운 연산이 이벤트 루프에서 직접 실행되고 있었다. 이런 경우 별도 스케줄러로 그 작업을 오프로드하면 눈에 띄게 개선된다.
 
 ---
 
 ## 19.2 MongoDB 커넥션 풀 튜닝
 
-MongoDB 드라이버는 내부적으로 커넥션 풀을 관리한다. 풀 크기, 타임아웃, 유휴 커넥션 관리 설정이 처리량에 직접적인 영향을 미친다.
+MongoDB 드라이버가 내부적으로 커넥션 풀을 관리하는데, 이 풀의 설정이 전체 처리량에 미치는 영향은 정말 크다. 풀 크기, 타임아웃, 유휴 커넥션 관리 방식을 어떻게 설정하는지에 따라 성능이 크게 달라진다.
 
 ### 19.2.1 기본 커넥션 풀 동작
 
@@ -983,7 +995,7 @@ MongoDB Reactive Streams 드라이버의 커넥션 풀 기본값은 다음과 �
 
 ### 19.2.2 MongoClientSettings를 활용한 커넥션 풀 설정
 
-`application.yml`의 URI 파라미터 방식보다 `MongoClientSettings` 빈을 직접 구성하면 세밀한 제어가 가능하다.
+`application.yml`에 URI 파라미터로 설정하는 방법도 있지만, `MongoClientSettings` 빈을 직접 구성하면 훨씬 세밀한 제어가 가능하다. 이게 실무에서는 훨씬 흔한 방식이다.
 
 ```java
 @Configuration
@@ -1029,13 +1041,13 @@ public class MongoConfig extends AbstractReactiveMongoConfiguration {
 
 ### 19.2.3 풀 크기 산정 가이드라인
 
-커넥션 풀 크기는 다음 공식을 기준으로 산정한다.
+풀 크기를 정할 때는 다음 공식을 기준으로 생각하면 된다.
 
 ```
 최적 풀 크기 = (동시 요청 수) x (평균 쿼리 시간) / (목표 응답 시간)
 ```
 
-예를 들어, 동시 요청 500건, 평균 쿼리 시간 10ms, 목표 응답 시간 100ms라면 최적 풀 크기는 `500 x 10 / 100 = 50`이다.
+예시를 들어보자. 동시 요청이 500건이고, 평균 쿼리 시간이 10ms, 목표 응답 시간이 100ms라면? 계산하면 `500 x 10 / 100 = 50`이 나온다. 이게 적정 풀 크기다.
 
 | 시나리오 | minSize | maxSize | 근거 |
 |----------|---------|---------|------|
@@ -1048,7 +1060,7 @@ public class MongoConfig extends AbstractReactiveMongoConfiguration {
 
 ### 19.2.4 커넥션 풀 모니터링과 타임아웃
 
-커넥션 풀 메트릭을 활성화하고, 타임아웃을 계층별로 설정한다.
+이제 실제로 커넥션 풀이 잘 동작하는지 모니터링해야 한다. 메트릭을 활성화하고, 타임아웃은 계층별로 정리해서 설정해보자.
 
 ```yaml
 # application.yml
@@ -1068,7 +1080,7 @@ mongodb_driver_pool_checkedout{server_address="localhost:27017"} 12
 mongodb_driver_pool_waitqueuesize{server_address="localhost:27017"} 0
 ```
 
-`waitqueuesize`가 지속적으로 0보다 큰 경우, `maxSize`를 늘리거나 쿼리 성능을 개선해야 한다는 신호다. 타임아웃은 다음 계층으로 구성한다.
+`waitqueuesize`가 계속 0보다 크다는 건 위험한 신호다. `maxSize`를 늘리거나, 아니면 쿼리 자체를 더 빠르게 만들어야 한다는 뜻이다. 타임아웃은 다음처럼 계층별로 구성하는 게 좋다.
 
 ```
 소켓 타임아웃 (connectTimeout, readTimeout)
@@ -1091,7 +1103,7 @@ public Flux<Product> findByCategory(String category) {
 
 ## 19.3 Netty 이벤트 루프 최적화
 
-Spring WebFlux는 Reactor Netty를 기본 서버로 사용하며, Netty의 이벤트 루프 설정이 전체 처리량에 직접적인 영향을 미친다.
+Spring WebFlux는 내부적으로 Reactor Netty를 기본 서버로 쓰고 있다. Netty의 이벤트 루프를 어떻게 설정하는지가 전체 처리량을 좌우한다고 해도 과언이 아니다.
 
 ### 19.3.1 이벤트 루프 기본 구조
 
@@ -1138,7 +1150,7 @@ public class NettyConfig {
 
 ### 19.3.3 Native Transport (Epoll, KQueue)
 
-JVM의 기본 NIO 대신 운영체제의 네이티브 I/O를 사용하면 성능이 개선된다.
+JVM의 표준 NIO를 쓸 수도 있지만, 운영체제 수준의 네이티브 I/O를 사용하면 성능이 훨씬 좋아진다. 필자의 경험상 프로덕션 환경에서는 이 차이가 꽤 크게 느껴진다.
 
 | Transport | 운영체제 | 장점 |
 |-----------|---------|------|
@@ -1182,7 +1194,7 @@ public class NativeTransportConfig {
 
 ### 19.3.4 이벤트 루프 블로킹 방지
 
-이벤트 루프 스레드에서 절대로 블로킹 작업을 수행해서는 안 된다. 무거운 연산은 별도의 스케줄러로 오프로드한다.
+이벤트 루프 스레드에서 블로킹 작업을 하면 안 된다. 이건 리액티브 프로그래밍의 대원칙이다. 무거운 연산은 별도 스케줄러로 넘기자.
 
 ```java
 @Service
@@ -1214,11 +1226,11 @@ public class ReportService {
 
 ## 19.4 캐싱 전략 (Caffeine, Redis)
 
-I/O 연산을 줄이는 가장 효과적인 방법은 캐싱이다. 리액티브 애플리케이션에서는 캐시 조회도 논블로킹으로 이루어져야 한다.
+I/O 연산을 줄이는 가장 확실한 방법은 뭘까? 그건 캐싱이다. 다만 리액티브 애플리케이션에서는 캐시 조회 자체도 논블로킹으로 이루어져야 한다는 점을 잊으면 안 된다.
 
 ### 19.4.1 Caffeine 로컬 캐시
 
-Caffeine은 JVM 기반의 고성능 로컬 캐시 라이브러리다. 리액티브 환경에서 활용하는 래퍼 클래스를 작성한다.
+Caffeine은 JVM 에서 쓸 수 있는 고성능 로컬 캐시 라이브러리다. 리액티브 환경에 맞게 래퍼 클래스를 한 번 만들어놓으면, 여러 곳에서 쉽게 재사용할 수 있다.
 
 ```groovy
 dependencies {
@@ -1265,7 +1277,7 @@ public class ReactiveCaffeineCache<K, V> {
 }
 ```
 
-서비스에서 캐시를 활용하는 패턴은 다음과 같다.
+이제 이 캐시를 서비스에서 실제로 어떻게 써야 하는지 보자.
 
 ```java
 @Service
@@ -1302,7 +1314,7 @@ public class ProductService {
 
 ### 19.4.2 Reactive Redis 분산 캐시
 
-멀티 인스턴스 환경에서는 Reactive Redis를 분산 캐시로 활용한다.
+애플리케이션이 여러 인스턴스로 운영되는 환경이면? 이때는 Reactive Redis를 분산 캐시로 써야 한다. 로컬 캐시만으로는 인스턴스 간에 데이터가 동기화되지 않기 때문이다.
 
 ```groovy
 dependencies {
@@ -1366,7 +1378,7 @@ public class RedisCacheService {
 
 ### 19.4.3 멀티 레벨 캐시 전략
 
-로컬 캐시(Caffeine)와 분산 캐시(Redis)를 조합하여 **L1/L2 캐시** 구조를 구성하면 성능과 일관성을 모두 확보할 수 있다.
+로컬 캐시(Caffeine)와 분산 캐시(Redis)를 함께 쓰면 어떻게 될까? **L1/L2 캐시** 구조로 만들면 성능도 좋고 데이터 일관성도 유지할 수 있다.
 
 ```java
 @Service
@@ -1412,7 +1424,7 @@ public class MultiLevelCacheService<T> {
 
 ## 19.5 블로킹 코드 탐지 및 제거 (BlockHound)
 
-리액티브 애플리케이션에서 가장 위험한 성능 저하 원인은 **이벤트 루프 스레드에서의 블로킹 호출**이다. 단 한 줄의 블로킹 코드가 전체 처리량을 극적으로 떨어뜨릴 수 있다. BlockHound는 이러한 블로킹 호출을 런타임에 자동으로 탐지하는 Java Agent 도구다.
+리액티브 애플리케이션에서 가장 위험한 함정이 하나 있다. 바로 **이벤트 루프 스레드에서 몰래 일어나는 블로킹 호출**이다. 단 한 줄의 블로킹 코드도 전체 처리량을 극적으로 떨어뜨릴 수 있다. BlockHound는 이런 위험한 호출들을 런타임에 자동으로 발견해주는 도구다. Java Agent 방식으로 동작해서 코드 수정 없이도 탐지가 가능하다.
 
 ### 19.5.1 BlockHound 설정
 
@@ -1445,7 +1457,7 @@ class ApplicationBlockingTest {
 
 ### 19.5.2 흔한 블로킹 코드 패턴과 수정
 
-리액티브 애플리케이션에서 자주 발견되는 블로킹 코드 패턴과 수정 방법을 정리한다.
+실무에서 자주 만나는 블로킹 코드들을 몇 가지 패턴으로 정리해봤다. 이 예시들을 알아두면 코드 리뷰할 때도 도움이 될 것 같다.
 
 **패턴 1: 파일 I/O**
 
@@ -1499,7 +1511,7 @@ return r2dbcUserRepository.findById(id);
 
 ### 19.5.3 BlockHound 커스텀 설정과 테스트 활용
 
-특정 라이브러리의 블로킹 호출을 허용하거나, 커스텀 탐지 규칙을 추가할 수 있다.
+BlockHound도 완벽하진 않다. 특정 라이브러리가 의도적으로 블로킹 호출을 해야 한다면? 그땐 그걸 명시적으로 허용해야 한다. 커스텀 설정으로 탐지 규칙을 조정할 수 있다.
 
 ```java
 @BeforeAll
@@ -1515,7 +1527,7 @@ static void setup() {
 }
 ```
 
-StepVerifier와 BlockHound를 결합하여 블로킹 호출을 자동으로 검출하는 테스트를 작성한다.
+StepVerifier와 BlockHound를 함께 쓰면 블로킹 호출을 자동으로 잡아내는 테스트를 만들 수 있다.
 
 ```java
 @SpringBootTest
@@ -1542,17 +1554,17 @@ class ProductServiceBlockingTest {
 }
 ```
 
-> **참고**: BlockHound는 JVM Agent 방식으로 동작하므로 프로덕션 환경에서는 사용하지 않는다. 오버헤드가 발생하며, 의도적인 블로킹(초기화 등)에서도 예외가 발생할 수 있다. 테스트와 스테이징 환경에서만 활성화한다.
+> **참고**: BlockHound는 프로덕션에서는 절대 켜면 안 된다. JVM Agent 방식이라 오버헤드가 크고, 초기화 같은 정당한 블로킹 호출에서도 예외를 던진다. 개발이나 테스트, 스테이징 환경에만 켜두자.
 
 ---
 
 ## 19.6 부하 테스트 (Gatling, k6)
 
-성능 최적화의 효과를 검증하려면 실제 부하 조건에서 테스트해야 한다.
+지금까지 최적화 기법들을 봤는데, 이게 실제로 효과가 있는지 어떻게 알까? 실제 부하 조건에서 테스트해야 한다.
 
 ### 19.6.1 Gatling 부하 테스트
 
-Gatling은 Scala 기반의 고성능 부하 테스트 도구다. Java DSL로도 시나리오를 작성할 수 있다.
+Gatling은 부하 테스트를 위한 강력한 도구다. Scala로 만들어졌지만, Java DSL을 써서 테스트 시나리오를 작성할 수도 있다.
 
 ```groovy
 plugins {
@@ -1616,7 +1628,7 @@ public class ProductApiSimulation extends Simulation {
 
 ### 19.6.2 k6 부하 테스트
 
-k6는 Go로 작성된 현대적인 부하 테스트 도구다. JavaScript로 테스트 스크립트를 작성하며, CLI 기반으로 간편하게 실행할 수 있다.
+k6는 좀 더 현대적이고 간단한 부하 테스트 도구다. Go로 만들어졌고, JavaScript로 테스트를 작성하면 된다. CLI로 실행하는 것도 정말 간단하다.
 
 ```javascript
 // load-test.js
@@ -1674,7 +1686,7 @@ k6 run --out influxdb=http://localhost:8086/k6 load-test.js
 
 ### 19.6.3 MVC vs WebFlux 성능 비교
 
-동일한 비즈니스 로직에 대해 Spring MVC와 Spring WebFlux의 성능을 비교한 일반적인 결과는 다음과 같다. 실제 수치는 하드웨어와 비즈니스 로직에 따라 달라진다.
+그럼 이제 흔한 질문을 답해보자: Spring MVC와 Spring WebFlux는 성능이 얼마나 다를까? 동일한 비즈니스 로직으로 비교한 결과를 정리해봤다. 물론 실제 수치는 하드웨어와 로직의 특성에 따라 달라진다.
 
 | 지표 | Spring MVC | Spring WebFlux | 비고 |
 |------|-----------|---------------|------|
@@ -1692,9 +1704,11 @@ k6 run --out influxdb=http://localhost:8086/k6 load-test.js
 | p95 지연시간 | ~2,000ms+ | ~120ms | WebFlux 16배 |
 | 에러율 | ~5% | ~0.1% | MVC 커넥션 거부 |
 
-> **핵심 포인트**: 동시 사용자가 적을 때는 MVC와 WebFlux의 성능 차이가 크지 않다. WebFlux의 진가는 **높은 동시성** 상황에서 발휘된다. I/O 대기 시간이 긴 애플리케이션(외부 API 호출, 느린 DB 쿼리)일수록 WebFlux의 이점이 두드러진다.
+> **핵심 포인트**: 동시 사용자가 적을 때는 둘 다 엇비슷하다. WebFlux의 진정한 가치는 **높은 동시성**이 필요한 상황에서 드러난다. 외부 API 호출이 많거나 느린 DB 쿼리가 있는 애플리케이션일수록 WebFlux가 훨씬 유리하다.
 
 ### 19.6.4 부하 테스트 결과 분석 체크리스트
+
+부하 테스트 결과를 볼 때 뭘 봐야 할까? 이런 체크리스트를 참고하면 된다.
 
 | 점검 항목 | 정상 기준 | 이상 시 대응 |
 |----------|----------|-------------|
@@ -1707,7 +1721,7 @@ k6 run --out influxdb=http://localhost:8086/k6 load-test.js
 
 ### 19.6.5 성능 최적화 사이클
 
-성능 최적화는 일회성이 아니라 반복적인 과정이다.
+성능 최적화는 한 번 끝나는 게 아니다. 계속 반복되는 과정이다.
 
 ```
 1. 측정 (Baseline)       <- Gatling/k6로 현재 성능 측정
@@ -1717,11 +1731,13 @@ k6 run --out influxdb=http://localhost:8086/k6 load-test.js
 5. 반복 (Iterate)        <- 다음 병목 지점으로 이동
 ```
 
-한 번에 여러 최적화를 적용하면 어떤 변경이 효과가 있었는지 판단할 수 없다. **한 번에 하나의 변경만 적용하고 측정하는 것**이 원칙이다.
+한 번에 여러 개를 손보면 뭐가 효과가 있었는지 알 수 없다. **한 번에 하나씩만 바꾸고 측정하자**. 이게 원칙이다.
 
 ---
 
 ## 요약
+
+이 장에서 다룬 내용을 정리해보면 다음과 같다.
 
 | 주제 | 핵심 내용 |
 |------|----------|
@@ -1732,22 +1748,24 @@ k6 run --out influxdb=http://localhost:8086/k6 load-test.js
 | **BlockHound** | 블로킹 호출 런타임 탐지, 흔한 블로킹 패턴과 수정법, StepVerifier 테스트 통합 |
 | **부하 테스트** | Gatling/k6 스크립트 작성, MVC vs WebFlux 성능 비교, 결과 분석 체크리스트, 최적화 사이클 |
 
-성능 최적화에서 가장 중요한 것은 **측정 -> 분석 -> 최적화 -> 검증**의 사이클을 반복하는 것이다. 감이 아닌 데이터에 기반한 의사결정이 효과적인 최적화의 핵심이다.
+성능 최적화에서 가장 중요한 건 뭘까? 결국 **측정 -> 분석 -> 최적화 -> 검증**을 계속 반복하는 것이다. 감에 의존하지 말고, 항상 데이터를 기반으로 판단해야 한다. 그게 성공하는 최적화의 비결이다.
 
-다음 장에서는 애플리케이션의 컨테이너화와 배포를 다루며, Docker 이미지 빌드, Kubernetes 배포, CI/CD 파이프라인 구성을 실습한다.
+다음 장에서는 애플리케이션을 Docker 컨테이너로 만들고, Kubernetes에 배포하고, CI/CD 파이프라인을 구성하는 방법을 다룬다.
 # Chapter 20. 컨테이너화와 배포
 
-리액티브 애플리케이션을 개발하고 최적화했다면, 이제 이를 안정적으로 운영 환경에 배포해야 한다. 현대 소프트웨어 배포의 표준은 **컨테이너(Container)**다. Docker를 활용하면 애플리케이션과 실행 환경을 하나의 이미지로 패키징하여 어디서든 동일하게 실행할 수 있고, Kubernetes를 통해 이를 자동으로 확장하고 관리할 수 있다. 이번 장에서는 Spring Boot WebFlux + MongoDB 리액티브 애플리케이션을 **Docker 이미지로 빌드**하고, **Docker Compose로 전체 스택을 구성**하며, **Kubernetes에 배포**하고, **MongoDB Atlas와 연동**하고, **GitHub Actions CI/CD 파이프라인**을 구축하며, **GraalVM Native Image**로 빌드하는 전 과정을 다룬다.
+개발을 마치고 실전 운영 환경으로 나가려면 어떻게 해야 할까? 그 답이 **컨테이너(Container)**다. Docker와 Kubernetes는 이제 거의 표준이 되었다. Docker를 쓰면 애플리케이션과 실행 환경을 하나의 이미지로 묶어 어디서든 동일하게 실행할 수 있고, Kubernetes로는 수십 개의 컨테이너를 마치 한 대의 머신인 것처럼 관리할 수 있다.
+
+이번 장에서는 실제 프로젝트에서 어떻게 Spring Boot WebFlux + MongoDB 애플리케이션을 컨테이너화하고 운영 환경으로 보내는지 살펴본다. Docker 이미지 빌드부터 Docker Compose를 이용한 로컬 환경 구성, Kubernetes 배포, MongoDB Atlas 연동, GitHub Actions로 자동화된 CI/CD 파이프라인 구축, 그리고 GraalVM Native Image까지 단계별로 진행해보자.
 
 ---
 
 ## 20.1 Docker 이미지 빌드 (Jib, Buildpacks)
 
-Spring Boot 애플리케이션을 Docker 이미지로 만드는 방법은 크게 세 가지다. 직접 Dockerfile을 작성하는 방법, Google의 Jib을 사용하는 방법, 그리고 Spring Boot가 내장 지원하는 Cloud Native Buildpacks를 사용하는 방법이다.
+Docker 이미지를 만드는 방법은 여러 가지가 있다. 전통적인 Dockerfile부터 시작해서 요즘 핫한 도구들까지 선택지가 많다. Google Jib과 Spring Boot의 Cloud Native Buildpacks가 가장 인기 있는 방식이고, 각각 장단점이 있다.
 
 ### 20.1.1 Jib을 활용한 Docker 이미지 빌드
 
-Jib은 Google이 개발한 Java 컨테이너 이미지 빌드 도구다. **Docker 데몬 없이** 이미지를 빌드하고 레지스트리에 직접 푸시할 수 있다. `build.gradle`에 플러그인을 추가한다.
+Jib은 Google이 만든 도구인데, 사실 꽤 편리하다. Docker 데몬을 설치하고 실행할 필요가 없다는 게 큰 장점이다. **Docker 데몬 없이도** 빌드하고 바로 레지스트리에 올릴 수 있다. `build.gradle`에 플러그인을 추가하기만 하면 된다.
 
 ```groovy
 plugins {
@@ -1793,7 +1811,7 @@ jib {
 }
 ```
 
-빌드 명령어는 세 가지로 구분된다.
+상황에 따라 사용할 수 있는 명령어가 세 가지다.
 
 ```bash
 # Docker 데몬 없이 레지스트리에 직접 푸시
@@ -1810,7 +1828,7 @@ jib {
 
 ### 20.1.2 Cloud Native Buildpacks
 
-Spring Boot 3.x는 Cloud Native Buildpacks를 기본 지원한다. 별도 플러그인 없이 Gradle 태스크로 OCI 이미지를 빌드할 수 있다.
+Spring Boot 3.x부터는 Cloud Native Buildpacks를 바로 사용할 수 있다. 추가 플러그인 설치 없이 기본 Gradle 명령어로 OCI 이미지를 빌드하면 되니까 편하다.
 
 ```groovy
 bootBuildImage {
@@ -1836,6 +1854,8 @@ bootBuildImage {
 
 ### 20.1.3 빌드 방식 비교
 
+세 가지 방식의 특징을 정리하면 아래와 같다.
+
 | 항목 | Dockerfile | Jib | Buildpacks |
 |------|-----------|-----|------------|
 | Docker 데몬 필요 | O | X | O |
@@ -1845,13 +1865,13 @@ bootBuildImage {
 | 멀티 아키텍처 | 수동 설정 | 선언적 | 제한적 |
 | CI/CD 친화성 | 보통 | 높음 | 높음 |
 
-> **주의**: Buildpacks는 초기 빌드가 느리지만 캐시가 쌓이면 이후 빌드는 빨라진다. CI/CD 환경에서 Docker 데몬 설정이 어렵다면 Jib을 권장한다.
+필자의 경험상, Buildpacks는 초기 빌드가 상당히 오래 걸린다. 하지만 캐시가 쌓인 후에는 빌드가 빨라진다. CI/CD 환경에서 Docker 데몬을 설정하기 어렵다면 Jib을 쓰는 게 가장 무난하다.
 
 ---
 
 ## 20.2 Docker Compose로 전체 스택 구성
 
-로컬 개발 및 스테이징 환경에서는 Docker Compose를 활용하여 Spring Boot 애플리케이션, MongoDB, Prometheus, Grafana를 한 번에 구성할 수 있다.
+이제 로컬에서 전체 환경을 한 번에 띄워보자. Docker Compose를 쓰면 Spring Boot 앱, MongoDB, Prometheus, Grafana를 한 번의 명령어로 구성할 수 있다.
 
 ### 20.2.1 Docker Compose 구성 파일
 
@@ -2001,11 +2021,13 @@ docker compose -f docker/docker-compose.yml logs -f app
 docker compose -f docker/docker-compose.yml down -v
 ```
 
+실제로는 이 정도면 로컬에서 프로덕션과 거의 같은 환경을 구성할 수 있다.
+
 ---
 
 ## 20.3 Kubernetes 배포 기초
 
-프로덕션 환경에서는 Kubernetes(이하 K8s)를 활용하여 컨테이너화된 애플리케이션을 오케스트레이션한다.
+프로덕션으로 나가려면 보통 Kubernetes(K8s)를 쓴다. 수십, 수백 개의 컨테이너를 관리해야 할 때 정말 강력하다.
 
 ### 20.3.1 ConfigMap과 Secret
 
@@ -2113,7 +2135,7 @@ spec:
                 command: ["sh", "-c", "sleep 5"]
 ```
 
-K8s 프로브와 Spring Boot Actuator의 매핑 관계를 이해하는 것이 중요하다.
+여기서 중요한 게 K8s 프로브와 Spring Boot Actuator의 관계다. 각 프로브가 어떤 엔드포인트를 호출하는지 잘 이해해야 한다.
 
 | K8s 프로브 | Actuator 엔드포인트 | 역할 |
 |-----------|-------------------|------|
@@ -2121,7 +2143,7 @@ K8s 프로브와 Spring Boot Actuator의 매핑 관계를 이해하는 것이 �
 | `readinessProbe` | `/actuator/health/readiness` | 트래픽 수신 준비 확인 |
 | `livenessProbe` | `/actuator/health/liveness` | 프로세스 정상 동작 확인 |
 
-`preStop` 훅에서 `sleep 5`를 실행하는 이유는 K8s가 Service 엔드포인트 목록에서 파드를 제거하는 시간을 확보하여 **정상 종료(Graceful Shutdown)** 중 요청 유실을 방지하기 위해서다.
+그리고 `preStop` 훅의 `sleep 5`가 중요한데, 이건 K8s가 Service 엔드포인트 목록에서 파드를 제거하는 동안 추가 시간을 주는 거다. 이렇게 해야 **정상 종료(Graceful Shutdown)** 중에 요청을 잃지 않는다.
 
 ### 20.3.3 Service와 HPA
 
@@ -2168,13 +2190,13 @@ spec:
       stabilizationWindowSeconds: 300
 ```
 
-> **Tip**: 리액티브 애플리케이션은 CPU 사용률이 낮은 상태에서도 높은 처리량을 달성한다. CPU 기반 HPA만으로는 스케일링 시점을 정확히 판단하기 어려우므로, 커스텀 메트릭(요청 큐 크기, p99 지연시간)을 함께 활용하는 것을 권장한다.
+여기서 한 가지 주의할 점이 있다. 필자의 경험상 리액티브 애플리케이션은 CPU 사용률이 낮아 보이는데도 높은 처리량을 낸다. 따라서 CPU 기반 HPA만으로는 정확한 스케일링 시점을 판단하기 어렵다. 커스텀 메트릭(요청 큐 크기, p99 지연시간 등)을 함께 활용하는 게 좋다.
 
 ---
 
 ## 20.4 MongoDB Atlas 클라우드 연동
 
-프로덕션 환경에서는 MongoDB를 직접 운영하는 대신 관리형 서비스인 **MongoDB Atlas**를 사용하는 것이 운영 부담을 줄이는 효과적인 방법이다.
+프로덕션에서 MongoDB를 직접 관리하는 건 번거롭다. **MongoDB Atlas**라는 관리형 서비스를 쓰면 훨씬 편하다. 필자의 경험상 자동 백업, 패치 관리, 고가용성 설정 등이 모두 자동으로 되니까 개발팀이 코드에 집중할 수 있다.
 
 ### 20.4.1 Atlas 연결 설정
 
@@ -2247,17 +2269,19 @@ public class MongoAtlasHealthIndicator implements ReactiveHealthIndicator {
 
 ### 20.4.3 K8s에서 Atlas 연결 시 고려사항
 
-1. **고정 Egress IP**: K8s 클러스터의 아웃바운드 트래픽이 고정 IP를 사용하도록 NAT Gateway를 설정하고, 해당 IP를 Atlas IP Access List에 등록한다.
-2. **VPC Peering / Private Link**: 보안이 중요한 환경에서는 Atlas의 VPC Peering 또는 AWS PrivateLink를 활용한다.
-3. **DNS 해석**: `mongodb+srv://` URI는 DNS SRV 레코드를 사용하므로 K8s 클러스터의 DNS가 외부 DNS를 정상 해석할 수 있어야 한다.
+K8s에서 Atlas로 연결할 때 생각해야 할 부분들이 있다.
 
-> **주의**: Atlas Free Tier(M0)는 VPC Peering과 Private Link를 지원하지 않는다. 프로덕션에서는 최소 M10 이상을 사용한다.
+1. **고정 Egress IP**: K8s 클러스터의 모든 아웃바운드 트래픽이 고정 IP를 사용하도록 NAT Gateway를 설정하고, 그 IP를 Atlas IP Access List에 등록한다.
+2. **VPC Peering / Private Link**: 보안이 중요한 프로덕션 환경이라면 Atlas의 VPC Peering이나 AWS PrivateLink를 설정하자.
+3. **DNS 해석**: `mongodb+srv://` URI는 DNS SRV 레코드를 사용한다. K8s 클러스터의 DNS가 외부 DNS를 제대로 해석할 수 있어야 한다.
+
+한 가지 더, Atlas의 무료 등급(M0)은 VPC Peering과 Private Link를 지원하지 않는다. 프로덕션에서는 최소 M10 이상을 써야 한다.
 
 ---
 
 ## 20.5 CI/CD 파이프라인 구성 (GitHub Actions)
 
-GitHub Actions를 활용하여 소스 코드 푸시부터 테스트, Docker 이미지 빌드, K8s 배포까지의 전체 파이프라인을 구성한다.
+이제 자동화 차례다. GitHub Actions를 쓰면 코드 푸시부터 테스트, 빌드, K8s 배포까지 자동으로 진행된다. 직접 배포할 필요 없이 git push 하나면 된다.
 
 ### 20.5.1 CI/CD 워크플로우
 
@@ -2366,6 +2390,8 @@ jobs:
 
 ### 20.5.2 브랜치 전략과 시크릿 관리
 
+브랜치별로 다른 동작을 하도록 설정할 수 있다.
+
 | 브랜치 | 트리거 | 수행 작업 |
 |--------|-------|----------|
 | `feature/*` | PR 생성 | 빌드, 테스트 |
@@ -2380,13 +2406,13 @@ jobs:
 | `KUBE_CONFIG` | K8s kubeconfig (Base64 인코딩) |
 | `MONGO_URI` | MongoDB Atlas 연결 문자열 |
 
-> **Tip**: `environment: production` 설정을 활용하면 프로덕션 배포 전 수동 승인(Manual Approval) 단계를 추가할 수 있다.
+팁으로, `environment: production` 설정을 쓰면 프로덕션 배포 전에 수동 승인(Manual Approval) 단계를 추가할 수 있다. 이렇게 하면 실수로 잘못된 코드가 배포되는 실수를 줄일 수 있다.
 
 ---
 
 ## 20.6 GraalVM Native Image 빌드
 
-GraalVM Native Image는 Java 애플리케이션을 AOT(Ahead-of-Time) 컴파일하여 네이티브 실행 파일로 변환한다. 시작 시간이 밀리초 단위로 단축되고 메모리 사용량이 대폭 감소하여, 서버리스(Serverless) 환경에 적합하다.
+마지막으로 GraalVM Native Image를 살펴보자. 이건 Java를 컴파일 시점에 네이티브 코드로 변환해버린다. 덕분에 시작 시간이 몇 초에서 수백 밀리초로 줄어들고, 메모리도 훨씬 적게 쓴다. 서버리스 환경이나 마이크로서비스 아키텍처에 정말 좋다.
 
 ### 20.6.1 JVM vs Native Image 비교
 
@@ -2429,7 +2455,7 @@ graalvmNative {
 
 ### 20.6.3 리플렉션 힌트 설정
 
-Spring Boot 3.x는 AOT 처리를 통해 대부분의 리플렉션 힌트를 자동 생성한다. 동적으로 로드되는 클래스는 수동으로 등록해야 한다.
+Spring Boot 3.x는 대부분의 리플렉션 힌트를 자동으로 생성해준다. 다행히 개발자가 직접 설정할 필요가 거의 없다. 다만 동적으로 로드되는 특수한 클래스는 수동으로 등록해야 한다.
 
 ```java
 @Configuration
@@ -2453,7 +2479,7 @@ public class NativeHintsRegistrar implements RuntimeHintsRegistrar {
 
 ### 20.6.4 Native Image Docker 빌드
 
-Buildpacks를 활용하면 GraalVM 로컬 설치 없이 네이티브 이미지를 빌드할 수 있다.
+GraalVM을 로컬에 설치할 필요는 없다. Buildpacks를 쓰면 Docker 컨테이너 안에서 자동으로 빌드된다.
 
 ```groovy
 bootBuildImage {
@@ -2465,7 +2491,7 @@ bootBuildImage {
 }
 ```
 
-멀티 스테이지 Dockerfile로 직접 빌드하는 방법도 있다.
+혹은 멀티 스테이지 Dockerfile로 직접 빌드할 수도 있다.
 
 ```dockerfile
 FROM ghcr.io/graalvm/native-image-community:21 AS builder
@@ -2486,17 +2512,17 @@ ENTRYPOINT ["./webflux-app"]
 
 ### 20.6.5 주의사항
 
-네이티브 이미지 환경에서 주의해야 할 핵심 사항을 정리한다.
+실제로 네이티브 이미지를 빌드할 때 주의할 점들이 있다.
 
-1. **빌드 리소스**: 네이티브 이미지 빌드는 최소 8GB RAM이 필요하며 5~10분 이상 소요된다. CI/CD에서 대규모 프로젝트는 Larger Runner 사용을 고려한다.
-2. **프로파일 결정 시점**: 네이티브 이미지는 빌드 시점에 프로파일이 결정된다. 런타임 변경이 필요하면 AOT 처리 시 명시해야 한다.
+1. **빌드 리소스**: 네이티브 이미지 컴파일은 상당히 무겁다. 최소 8GB 메모리가 필요하고 5~10분 이상 걸린다. CI/CD에서 대규모 프로젝트는 GitHub Actions의 Larger Runner를 사용하는 게 좋다.
+2. **프로파일 결정 시점**: 네이티브 이미지는 빌드할 때 프로파일이 확정된다. 런타임에 바꿀 수 없다는 뜻이다. 나중에 런타임 변경이 필요하면 AOT 처리 시 명시적으로 설정해야 한다.
 
 ```bash
 ./gradlew nativeCompile -Pspring.profiles.active=prod
 ```
 
-3. **서드파티 호환성**: 모든 라이브러리가 네이티브 이미지를 지원하는 것은 아니다. [GraalVM Reachability Metadata Repository](https://github.com/oracle/graalvm-reachability-metadata)에서 호환성을 확인한다.
-4. **GitHub Actions 빌드**: 태그 푸시 시 네이티브 이미지를 빌드하는 워크플로우를 구성한다.
+3. **서드파티 호환성**: 모든 라이브러리가 네이티브 이미지를 지원하진 않는다. 사용하는 라이브러리가 지원되는지 [GraalVM Reachability Metadata Repository](https://github.com/oracle/graalvm-reachability-metadata)에서 확인하자.
+4. **GitHub Actions 빌드**: 보통 Git 태그를 푸시할 때 네이티브 이미지 빌드를 트리거하는 방식으로 구성한다.
 
 ```yaml
 # .github/workflows/native-build.yml
@@ -2526,6 +2552,8 @@ jobs:
 
 ## 요약
 
+지금까지 배포의 전체 과정을 다뤘다.
+
 | 주제 | 핵심 도구 | 권장 사항 |
 |------|----------|----------|
 | Docker 빌드 | Jib, Buildpacks | CI/CD에서는 Jib 권장 |
@@ -2535,4 +2563,4 @@ jobs:
 | CI/CD | GitHub Actions | 브랜치 전략과 시크릿 관리 |
 | Native Image | GraalVM, AOT | 서버리스 환경에 적합 |
 
-컨테이너화와 CI/CD는 한 번 구축하면 이후 배포가 자동화된다. 다음 장에서는 **장애 대응과 트러블슈팅**을 다룬다.
+컨테이너화와 CI/CD를 제대로 구축해놓으면, 이후 배포는 거의 자동화된다. 개발팀은 코드만 푸시하면 되고, 나머지는 파이프라인이 알아서 처리한다. 다음 장에서는 이런 환경에서 문제가 생겼을 때 **장애 대응과 트러블슈팅**을 어떻게 하는지 다룬다.

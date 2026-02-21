@@ -1,10 +1,12 @@
 # 부록 B. MongoDB 쿼리 연산자 정리
 
-이 부록에서는 MongoDB의 주요 쿼리 연산자를 카테고리별로 정리하고, 각 연산자에 대해 MongoDB 네이티브 쿼리와 Spring Data MongoDB(Criteria API)로 변환한 Java 코드를 함께 제공한다.
+MongoDB를 다루다 보면 반복해서 찾게 되는 쿼리 연산자들이 있다. 이 부록은 그런 연산자들을 카테고리별로 모아 놓고, MongoDB 네이티브 쿼리와 Spring Data MongoDB(Criteria API)의 Java 코드를 함께 보여주는 것이 목표다. 필자의 경험상 실무에서는 이 정도 연산자들만 잘 이해해도 대부분의 쿼리를 충분히 작성할 수 있다.
 
 ---
 
 ## B.1 비교 연산자
+
+가장 자주 마주하는 연산자들이다. 값을 비교하거나 범위를 지정할 때 필요한 것들.
 
 | 연산자 | 설명 | MongoDB 쿼리 예제 | Spring Data Criteria |
 |--------|------|-------------------|---------------------|
@@ -16,6 +18,8 @@
 | `$lte` | 이하 | `{ age: { $lte: 65 } }` | `Criteria.where("age").lte(65)` |
 | `$in` | 배열 내 값과 일치 | `{ status: { $in: ["active", "pending"] } }` | `Criteria.where("status").in("active", "pending")` |
 | `$nin` | 배열 내 어떤 값과도 불일치 | `{ role: { $nin: ["admin"] } }` | `Criteria.where("role").nin("admin")` |
+
+실제로는 여러 조건을 조합해서 쓰는 경우가 많으니 예제를 살펴보자.
 
 **범위 조건 결합 예제:**
 
@@ -33,6 +37,8 @@ reactiveMongoTemplate.find(Query.query(criteria), User.class);
 ---
 
 ## B.2 논리 연산자
+
+복잡한 조건을 만들어야 할 때 논리 연산자가 나온다. AND, OR 같은 연산들인데, Criteria API를 쓸 때는 직관적으로 처리할 수 있다.
 
 | 연산자 | 설명 |
 |--------|------|
@@ -69,6 +75,8 @@ Criteria nor = new Criteria().norOperator(
 
 ## B.3 요소 연산자
 
+특정 필드의 존재 여부나 타입을 확인할 때 사용한다. 데이터가 불완전하거나 스키마 마이그레이션 과정에서 유용하게 쓸 수 있다.
+
 | 연산자 | 설명 | MongoDB 쿼리 예제 | Spring Data Criteria |
 |--------|------|-------------------|---------------------|
 | `$exists` | 필드 존재 여부 확인 | `{ email: { $exists: true } }` | `Criteria.where("email").exists(true)` |
@@ -77,6 +85,8 @@ Criteria nor = new Criteria().norOperator(
 ---
 
 ## B.4 배열 연산자
+
+배열 필드를 다루는 데 필요한 연산자들이다. tags나 scores 같은 배열을 검색할 때 자주 쓰게 된다.
 
 | 연산자 | 설명 |
 |--------|------|
@@ -103,6 +113,8 @@ Criteria size = Criteria.where("tags").size(3);
 
 ## B.5 정규식 연산자
 
+문자열 검색이 필요할 때가 있다. 정확한 일치가 아니라 패턴 기반의 검색을 해야 한다면 정규식을 활용하자.
+
 ```javascript
 // name이 "Kim"으로 시작 (대소문자 무시)
 db.users.find({ name: { $regex: "^Kim", $options: "i" } })
@@ -119,6 +131,8 @@ reactiveMongoTemplate.find(Query.query(regex1), User.class);
 ---
 
 ## B.6 업데이트 연산자
+
+SELECT와 함께 UPDATE도 중요하다. 도큐먼트를 수정할 때 사용하는 연산자들을 정리했다.
 
 | 연산자 | 설명 | Update API |
 |--------|------|-----------|
@@ -163,6 +177,8 @@ reactiveMongoTemplate.updateFirst(query, new Update().addToSet("tags", "reactive
 ---
 
 ## B.7 Aggregation Pipeline 스테이지
+
+Aggregation Pipeline은 MongoDB의 강력한 기능이다. 여러 단계를 거쳐서 복잡한 데이터 변환과 집계를 할 수 있으며, 필자의 경험상 실무에서 리포팅 기능을 구현할 때 정말 유용하게 쓰인다.
 
 | 스테이지 | 설명 |
 |----------|------|
@@ -251,7 +267,7 @@ reactiveMongoTemplate.aggregate(agg, "orders", Document.class);
 
 ### 파이프라인 조합 예제
 
-카테고리별 매출 상위 5개를 조회하는 실전 파이프라인이다.
+이론만으로는 와닿지 않으니 실전 예제를 살펴보자. 카테고리별 매출 상위 5개를 조회하는 파이프라인이다.
 
 ```java
 Aggregation agg = Aggregation.newAggregation(
@@ -272,6 +288,8 @@ Flux<Document> results = reactiveMongoTemplate.aggregate(agg, "orders", Document
 ---
 
 ## B.8 인덱스
+
+인덱스는 쿼리 성능을 좌우하는 핵심 요소다. 어떤 인덱스 전략을 쓰느냐에 따라 조회 성능이 크게 달라진다.
 
 | 인덱스 유형 | 설명 | 생성 예제 |
 |-------------|------|----------|
@@ -344,6 +362,8 @@ reactiveMongoTemplate.indexOps("sessions")
 
 ## B.9 자주 사용하는 패턴
 
+일상적인 작업들을 패턴으로 정리했다. 이 정도는 프로젝트마다 거의 똑같이 쓰는 코드들이다.
+
 ### 페이징 처리
 
 ```java
@@ -353,7 +373,7 @@ Query query = Query.query(Criteria.where("status").is("active"))
 reactiveMongoTemplate.find(query, Article.class);
 ```
 
-### Upsert (존재하면 수정, 없으면 삽입)
+### Upsert - 존재하면 수정, 없으면 삽입
 
 ```java
 Query query = Query.query(Criteria.where("userId").is(userId).and("date").is(today));
@@ -365,6 +385,8 @@ reactiveMongoTemplate.upsert(query, update, UserActivity.class);
 ```
 
 ### 동적 쿼리 생성
+
+검색 기능을 구현할 때는 사용자가 입력한 조건에 따라 쿼리를 동적으로 만들어야 한다. 다음은 그런 상황을 처리하는 예제다.
 
 ```java
 public Flux<Product> search(String keyword, Double minPrice,
@@ -386,4 +408,4 @@ public Flux<Product> search(String keyword, Double minPrice,
 
 ---
 
-> **참고**: MongoDB 연산자의 전체 목록은 [MongoDB 공식 문서](https://www.mongodb.com/docs/manual/reference/operator/)에서, Spring Data MongoDB의 Criteria API 상세 내용은 [Spring Data MongoDB 레퍼런스](https://docs.spring.io/spring-data/mongodb/reference/)에서 확인할 수 있다.
+> **참고**: 여기서 다룬 연산자들은 가장 자주 쓰이는 것들일 뿐, MongoDB는 훨씬 더 많은 기능을 제공한다. 더 알아보려면 [MongoDB 공식 문서](https://www.mongodb.com/docs/manual/reference/operator/)를 참고하고, Spring Data MongoDB의 Criteria API에 대해서는 [Spring Data MongoDB 레퍼런스](https://docs.spring.io/spring-data/mongodb/reference/)를 확인하자.

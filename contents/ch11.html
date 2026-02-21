@@ -20,26 +20,28 @@
   <div class="wrapper">
     <main class="content">
       <h1 id="chapter-11-spring-security-webflux">Chapter 11. 리액티브 보안 (Spring Security WebFlux)</h1>
-<p>Spring WebFlux 기반 애플리케이션에서 보안은 서블릿 기반의 Spring Security와 다른 아키텍처로 동작한다. 이번 장에서는 리액티브 환경에 맞는 Spring Security 설정, 인증/인가 구현, JWT 기반 인증, SecurityContext 관리, 그리고 OAuth2 연동까지 단계별로 다룬다.</p>
+<p>Spring WebFlux로 API 서버를 구축할 때 보안 구현 방식은 기존 서블릿 기반 Spring Security와 상당히 다르다. ThreadLocal이 작동하지 않고, 비동기 논블로킹 특성을 고려해야 하기 때문이다. 이 장에서는 WebFlux 환경에 맞춘 Spring Security 설정부터 시작해서 인증/인가, JWT 토큰 기반 인증, SecurityContext 다루기, 그리고 OAuth2 통합까지 단계적으로 살펴볼 것이다.</p>
 <hr>
 <h2 id="111-spring-security-reactive">11.1 Spring Security Reactive 설정</h2>
 <h3 id="1111">11.1.1 의존성 추가</h3>
-<p><code>build.gradle</code>에 Spring Security 의존성을 추가한다.</p>
-<pre class="highlight"><code class="language-groovy">dependencies {
+<p>먼저 <code>build.gradle</code>에 필요한 Spring Security 의존성들을 넣어야 한다.</p>
+<p>```groovy
+dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'org.springframework.boot:spring-boot-starter-security'
-    implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'
+    implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'</p>
+<pre><code>// JWT (11.4절), OAuth2 (11.6절)
+implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
 
-    // JWT (11.4절), OAuth2 (11.6절)
-    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
-    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
-    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
-
-    testImplementation 'org.springframework.security:spring-security-test'
-}</code></pre>
-<p>의존성을 추가하는 것만으로 Spring Security가 활성화되며, 모든 엔드포인트에 기본 인증이 적용된다.</p>
+testImplementation 'org.springframework.security:spring-security-test'
+</code></pre>
+<p>}
+```</p>
+<p>재미있는 점은 이 의존성들을 추가하는 것만으로 자동으로 Spring Security가 활성화된다는 것이다. 모든 엔드포인트가 기본 인증으로 보호되기 시작한다.</p>
 <h3 id="1112">11.1.2 서블릿 기반과의 차이</h3>
 <table>
 <thead>
@@ -82,30 +84,33 @@
 </tr>
 </tbody>
 </table>
-<p>가장 중요한 차이는 <strong>SecurityContext 저장 방식</strong>이다. 서블릿 환경에서는 <code>ThreadLocal</code>에 인증 정보를 저장하지만, 리액티브 환경에서는 하나의 요청이 여러 스레드에서 처리될 수 있으므로 <strong>Reactor의 Context</strong>를 사용한다.</p>
+<p>가장 크리티컬한 차이는 <strong>인증 정보를 어디에 저장하는가</strong> 하는 문제다. 전통적인 서블릿 환경에서는 <code>ThreadLocal</code>을 이용하는데, 리액티브는 한 요청이 여러 스레드를 타고 처리되므로 이 방식이 작동하지 않는다. 대신 <strong>Reactor의 Context</strong> 메커니즘을 활용해야 한다.</p>
 <h3 id="1113">11.1.3 기본 보안 설정 클래스</h3>
-<p><code>@EnableWebFluxSecurity</code>로 리액티브 보안을 활성화하고, <code>SecurityWebFilterChain</code> 빈을 정의한다.</p>
-<pre class="highlight"><code class="language-java">@Configuration
+<p>이제 실제로 보안을 구성해 보자. <code>@EnableWebFluxSecurity</code> 어노테이션으로 리액티브 보안을 켜고 <code>SecurityWebFilterChain</code> 빈을 정의하면 된다.</p>
+<p>```java
+@Configuration
 @EnableWebFluxSecurity
-public class SecurityConfig {
-
-    @Bean
-    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
-        return http
-            .authorizeExchange(exchanges -&gt; exchanges
-                .anyExchange().authenticated()
-            )
-            .httpBasic(Customizer.withDefaults())
-            .formLogin(Customizer.withDefaults())
-            .build();
-    }
-}</code></pre>
-<p><code>Customizer.withDefaults()</code>는 Spring Security 6.1부터 권장되는 설정 방식이다.</p>
+public class SecurityConfig {</p>
+<pre><code>@Bean
+public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
+    return http
+        .authorizeExchange(exchanges -&gt; exchanges
+            .anyExchange().authenticated()
+        )
+        .httpBasic(Customizer.withDefaults())
+        .formLogin(Customizer.withDefaults())
+        .build();
+}
+</code></pre>
+<p>}
+```</p>
+<p><code>Customizer.withDefaults()</code>는 Spring Security 6.1 이상에서 권장되는 설정 패턴이다.</p>
 <hr>
 <h2 id="112-securitywebfilterchain">11.2 SecurityWebFilterChain 구성</h2>
 <h3 id="1121-serverhttpsecurity">11.2.1 ServerHttpSecurity 주요 설정</h3>
-<p><code>ServerHttpSecurity</code>는 리액티브 보안 설정의 빌더 역할을 한다.</p>
-<pre class="highlight"><code class="language-java">@Bean
+<p><code>ServerHttpSecurity</code>라는 빌더를 통해 리액티브 보안을 상세하게 설정한다. 어떤 경로를 누구에게 열어줄지, CORS는 어떻게 할지 등을 여기서 결정한다.</p>
+<p><code>java
+@Bean
 public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
     return http
         .authorizeExchange(exchanges -&gt; exchanges
@@ -120,55 +125,61 @@ public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
         .cors(cors -&gt; cors.configurationSource(corsConfigurationSource()))
         .formLogin(formLogin -&gt; formLogin.disable())
         .build();
-}</code></pre>
+}</code></p>
 <h3 id="1122-authorizeexchange">11.2.2 authorizeExchange 상세 설정</h3>
-<p><code>authorizeExchange</code>에서 사용할 수 있는 다양한 매처와 접근 규칙을 정리한다.</p>
-<pre class="highlight"><code class="language-java">.authorizeExchange(exchanges -&gt; exchanges
+<p><code>authorizeExchange</code> 내에서 쓸 수 있는 여러 매처와 권한 검증 규칙들을 정리해 보면 다음과 같다.</p>
+<p>```java
+.authorizeExchange(exchanges -&gt; exchanges
     // HTTP 메서드 + 경로 조합
-    .pathMatchers(HttpMethod.GET, "/api/products/**").permitAll()
-    .pathMatchers(HttpMethod.DELETE, "/api/**").hasRole("ADMIN")
+    .pathMatchers(HttpMethod.GET, "/api/products/<strong>").permitAll()
+    .pathMatchers(HttpMethod.DELETE, "/api/</strong>").hasRole("ADMIN")</p>
+<pre><code>// 역할/권한 기반 인가
+.pathMatchers("/api/manager/**").hasAnyRole("ADMIN", "MANAGER")
+.pathMatchers("/api/reports/**").hasAuthority("REPORT_READ")
 
-    // 역할/권한 기반 인가
-    .pathMatchers("/api/manager/**").hasAnyRole("ADMIN", "MANAGER")
-    .pathMatchers("/api/reports/**").hasAuthority("REPORT_READ")
+// 커스텀 인가 로직
+.pathMatchers("/api/users/{userId}/**")
+    .access((authentication, context) -&gt; {
+        String userId = context.getVariables().get("userId");
+        return authentication
+            .map(auth -&gt; auth.getName().equals(userId))
+            .map(AuthorizationDecision::new);
+    })
 
-    // 커스텀 인가 로직
-    .pathMatchers("/api/users/{userId}/**")
-        .access((authentication, context) -&gt; {
-            String userId = context.getVariables().get("userId");
-            return authentication
-                .map(auth -&gt; auth.getName().equals(userId))
-                .map(AuthorizationDecision::new);
-        })
-
-    .anyExchange().authenticated()
-)</code></pre>
+.anyExchange().authenticated()
+</code></pre>
+<p>)
+```</p>
 <h3 id="1123-csrf-cors">11.2.3 CSRF와 CORS 설정</h3>
-<p>REST API 서버에서는 일반적으로 CSRF를 비활성화한다. 브라우저 기반 애플리케이션에서는 쿠키 기반 CSRF 토큰을 사용한다.</p>
-<pre class="highlight"><code class="language-java">// REST API: CSRF 비활성화
-.csrf(csrf -&gt; csrf.disable())
-
-// 브라우저 기반: 쿠키 CSRF 토큰
+<p>API 서버를 만들 때는 보통 CSRF를 꺼둔다. 쿠키 기반 토큰이 필요하지 않기 때문이다. 다만 SPA 같은 브라우저 기반 애플리케이션이라면 쿠키에 저장된 CSRF 토큰을 검증해야 한다.</p>
+<p>```java
+// REST API: CSRF 비활성화
+.csrf(csrf -&gt; csrf.disable())</p>
+<p>// 브라우저 기반: 쿠키 CSRF 토큰
 .csrf(csrf -&gt; csrf
-    .csrfTokenRepository(CookieServerCsrfTokenRepository.withHttpOnlyFalse()))</code></pre>
-<p>CORS는 <code>CorsConfigurationSource</code> 빈으로 설정한다.</p>
-<pre class="highlight"><code class="language-java">@Bean
+    .csrfTokenRepository(CookieServerCsrfTokenRepository.withHttpOnlyFalse()))
+```</p>
+<p>CORS 정책은 <code>CorsConfigurationSource</code> 빈을 통해 설정하는 것이 일반적이다.</p>
+<p>```java
+@Bean
 public CorsConfigurationSource corsConfigurationSource() {
     CorsConfiguration config = new CorsConfiguration();
     config.setAllowedOrigins(List.of("http://localhost:3000"));
     config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
     config.setAllowedHeaders(List.of("*"));
-    config.setAllowCredentials(true);
-
-    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-    source.registerCorsConfiguration("/api/**", config);
-    return source;
-}</code></pre>
+    config.setAllowCredentials(true);</p>
+<pre><code>UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+source.registerCorsConfiguration("/api/**", config);
+return source;
+</code></pre>
+<p>}
+```</p>
 <hr>
 <h2 id="113">11.3 인증과 인가 구현</h2>
 <h3 id="1131-reactiveuserdetailsservice">11.3.1 ReactiveUserDetailsService</h3>
-<p>리액티브 환경에서는 <code>ReactiveUserDetailsService</code>를 구현한다. <code>findByUsername()</code>이 <code>Mono&lt;UserDetails&gt;</code>를 반환한다. 먼저 사용자 도메인 모델과 리포지토리를 정의한다.</p>
-<pre class="highlight"><code class="language-java">@Document(collection = "users")
+<p>리액티브 환경에서는 당연히 <code>ReactiveUserDetailsService</code>를 사용해야 한다. 비동기로 사용자 정보를 조회해서 <code>Mono&lt;UserDetails&gt;</code>로 반환하는 방식이다. 먼저 사용자 도메인과 MongoDB 리포지토리를 먼저 만들어 보자.</p>
+<p><code>java
+@Document(collection = "users")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -182,389 +193,415 @@ public class User {
     private List&lt;String&gt; roles;
     private boolean enabled;
     private LocalDateTime createdAt;
-}</code></pre>
-<pre class="highlight"><code class="language-java">public interface UserRepository extends ReactiveMongoRepository&lt;User, String&gt; {
+}</code></p>
+<p><code>java
+public interface UserRepository extends ReactiveMongoRepository&lt;User, String&gt; {
     Mono&lt;User&gt; findByUsername(String username);
     Mono&lt;Boolean&gt; existsByUsername(String username);
-}</code></pre>
-<p>MongoDB 기반 <code>ReactiveUserDetailsService</code> 구현체를 작성한다.</p>
-<pre class="highlight"><code class="language-java">@Service
+}</code></p>
+<p>이제 MongoDB에서 사용자를 조회하는 <code>ReactiveUserDetailsService</code>를 구현해 보자.</p>
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class MongoUserDetailsService implements ReactiveUserDetailsService {
+public class MongoUserDetailsService implements ReactiveUserDetailsService {</p>
+<pre><code>private final UserRepository userRepository;
 
-    private final UserRepository userRepository;
-
-    @Override
-    public Mono&lt;UserDetails&gt; findByUsername(String username) {
-        return userRepository.findByUsername(username)
-            .map(user -&gt; org.springframework.security.core.userdetails.User.builder()
-                .username(user.getUsername())
-                .password(user.getPassword())
-                .roles(user.getRoles().toArray(new String[0]))
-                .disabled(!user.isEnabled())
-                .build()
-            )
-            .switchIfEmpty(Mono.error(
-                new UsernameNotFoundException("사용자를 찾을 수 없습니다: " + username)
-            ));
-    }
-}</code></pre>
+@Override
+public Mono&lt;UserDetails&gt; findByUsername(String username) {
+    return userRepository.findByUsername(username)
+        .map(user -&gt; org.springframework.security.core.userdetails.User.builder()
+            .username(user.getUsername())
+            .password(user.getPassword())
+            .roles(user.getRoles().toArray(new String[0]))
+            .disabled(!user.isEnabled())
+            .build()
+        )
+        .switchIfEmpty(Mono.error(
+            new UsernameNotFoundException("사용자를 찾을 수 없습니다: " + username)
+        ));
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1132-passwordencoder">11.3.2 PasswordEncoder와 회원가입</h3>
-<p>비밀번호는 BCrypt로 해시하여 저장한다.</p>
-<pre class="highlight"><code class="language-java">@Bean
+<p>비밀번호는 절대 평문으로 저장하면 안 되고, BCrypt 같은 해시 알고리즘으로 암호화해서 저장해야 한다.</p>
+<p><code>java
+@Bean
 public PasswordEncoder passwordEncoder() {
     return new BCryptPasswordEncoder();
-}</code></pre>
-<pre class="highlight"><code class="language-java">@Service
+}</code></p>
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class UserService {
+public class UserService {</p>
+<pre><code>private final UserRepository userRepository;
+private final PasswordEncoder passwordEncoder;
 
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
-
-    public Mono&lt;User&gt; signup(SignupRequest request) {
-        return userRepository.existsByUsername(request.getUsername())
-            .flatMap(exists -&gt; {
-                if (exists) {
-                    return Mono.error(new DuplicateException("이미 사용 중인 사용자명입니다."));
-                }
-                User user = User.builder()
-                    .username(request.getUsername())
-                    .password(passwordEncoder.encode(request.getPassword()))
-                    .email(request.getEmail())
-                    .roles(List.of("USER"))
-                    .enabled(true)
-                    .createdAt(LocalDateTime.now())
-                    .build();
-                return userRepository.save(user);
-            });
-    }
-}</code></pre>
+public Mono&lt;User&gt; signup(SignupRequest request) {
+    return userRepository.existsByUsername(request.getUsername())
+        .flatMap(exists -&gt; {
+            if (exists) {
+                return Mono.error(new DuplicateException("이미 사용 중인 사용자명입니다."));
+            }
+            User user = User.builder()
+                .username(request.getUsername())
+                .password(passwordEncoder.encode(request.getPassword()))
+                .email(request.getEmail())
+                .roles(List.of("USER"))
+                .enabled(true)
+                .createdAt(LocalDateTime.now())
+                .build();
+            return userRepository.save(user);
+        });
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1133-preauthorize">11.3.3 @PreAuthorize 메서드 보안</h3>
-<p><code>@EnableReactiveMethodSecurity</code>를 활성화하면 서비스 계층에서 메서드 단위 보안을 적용할 수 있다.</p>
-<pre class="highlight"><code class="language-java">@Configuration
+<p><code>@EnableReactiveMethodSecurity</code>를 켜면 서비스 메서드 단위에서 세분화된 권한 검증을 할 수 있다. 이건 정말 유용한 기능이다.</p>
+<p><code>java
+@Configuration
 @EnableWebFluxSecurity
 @EnableReactiveMethodSecurity
 public class SecurityConfig {
     // SecurityWebFilterChain 빈 정의
-}</code></pre>
-<pre class="highlight"><code class="language-java">@Service
+}</code></p>
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class ProductService {
+public class ProductService {</p>
+<pre><code>private final ProductRepository productRepository;
 
-    private final ProductRepository productRepository;
+@PreAuthorize("hasRole('ADMIN')")
+public Mono&lt;Product&gt; create(Product product) {
+    product.setCreatedAt(LocalDateTime.now());
+    return productRepository.save(product);
+}
 
-    @PreAuthorize("hasRole('ADMIN')")
-    public Mono&lt;Product&gt; create(Product product) {
-        product.setCreatedAt(LocalDateTime.now());
-        return productRepository.save(product);
-    }
+@PreAuthorize("hasRole('ADMIN') or hasRole('MANAGER')")
+public Mono&lt;Product&gt; update(String id, Product product) {
+    return productRepository.findById(id)
+        .map(existing -&gt; {
+            existing.setName(product.getName());
+            existing.setPrice(product.getPrice());
+            existing.setUpdatedAt(LocalDateTime.now());
+            return existing;
+        })
+        .flatMap(productRepository::save);
+}
 
-    @PreAuthorize("hasRole('ADMIN') or hasRole('MANAGER')")
-    public Mono&lt;Product&gt; update(String id, Product product) {
-        return productRepository.findById(id)
-            .map(existing -&gt; {
-                existing.setName(product.getName());
-                existing.setPrice(product.getPrice());
-                existing.setUpdatedAt(LocalDateTime.now());
-                return existing;
-            })
-            .flatMap(productRepository::save);
-    }
-
-    // 현재 사용자 본인의 데이터만 조회 허용
-    @PreAuthorize("#username == authentication.name or hasRole('ADMIN')")
-    public Mono&lt;User&gt; findByUsername(String username) {
-        return userRepository.findByUsername(username);
-    }
-}</code></pre>
-<p>리액티브 환경에서 <code>@PreAuthorize</code>는 <code>Mono</code>/<code>Flux</code> 반환 타입과 함께 동작하며, 인가 실패 시 <code>AccessDeniedException</code>이 발생한다.</p>
+// 현재 사용자 본인의 데이터만 조회 허용
+@PreAuthorize("#username == authentication.name or hasRole('ADMIN')")
+public Mono&lt;User&gt; findByUsername(String username) {
+    return userRepository.findByUsername(username);
+}
+</code></pre>
+<p>}
+```</p>
+<p>필자의 경험상 리액티브 환경에서도 <code>@PreAuthorize</code>는 <code>Mono</code>/<code>Flux</code> 반환 타입을 문제없이 처리한다. 권한이 없으면 <code>AccessDeniedException</code>이 던져지는데, 이를 적절히 핸들링해야 한다.</p>
 <hr>
 <h2 id="114-jwt">11.4 JWT 기반 인증 구현</h2>
-<p>REST API 환경에서는 세션 대신 JWT(JSON Web Token)를 사용하여 무상태(stateless) 인증을 구현하는 것이 일반적이다. JWT는 Header(알고리즘, 타입), Payload(클레임), Signature(서명) 세 부분으로 구성된다.</p>
+<p>요즘 REST API 서버에서는 세션을 쓰지 않고 JWT(JSON Web Token)로 무상태 인증을 한다. JWT는 Header(헤더-알고리즘/타입), Payload(페이로드-클레임), Signature(서명) 이렇게 세 부분으로 나뉜다. 이 방식은 확장성이 좋고, 마이크로서비스 환경에 잘 맞는다.</p>
 <h3 id="1141-jwt">11.4.1 JWT 유틸리티 클래스</h3>
-<p>jjwt 라이브러리를 사용하여 토큰 생성, 검증, 파싱을 담당하는 클래스를 구현한다.</p>
-<pre class="highlight"><code class="language-java">@Component
-public class JwtTokenProvider {
+<p>jjwt 라이브러리는 JWT를 쉽게 다루기 위한 라이브러리인데, 이걸 활용해서 토큰을 생성하고 검증하고 파싱하는 유틸리티를 만들어 보자.</p>
+<p>```java
+@Component
+public class JwtTokenProvider {</p>
+<pre><code>@Value("${jwt.secret}")
+private String secretKey;
 
-    @Value("${jwt.secret}")
-    private String secretKey;
+@Value("${jwt.access-token-expiration}")
+private long accessTokenExpiration;
 
-    @Value("${jwt.access-token-expiration}")
-    private long accessTokenExpiration;
+@Value("${jwt.refresh-token-expiration}")
+private long refreshTokenExpiration;
 
-    @Value("${jwt.refresh-token-expiration}")
-    private long refreshTokenExpiration;
+private SecretKey key;
 
-    private SecretKey key;
+@PostConstruct
+public void init() {
+    this.key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secretKey));
+}
 
-    @PostConstruct
-    public void init() {
-        this.key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secretKey));
-    }
+public String generateAccessToken(UserDetails userDetails) {
+    Map&lt;String, Object&gt; claims = Map.of("roles",
+        userDetails.getAuthorities().stream()
+            .map(GrantedAuthority::getAuthority).toList());
+    return createToken(claims, userDetails.getUsername(), accessTokenExpiration);
+}
 
-    public String generateAccessToken(UserDetails userDetails) {
-        Map&lt;String, Object&gt; claims = Map.of("roles",
-            userDetails.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority).toList());
-        return createToken(claims, userDetails.getUsername(), accessTokenExpiration);
-    }
+public String generateRefreshToken(UserDetails userDetails) {
+    return createToken(Map.of(), userDetails.getUsername(), refreshTokenExpiration);
+}
 
-    public String generateRefreshToken(UserDetails userDetails) {
-        return createToken(Map.of(), userDetails.getUsername(), refreshTokenExpiration);
-    }
+private String createToken(Map&lt;String, Object&gt; claims, String subject,
+                           long expiration) {
+    Date now = new Date();
+    return Jwts.builder()
+        .claims(claims).subject(subject).issuedAt(now)
+        .expiration(new Date(now.getTime() + expiration))
+        .signWith(key).compact();
+}
 
-    private String createToken(Map&lt;String, Object&gt; claims, String subject,
-                               long expiration) {
-        Date now = new Date();
-        return Jwts.builder()
-            .claims(claims).subject(subject).issuedAt(now)
-            .expiration(new Date(now.getTime() + expiration))
-            .signWith(key).compact();
-    }
+public String getUsernameFromToken(String token) {
+    return getClaims(token).getSubject();
+}
 
-    public String getUsernameFromToken(String token) {
-        return getClaims(token).getSubject();
-    }
+@SuppressWarnings("unchecked")
+public List&lt;String&gt; getRolesFromToken(String token) {
+    return getClaims(token).get("roles", List.class);
+}
 
-    @SuppressWarnings("unchecked")
-    public List&lt;String&gt; getRolesFromToken(String token) {
-        return getClaims(token).get("roles", List.class);
-    }
+public boolean validateToken(String token) {
+    try { getClaims(token); return true; }
+    catch (JwtException | IllegalArgumentException e) { return false; }
+}
 
-    public boolean validateToken(String token) {
-        try { getClaims(token); return true; }
-        catch (JwtException | IllegalArgumentException e) { return false; }
-    }
-
-    private Claims getClaims(String token) {
-        return Jwts.parser().verifyWith(key).build()
-            .parseSignedClaims(token).getPayload();
-    }
-}</code></pre>
+private Claims getClaims(String token) {
+    return Jwts.parser().verifyWith(key).build()
+        .parseSignedClaims(token).getPayload();
+}
+</code></pre>
+<p>}
+```</p>
 <p><code>application.yml</code> 설정을 추가한다.</p>
-<pre class="highlight"><code class="language-yaml">jwt:
+<p><code>yaml
+jwt:
   secret: "dGhpcyBpcyBhIHZlcnkgbG9uZyBzZWNyZXQga2V5IGZvciBIUzI1NiBhbGdvcml0aG0="
   access-token-expiration: 3600000     # 1시간
-  refresh-token-expiration: 604800000  # 7일</code></pre>
+  refresh-token-expiration: 604800000  # 7일</code></p>
 <h3 id="1142-jwt">11.4.2 JWT 인증 필터</h3>
-<p>JWT 토큰에서 <code>Authentication</code> 객체를 생성하는 컨버터와 <code>ReactiveAuthenticationManager</code>를 구현한다.</p>
-<pre class="highlight"><code class="language-java">@Component
+<p>Authorization 헤더에서 JWT를 추출해서 검증하고 <code>Authentication</code> 객체로 변환하는 컨버터와 매니저를 만들어야 한다.</p>
+<p>```java
+@Component
 @RequiredArgsConstructor
-public class JwtAuthenticationConverter implements ServerAuthenticationConverter {
+public class JwtAuthenticationConverter implements ServerAuthenticationConverter {</p>
+<pre><code>private final JwtTokenProvider jwtTokenProvider;
 
-    private final JwtTokenProvider jwtTokenProvider;
-
-    @Override
-    public Mono&lt;Authentication&gt; convert(ServerWebExchange exchange) {
-        return Mono.justOrEmpty(
-                exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
-            .filter(header -&gt; header.startsWith("Bearer "))
-            .map(header -&gt; header.substring(7))
-            .filter(jwtTokenProvider::validateToken)
-            .map(token -&gt; {
-                String username = jwtTokenProvider.getUsernameFromToken(token);
-                List&lt;GrantedAuthority&gt; authorities = jwtTokenProvider
-                    .getRolesFromToken(token).stream()
-                    .map(SimpleGrantedAuthority::new)
-                    .collect(Collectors.toList());
-                return new UsernamePasswordAuthenticationToken(
-                    username, null, authorities);
-            });
-    }
-}</code></pre>
-<pre class="highlight"><code class="language-java">@Component
+@Override
+public Mono&lt;Authentication&gt; convert(ServerWebExchange exchange) {
+    return Mono.justOrEmpty(
+            exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
+        .filter(header -&gt; header.startsWith("Bearer "))
+        .map(header -&gt; header.substring(7))
+        .filter(jwtTokenProvider::validateToken)
+        .map(token -&gt; {
+            String username = jwtTokenProvider.getUsernameFromToken(token);
+            List&lt;GrantedAuthority&gt; authorities = jwtTokenProvider
+                .getRolesFromToken(token).stream()
+                .map(SimpleGrantedAuthority::new)
+                .collect(Collectors.toList());
+            return new UsernamePasswordAuthenticationToken(
+                username, null, authorities);
+        });
+}
+</code></pre>
+<p>}
+```</p>
+<p>```java
+@Component
 @RequiredArgsConstructor
-public class JwtReactiveAuthenticationManager implements ReactiveAuthenticationManager {
+public class JwtReactiveAuthenticationManager implements ReactiveAuthenticationManager {</p>
+<pre><code>private final ReactiveUserDetailsService userDetailsService;
 
-    private final ReactiveUserDetailsService userDetailsService;
-
-    @Override
-    public Mono&lt;Authentication&gt; authenticate(Authentication authentication) {
-        return userDetailsService.findByUsername(authentication.getName())
-            .map(userDetails -&gt; new UsernamePasswordAuthenticationToken(
-                userDetails, null, authentication.getAuthorities()));
-    }
-}</code></pre>
+@Override
+public Mono&lt;Authentication&gt; authenticate(Authentication authentication) {
+    return userDetailsService.findByUsername(authentication.getName())
+        .map(userDetails -&gt; new UsernamePasswordAuthenticationToken(
+            userDetails, null, authentication.getAuthorities()));
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1143-jwt-securitywebfilterchain">11.4.3 JWT SecurityWebFilterChain 구성</h3>
-<p>JWT 기반 인증을 위한 전체 보안 설정을 구성한다.</p>
-<pre class="highlight"><code class="language-java">@Configuration
+<p>위에서 만든 컨버터와 매니저를 사용해서 JWT 기반의 완전한 보안 설정을 구성해 보자.</p>
+<p>```java
+@Configuration
 @EnableWebFluxSecurity
 @EnableReactiveMethodSecurity
 @RequiredArgsConstructor
-public class SecurityConfig {
+public class SecurityConfig {</p>
+<pre><code>private final JwtReactiveAuthenticationManager authenticationManager;
+private final JwtAuthenticationConverter authenticationConverter;
 
-    private final JwtReactiveAuthenticationManager authenticationManager;
-    private final JwtAuthenticationConverter authenticationConverter;
+@Bean
+public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
+    AuthenticationWebFilter jwtFilter =
+        new AuthenticationWebFilter(authenticationManager);
+    jwtFilter.setServerAuthenticationConverter(authenticationConverter);
 
-    @Bean
-    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
-        AuthenticationWebFilter jwtFilter =
-            new AuthenticationWebFilter(authenticationManager);
-        jwtFilter.setServerAuthenticationConverter(authenticationConverter);
+    return http
+        .authorizeExchange(exchanges -&gt; exchanges
+            .pathMatchers("/api/auth/**").permitAll()
+            .pathMatchers(HttpMethod.GET, "/api/products/**").permitAll()
+            .pathMatchers("/api/admin/**").hasRole("ADMIN")
+            .anyExchange().authenticated()
+        )
+        .addFilterAt(jwtFilter, SecurityWebFiltersOrder.AUTHENTICATION)
+        .httpBasic(httpBasic -&gt; httpBasic.disable())
+        .formLogin(formLogin -&gt; formLogin.disable())
+        .csrf(csrf -&gt; csrf.disable())
+        .exceptionHandling(ex -&gt; ex
+            .authenticationEntryPoint((exchange, e) -&gt; Mono.fromRunnable(
+                () -&gt; exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED)))
+            .accessDeniedHandler((exchange, denied) -&gt; Mono.fromRunnable(
+                () -&gt; exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN)))
+        )
+        .securityContextRepository(NoOpServerSecurityContextRepository.getInstance())
+        .build();
+}
 
-        return http
-            .authorizeExchange(exchanges -&gt; exchanges
-                .pathMatchers("/api/auth/**").permitAll()
-                .pathMatchers(HttpMethod.GET, "/api/products/**").permitAll()
-                .pathMatchers("/api/admin/**").hasRole("ADMIN")
-                .anyExchange().authenticated()
-            )
-            .addFilterAt(jwtFilter, SecurityWebFiltersOrder.AUTHENTICATION)
-            .httpBasic(httpBasic -&gt; httpBasic.disable())
-            .formLogin(formLogin -&gt; formLogin.disable())
-            .csrf(csrf -&gt; csrf.disable())
-            .exceptionHandling(ex -&gt; ex
-                .authenticationEntryPoint((exchange, e) -&gt; Mono.fromRunnable(
-                    () -&gt; exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED)))
-                .accessDeniedHandler((exchange, denied) -&gt; Mono.fromRunnable(
-                    () -&gt; exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN)))
-            )
-            .securityContextRepository(NoOpServerSecurityContextRepository.getInstance())
-            .build();
-    }
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
-}</code></pre>
-<p><code>NoOpServerSecurityContextRepository</code>를 설정하여 서버 측 세션을 생성하지 않는 완전한 무상태 구조를 만든다.</p>
+@Bean
+public PasswordEncoder passwordEncoder() {
+    return new BCryptPasswordEncoder();
+}
+</code></pre>
+<p>}
+```</p>
+<p><code>NoOpServerSecurityContextRepository</code>를 설정하면 서버에서 세션을 전혀 생성하지 않는 완전한 stateless 구조가 완성된다.</p>
 <h3 id="1144">11.4.4 인증 컨트롤러</h3>
-<p>로그인, 토큰 갱신, 회원가입 엔드포인트를 구현한다.</p>
-<pre class="highlight"><code class="language-java">@RestController
+<p>이제 클라이언트가 회원가입하고 로그인하고 토큰을 갱신할 수 있도록 엔드포인트들을 만들어 보자.</p>
+<p>```java
+@RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
-public class AuthController {
+public class AuthController {</p>
+<pre><code>private final UserService userService;
+private final ReactiveUserDetailsService userDetailsService;
+private final PasswordEncoder passwordEncoder;
+private final JwtTokenProvider jwtTokenProvider;
 
-    private final UserService userService;
-    private final ReactiveUserDetailsService userDetailsService;
-    private final PasswordEncoder passwordEncoder;
-    private final JwtTokenProvider jwtTokenProvider;
+@PostMapping("/signup")
+@ResponseStatus(HttpStatus.CREATED)
+public Mono&lt;UserResponse&gt; signup(@Valid @RequestBody SignupRequest request) {
+    return userService.signup(request).map(UserResponse::from);
+}
 
-    @PostMapping("/signup")
-    @ResponseStatus(HttpStatus.CREATED)
-    public Mono&lt;UserResponse&gt; signup(@Valid @RequestBody SignupRequest request) {
-        return userService.signup(request).map(UserResponse::from);
+@PostMapping("/login")
+public Mono&lt;TokenResponse&gt; login(@Valid @RequestBody LoginRequest request) {
+    return userDetailsService.findByUsername(request.getUsername())
+        .filter(ud -&gt; passwordEncoder.matches(
+            request.getPassword(), ud.getPassword()))
+        .map(ud -&gt; new TokenResponse(
+            jwtTokenProvider.generateAccessToken(ud),
+            jwtTokenProvider.generateRefreshToken(ud)))
+        .switchIfEmpty(Mono.error(
+            new BadCredentialsException("잘못된 사용자명 또는 비밀번호입니다.")));
+}
+
+@PostMapping("/refresh")
+public Mono&lt;TokenResponse&gt; refresh(@RequestBody RefreshTokenRequest request) {
+    String refreshToken = request.getRefreshToken();
+    if (!jwtTokenProvider.validateToken(refreshToken)) {
+        return Mono.error(
+            new BadCredentialsException("유효하지 않은 리프레시 토큰입니다."));
     }
-
-    @PostMapping("/login")
-    public Mono&lt;TokenResponse&gt; login(@Valid @RequestBody LoginRequest request) {
-        return userDetailsService.findByUsername(request.getUsername())
-            .filter(ud -&gt; passwordEncoder.matches(
-                request.getPassword(), ud.getPassword()))
-            .map(ud -&gt; new TokenResponse(
-                jwtTokenProvider.generateAccessToken(ud),
-                jwtTokenProvider.generateRefreshToken(ud)))
-            .switchIfEmpty(Mono.error(
-                new BadCredentialsException("잘못된 사용자명 또는 비밀번호입니다.")));
-    }
-
-    @PostMapping("/refresh")
-    public Mono&lt;TokenResponse&gt; refresh(@RequestBody RefreshTokenRequest request) {
-        String refreshToken = request.getRefreshToken();
-        if (!jwtTokenProvider.validateToken(refreshToken)) {
-            return Mono.error(
-                new BadCredentialsException("유효하지 않은 리프레시 토큰입니다."));
-        }
-        String username = jwtTokenProvider.getUsernameFromToken(refreshToken);
-        return userDetailsService.findByUsername(username)
-            .map(ud -&gt; new TokenResponse(
-                jwtTokenProvider.generateAccessToken(ud), refreshToken));
-    }
-}</code></pre>
-<p>요청/응답 DTO를 정의한다.</p>
-<pre class="highlight"><code class="language-java">@Data
+    String username = jwtTokenProvider.getUsernameFromToken(refreshToken);
+    return userDetailsService.findByUsername(username)
+        .map(ud -&gt; new TokenResponse(
+            jwtTokenProvider.generateAccessToken(ud), refreshToken));
+}
+</code></pre>
+<p>}
+```</p>
+<p>컨트롤러에서 사용할 요청/응답 DTO도 정의해야 한다.</p>
+<p>```java
+@Data
 public class LoginRequest {
     @NotBlank private String username;
     @NotBlank private String password;
-}
-
-@Data
+}</p>
+<p>@Data
 public class RefreshTokenRequest {
     @NotBlank private String refreshToken;
-}
-
-@Data
+}</p>
+<p>@Data
 @AllArgsConstructor
 public class TokenResponse {
     private String accessToken;
     private String refreshToken;
-}</code></pre>
+}
+```</p>
 <h3 id="1145">11.4.5 전체 인증 흐름</h3>
-<p>JWT 기반 인증의 전체 흐름을 정리한다.</p>
+<p>JWT 기반 인증이 어떻게 흘러가는지 정리하면 다음과 같다.</p>
 <ol>
-<li><strong>회원가입</strong>: <code>POST /api/auth/signup</code> -- 비밀번호 BCrypt 인코딩 후 MongoDB 저장</li>
-<li><strong>로그인</strong>: <code>POST /api/auth/login</code> -- 비밀번호 검증 후 Access Token + Refresh Token 발급</li>
-<li><strong>인증된 API 호출</strong>: <code>Authorization: Bearer &lt;accessToken&gt;</code> 헤더 전송 -- <code>JwtAuthenticationConverter</code>가 토큰 추출/검증 후 <code>Authentication</code> 객체 생성</li>
-<li><strong>토큰 갱신</strong>: <code>POST /api/auth/refresh</code> -- Refresh Token 검증 후 새 Access Token 발급</li>
+<li><strong>회원가입</strong>: <code>POST /api/auth/signup</code> — 입력받은 비밀번호를 BCrypt로 인코딩해서 MongoDB에 저장</li>
+<li><strong>로그인</strong>: <code>POST /api/auth/login</code> — 사용자명과 비밀번호를 검증하면 Access Token과 Refresh Token을 발급</li>
+<li><strong>인증된 API 호출</strong>: <code>Authorization: Bearer &lt;accessToken&gt;</code> 헤더를 붙여서 요청 — <code>JwtAuthenticationConverter</code>가 토큰을 추출하고 검증한 뒤 <code>Authentication</code> 객체 생성</li>
+<li><strong>토큰 갱신</strong>: <code>POST /api/auth/refresh</code> — Refresh Token이 유효하면 새로운 Access Token을 발급</li>
 </ol>
 <hr>
 <h2 id="115-securitycontext">11.5 리액티브 환경에서의 SecurityContext 관리</h2>
 <h3 id="1151-reactivesecuritycontextholder">11.5.1 ReactiveSecurityContextHolder</h3>
-<p>서블릿 환경의 <code>SecurityContextHolder.getContext()</code>는 <code>ThreadLocal</code> 기반이므로 리액티브 환경에서 사용할 수 없다.</p>
-<pre class="highlight"><code class="language-java">// 리액티브 환경에서의 올바른 방식
+<p>서블릿 환경의 <code>SecurityContextHolder.getContext()</code>는 ThreadLocal 기반인데, 리액티브 환경에서는 이걸 쓰면 안 된다.</p>
+<p><code>java
+// 리액티브 환경에서의 올바른 방식
 Mono&lt;String&gt; username = ReactiveSecurityContextHolder.getContext()
     .map(SecurityContext::getAuthentication)
-    .map(Authentication::getName);</code></pre>
+    .map(Authentication::getName);</code></p>
 <h3 id="1152">11.5.2 현재 사용자 정보 가져오기</h3>
-<p>서비스 계층에서 현재 인증된 사용자 정보를 활용하는 패턴을 살펴본다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>서비스 계층에서 현재 로그인한 사용자 정보를 어떻게 가져오는지 살펴보자.</p>
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class OrderService {
+public class OrderService {</p>
+<pre><code>private final OrderRepository orderRepository;
 
-    private final OrderRepository orderRepository;
+public Flux&lt;Order&gt; getMyOrders() {
+    return ReactiveSecurityContextHolder.getContext()
+        .map(ctx -&gt; ctx.getAuthentication().getName())
+        .flatMapMany(orderRepository::findByUsername);
+}
 
-    public Flux&lt;Order&gt; getMyOrders() {
-        return ReactiveSecurityContextHolder.getContext()
-            .map(ctx -&gt; ctx.getAuthentication().getName())
-            .flatMapMany(orderRepository::findByUsername);
-    }
-
-    public Mono&lt;Order&gt; createOrder(OrderRequest request) {
-        return ReactiveSecurityContextHolder.getContext()
-            .map(ctx -&gt; ctx.getAuthentication().getName())
-            .flatMap(username -&gt; {
-                Order order = Order.builder()
-                    .username(username)
-                    .items(request.getItems())
-                    .totalAmount(request.getTotalAmount())
-                    .createdAt(LocalDateTime.now())
-                    .build();
-                return orderRepository.save(order);
-            });
-    }
-}</code></pre>
+public Mono&lt;Order&gt; createOrder(OrderRequest request) {
+    return ReactiveSecurityContextHolder.getContext()
+        .map(ctx -&gt; ctx.getAuthentication().getName())
+        .flatMap(username -&gt; {
+            Order order = Order.builder()
+                .username(username)
+                .items(request.getItems())
+                .totalAmount(request.getTotalAmount())
+                .createdAt(LocalDateTime.now())
+                .build();
+            return orderRepository.save(order);
+        });
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1153">11.5.3 컨트롤러에서 인증 정보 접근</h3>
-<p>어노테이션 기반 컨트롤러에서는 <code>@AuthenticationPrincipal</code>이나 <code>Mono&lt;Principal&gt;</code>을 파라미터로 주입받을 수 있다.</p>
-<pre class="highlight"><code class="language-java">@GetMapping("/me")
-public Mono&lt;UserResponse&gt; getMyProfile(
-        @AuthenticationPrincipal Mono&lt;UserDetails&gt; principal) {
+<p>컨트롤러의 핸들러 메서드에서는 <code>@AuthenticationPrincipal</code>이나 <code>Mono&lt;Principal&gt;</code>을 주입받는 방식이 더 편하다.</p>
+<p>```java
+@GetMapping("/me")
+public Mono<UserResponse> getMyProfile(
+        @AuthenticationPrincipal Mono<UserDetails> principal) {
     return principal
         .flatMap(user -&gt; userService.findByUsername(user.getUsername()))
         .map(UserResponse::from);
-}
-
-@GetMapping("/me/orders")
-public Flux&lt;Order&gt; getMyOrders(Mono&lt;Principal&gt; principal) {
+}</p>
+<p>@GetMapping("/me/orders")
+public Flux<Order> getMyOrders(Mono<Principal> principal) {
     return principal.map(Principal::getName)
         .flatMapMany(orderService::findByUsername);
-}</code></pre>
+}
+```</p>
 <h3 id="1154-securitycontext">11.5.4 SecurityContext 주의사항</h3>
-<p><code>ReactiveSecurityContextHolder.getContext()</code>의 반환값은 반드시 리액티브 체인 안에서 <code>map</code>/<code>flatMap</code>으로 연결해야 한다. Reactor의 <code>Context</code>는 구독 시점에 전파되므로, 체인이 끊기면 <code>SecurityContext</code>를 읽을 수 없다.</p>
-<pre class="highlight"><code class="language-java">// 잘못된 사용: context를 구독하지 않으므로 SecurityContext 접근 불가
-Mono&lt;SecurityContext&gt; context = ReactiveSecurityContextHolder.getContext();
-return orderRepository.save(order);
-
-// 올바른 사용: 체인 내부에서 연결
+<p><code>ReactiveSecurityContextHolder.getContext()</code>의 반환값은 반드시 리액티브 체인 내부에서 <code>map</code>/<code>flatMap</code>으로 계속 연결해야 한다. Reactor의 Context는 구독할 때 전파되는데, 체인이 끊기면 SecurityContext를 더 이상 읽을 수 없기 때문이다. 필자의 경험상 이것 때문에 생기는 버그가 많다.</p>
+<p>```java
+// 잘못된 사용: context를 구독하지 않으므로 SecurityContext 접근 불가
+Mono<SecurityContext> context = ReactiveSecurityContextHolder.getContext();
+return orderRepository.save(order);</p>
+<p>// 올바른 사용: 체인 내부에서 연결
 return ReactiveSecurityContextHolder.getContext()
     .map(ctx -&gt; ctx.getAuthentication().getName())
-    .flatMap(username -&gt; orderRepository.save(buildOrder(request, username)));</code></pre>
+    .flatMap(username -&gt; orderRepository.save(buildOrder(request, username)));
+```</p>
 <hr>
 <h2 id="116-oauth2-openid-connect">11.6 OAuth2 / OpenID Connect 연동</h2>
 <h3 id="1161-oauth2-login">11.6.1 OAuth2 Login 설정</h3>
-<p><code>application.yml</code>에 OAuth2 클라이언트를 등록한다.</p>
-<pre class="highlight"><code class="language-yaml">spring:
+<p>구글이나 깃허브 같은 소셜 로그인을 지원하려면 <code>application.yml</code>에 OAuth2 클라이언트 정보를 등록해야 한다.</p>
+<p><code>yaml
+spring:
   security:
     oauth2:
       client:
@@ -579,98 +616,106 @@ return ReactiveSecurityContextHolder.getContext()
             scope: read:user, user:email
         provider:
           github:
-            user-name-attribute: login</code></pre>
-<p>Google은 OpenID Connect를 지원하므로 <code>provider</code> 설정이 자동 적용된다. GitHub은 <code>user-name-attribute</code>를 수동 지정해야 한다.</p>
+            user-name-attribute: login</code></p>
+<p>구글은 OpenID Connect를 지원해서 provider 설정이 자동으로 적용되지만, 깃허브는 <code>user-name-attribute</code>를 직접 지정해 줘야 한다.</p>
 <h3 id="1162-oauth2-securitywebfilterchain">11.6.2 OAuth2 SecurityWebFilterChain 설정</h3>
-<pre class="highlight"><code class="language-java">@Configuration
+<p>OAuth2 로그인을 활성화하는 보안 설정은 매우 간단하다.</p>
+<p>```java
+@Configuration
 @EnableWebFluxSecurity
-public class OAuth2SecurityConfig {
-
-    @Bean
-    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
-        return http
-            .authorizeExchange(exchanges -&gt; exchanges
-                .pathMatchers("/", "/login/**", "/oauth2/**").permitAll()
-                .anyExchange().authenticated()
-            )
-            .oauth2Login(Customizer.withDefaults())
-            .csrf(csrf -&gt; csrf.disable())
-            .build();
-    }
-}</code></pre>
-<p><code>oauth2Login(Customizer.withDefaults())</code>만으로 <code>/oauth2/authorization/{registrationId}</code> 엔드포인트와 콜백 URL이 자동 설정된다.</p>
+public class OAuth2SecurityConfig {</p>
+<pre><code>@Bean
+public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
+    return http
+        .authorizeExchange(exchanges -&gt; exchanges
+            .pathMatchers("/", "/login/**", "/oauth2/**").permitAll()
+            .anyExchange().authenticated()
+        )
+        .oauth2Login(Customizer.withDefaults())
+        .csrf(csrf -&gt; csrf.disable())
+        .build();
+}
+</code></pre>
+<p>}
+```</p>
+<p><code>oauth2Login(Customizer.withDefaults())</code>라는 한 줄의 설정만으로 <code>/oauth2/authorization/{registrationId}</code> 엔드포인트와 리다이렉트 콜백이 자동으로 준비된다. 정말 편하다.</p>
 <h3 id="1163-oauth2">11.6.3 OAuth2 사용자 정보 커스터마이징</h3>
-<p>소셜 로그인 후 사용자 정보를 MongoDB에 저장하려면 <code>ReactiveOAuth2UserService</code>를 커스터마이징한다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>소셜 로그인이 성공한 후에 사용자 정보를 우리 MongoDB에 저장하고 싶다면 <code>ReactiveOAuth2UserService</code>를 커스터마이징해야 한다.</p>
+<p>```java
+@Service
 @RequiredArgsConstructor
 public class CustomOAuth2UserService
-        implements ReactiveOAuth2UserService&lt;OidcUserRequest, OidcUser&gt; {
+        implements ReactiveOAuth2UserService<OidcUserRequest, OidcUser> {</p>
+<pre><code>private final UserRepository userRepository;
+private final ReactiveOidcUserService delegate = new ReactiveOidcUserService();
 
-    private final UserRepository userRepository;
-    private final ReactiveOidcUserService delegate = new ReactiveOidcUserService();
+@Override
+public Mono&lt;OidcUser&gt; loadUser(OidcUserRequest userRequest) {
+    return delegate.loadUser(userRequest)
+        .flatMap(oidcUser -&gt; {
+            String email = oidcUser.getEmail();
+            String provider = userRequest.getClientRegistration()
+                .getRegistrationId();
+            return userRepository.findByEmail(email)
+                .switchIfEmpty(createOAuth2User(email, oidcUser.getFullName(),
+                                                 provider))
+                .thenReturn(oidcUser);
+        });
+}
 
-    @Override
-    public Mono&lt;OidcUser&gt; loadUser(OidcUserRequest userRequest) {
-        return delegate.loadUser(userRequest)
-            .flatMap(oidcUser -&gt; {
-                String email = oidcUser.getEmail();
-                String provider = userRequest.getClientRegistration()
-                    .getRegistrationId();
-                return userRepository.findByEmail(email)
-                    .switchIfEmpty(createOAuth2User(email, oidcUser.getFullName(),
-                                                     provider))
-                    .thenReturn(oidcUser);
-            });
-    }
-
-    private Mono&lt;User&gt; createOAuth2User(String email, String name, String provider) {
-        User user = User.builder()
-            .username(email).email(email).password("")
-            .roles(List.of("USER")).enabled(true)
-            .createdAt(LocalDateTime.now()).build();
-        return userRepository.save(user);
-    }
-}</code></pre>
+private Mono&lt;User&gt; createOAuth2User(String email, String name, String provider) {
+    User user = User.builder()
+        .username(email).email(email).password("")
+        .roles(List.of("USER")).enabled(true)
+        .createdAt(LocalDateTime.now()).build();
+    return userRepository.save(user);
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1164-resource-server">11.6.4 Resource Server 설정</h3>
-<p>외부 인증 서버(Keycloak, Auth0 등)에서 발급한 JWT를 검증하는 Resource Server 설정이다.</p>
-<pre class="highlight"><code class="language-yaml">spring:
+<p>Keycloak이나 Auth0 같은 외부 인증 서버에서 발급받은 JWT를 검증해야 하는 경우가 있다. 이 경우 우리 애플리케이션은 Resource Server가 되는데, 그 설정 방법을 살펴보자.</p>
+<p><code>yaml
+spring:
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: https://auth.example.com/realms/my-realm</code></pre>
-<pre class="highlight"><code class="language-java">@Configuration
+          issuer-uri: https://auth.example.com/realms/my-realm</code></p>
+<p>```java
+@Configuration
 @EnableWebFluxSecurity
-public class ResourceServerConfig {
+public class ResourceServerConfig {</p>
+<pre><code>@Bean
+public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
+    return http
+        .authorizeExchange(exchanges -&gt; exchanges
+            .pathMatchers(HttpMethod.GET, "/api/products/**").permitAll()
+            .pathMatchers("/api/admin/**").hasAuthority("SCOPE_admin")
+            .anyExchange().authenticated()
+        )
+        .oauth2ResourceServer(oauth2 -&gt; oauth2.jwt(Customizer.withDefaults()))
+        .csrf(csrf -&gt; csrf.disable())
+        .build();
+}
 
-    @Bean
-    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
-        return http
-            .authorizeExchange(exchanges -&gt; exchanges
-                .pathMatchers(HttpMethod.GET, "/api/products/**").permitAll()
-                .pathMatchers("/api/admin/**").hasAuthority("SCOPE_admin")
-                .anyExchange().authenticated()
-            )
-            .oauth2ResourceServer(oauth2 -&gt; oauth2.jwt(Customizer.withDefaults()))
-            .csrf(csrf -&gt; csrf.disable())
-            .build();
-    }
+@Bean
+public ReactiveJwtAuthenticationConverter jwtAuthenticationConverter() {
+    JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter =
+        new JwtGrantedAuthoritiesConverter();
+    grantedAuthoritiesConverter.setAuthorityPrefix("ROLE_");
+    grantedAuthoritiesConverter.setAuthoritiesClaimName("roles");
 
-    @Bean
-    public ReactiveJwtAuthenticationConverter jwtAuthenticationConverter() {
-        JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter =
-            new JwtGrantedAuthoritiesConverter();
-        grantedAuthoritiesConverter.setAuthorityPrefix("ROLE_");
-        grantedAuthoritiesConverter.setAuthoritiesClaimName("roles");
-
-        ReactiveJwtAuthenticationConverter converter =
-            new ReactiveJwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(
-            new ReactiveJwtGrantedAuthoritiesConverterAdapter(
-                grantedAuthoritiesConverter));
-        return converter;
-    }
-}</code></pre>
+    ReactiveJwtAuthenticationConverter converter =
+        new ReactiveJwtAuthenticationConverter();
+    converter.setJwtGrantedAuthoritiesConverter(
+        new ReactiveJwtGrantedAuthoritiesConverterAdapter(
+            grantedAuthoritiesConverter));
+    return converter;
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1165-jwt-oauth2">11.6.5 JWT와 OAuth2의 선택 기준</h3>
 <table>
 <thead>
@@ -681,26 +726,26 @@ public class ResourceServerConfig {
 </thead>
 <tbody>
 <tr>
-<td>단일 애플리케이션, 자체 인증</td>
-<td>JWT 자체 발급 (11.4)</td>
+<td>단순한 단일 애플리케이션, 자체 인증 처리</td>
+<td>JWT 자체 발급 (11.4절)</td>
 </tr>
 <tr>
-<td>마이크로서비스, 중앙 인증 서버 존재</td>
+<td>마이크로서비스 아키텍처, 중앙 인증 서버</td>
 <td>OAuth2 Resource Server</td>
 </tr>
 <tr>
-<td>소셜 로그인이 필요한 웹 애플리케이션</td>
+<td>구글/깃허브 같은 소셜 로그인 필요</td>
 <td>OAuth2 Login</td>
 </tr>
 <tr>
-<td>SPA + API 서버 분리 구조</td>
+<td>SPA와 API 서버 분리</td>
 <td>JWT 자체 발급 또는 OAuth2 + PKCE</td>
 </tr>
 </tbody>
 </table>
 <hr>
 <h2 id="_1">요약</h2>
-<p>이번 장에서 다룬 핵심 내용을 정리한다.</p>
+<p>이 장에서 배운 내용의 핵심을 정리하면 다음과 같다.</p>
 <table>
 <thead>
 <tr>
@@ -711,31 +756,31 @@ public class ResourceServerConfig {
 <tbody>
 <tr>
 <td><strong>리액티브 보안 설정</strong></td>
-<td><code>@EnableWebFluxSecurity</code>, <code>SecurityWebFilterChain</code>, 서블릿 방식과의 차이</td>
+<td><code>@EnableWebFluxSecurity</code>와 <code>SecurityWebFilterChain</code>으로 WebFlux 보안 활성화, ThreadLocal 대신 Reactor Context 사용</td>
 </tr>
 <tr>
-<td><strong>SecurityWebFilterChain</strong></td>
-<td><code>ServerHttpSecurity</code>로 경로별 인가, CSRF, CORS, 인증 방식 설정</td>
+<td><strong>경로별 인가 설정</strong></td>
+<td><code>ServerHttpSecurity</code>의 <code>authorizeExchange</code>로 세분화된 접근 제어, CSRF/CORS 설정</td>
 </tr>
 <tr>
 <td><strong>인증과 인가</strong></td>
-<td><code>ReactiveUserDetailsService</code>, <code>PasswordEncoder</code>, <code>@PreAuthorize</code> 메서드 보안</td>
+<td><code>ReactiveUserDetailsService</code> 구현, BCrypt 해싱, <code>@PreAuthorize</code> 메서드 보안</td>
 </tr>
 <tr>
-<td><strong>JWT 인증</strong></td>
-<td><code>JwtTokenProvider</code>로 토큰 생성/검증, <code>AuthenticationWebFilter</code>로 필터 체인 통합</td>
+<td><strong>JWT 기반 인증</strong></td>
+<td><code>JwtTokenProvider</code>로 토큰 생성/검증, <code>AuthenticationWebFilter</code> 통합, 완전한 stateless 구조</td>
 </tr>
 <tr>
-<td><strong>SecurityContext</strong></td>
-<td><code>ReactiveSecurityContextHolder</code>로 인증 정보 접근, 리액티브 체인 내부에서만 사용</td>
+<td><strong>현재 사용자 정보</strong></td>
+<td><code>ReactiveSecurityContextHolder</code>로 인증 정보 조회, 리액티브 체인 내부에서 map/flatMap 연결 필수</td>
 </tr>
 <tr>
-<td><strong>OAuth2 연동</strong></td>
-<td>OAuth2 Login(소셜 로그인), Resource Server(외부 JWT 검증), 사용자 정보 커스터마이징</td>
+<td><strong>OAuth2 지원</strong></td>
+<td>OAuth2 Login으로 소셜 로그인, Resource Server로 외부 JWT 검증, 사용자 정보 자동 저장</td>
 </tr>
 </tbody>
 </table>
-<p>다음 장에서는 Server-Sent Events(SSE)를 활용한 실시간 데이터 스트리밍을 다룬다.</p>
+<p>다음 장에서는 Server-Sent Events(SSE)를 활용해서 클라이언트에게 실시간으로 데이터를 스트리밍하는 방법을 다룬다.</p>
     </main>
     <footer class="site-footer">
       &copy; 2024 Spring Boot + WebFlux + JPA (MongoDB) Book

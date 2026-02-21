@@ -20,12 +20,12 @@
   <div class="wrapper">
     <main class="content">
       <h1 id="chapter-19">Chapter 19. 성능 최적화</h1>
-<p>리액티브 아키텍처를 도입했다고 해서 자동으로 높은 성능이 보장되는 것은 아니다. 논블로킹 모델의 이점을 실제로 누리려면, 병목 지점을 정확히 측정하고, 커넥션 풀과 이벤트 루프를 애플리케이션 특성에 맞게 조정하며, 캐싱으로 불필요한 I/O를 줄이고, 블로킹 코드를 철저히 제거해야 한다. 이번 장에서는 리액티브 애플리케이션의 <strong>성능 측정 방법</strong>부터 <strong>MongoDB 커넥션 풀 튜닝</strong>, <strong>Netty 이벤트 루프 최적화</strong>, <strong>캐싱 전략</strong>, <strong>BlockHound를 활용한 블로킹 탐지</strong>, 그리고 <strong>Gatling/k6를 활용한 부하 테스트</strong>까지 실전 성능 최적화의 전 과정을 다룬다.</p>
+<p>리액티브 아키텍처를 채택했다고 자동으로 높은 성능이 따라오는 건 아니다. 실제로 논블로킹 모델의 이점을 제대로 누리려면, 병목 지점을 정확히 측정하고, 커넥션 풀과 이벤트 루프를 우리 애플리케이션 특성에 맞게 조정해야 한다. 여기에 캐싱으로 불필요한 I/O를 줄이고, 블로킹 코드를 철저히 제거해야 진정한 고성능을 얻을 수 있다. 이번 장에서는 리액티브 애플리케이션의 <strong>성능 측정 방법</strong>부터 <strong>MongoDB 커넥션 풀 튜닝</strong>, <strong>Netty 이벤트 루프 최적화</strong>, <strong>캐싱 전략</strong>, <strong>BlockHound를 활용한 블로킹 탐지</strong>, 그리고 <strong>Gatling/k6를 활용한 부하 테스트</strong>까지 실전 성능 최적화의 전 과정을 살펴본다.</p>
 <hr>
 <h2 id="191">19.1 리액티브 애플리케이션 성능 측정</h2>
-<p>성능 최적화의 첫 번째 원칙은 <strong>측정 없이 최적화하지 않는 것</strong>이다. 감에 의존한 최적화는 오히려 코드 복잡도만 높이고 실질적인 개선을 가져오지 못한다.</p>
+<p>성능 최적화의 첫 번째 원칙은 간단하다: <strong>측정 없이 최적화하지 말 것</strong>. 감에 의존한 최적화는 코드 복잡도만 높일 뿐, 실질적인 개선을 가져오지 않는다.</p>
 <h3 id="1911">19.1.1 핵심 성능 지표</h3>
-<p>리액티브 애플리케이션의 성능은 세 가지 축으로 평가한다.</p>
+<p>성능을 이야기할 때 보통 세 가지 축으로 나눠서 본다.</p>
 <table>
 <thead>
 <tr>
@@ -52,14 +52,15 @@
 </tr>
 </tbody>
 </table>
-<p>리액티브 애플리케이션은 적은 스레드로 높은 처리량을 달성하는 것이 목표다. 따라서 스레드 수 대비 처리량 비율이 중요한 평가 기준이 된다. 지연시간은 단순 평균보다 백분위(p95, p99)를 기준으로 판단해야 실제 사용자 경험을 반영할 수 있다.</p>
-<pre class="highlight"><code>[전통적 MVC 모델]
-스레드 200개 → 동시 처리 200 요청 → 처리량 ~2,000 req/sec
-
-[리액티브 모델]
-스레드 8개(이벤트 루프) → 동시 처리 수천 요청 → 처리량 ~10,000+ req/sec</code></pre>
+<p>리액티브 애플리케이션의 핵심은 적은 스레드로 높은 처리량을 달성하는 것이다. 그래서 스레드 수 대비 처리량의 비율이 정말 중요한 평가 기준이 된다. 지연시간을 볼 때도 단순 평균은 거의 무의미하다. p95, p99 같은 백분위를 봐야 실제 사용자가 경험하는 성능을 알 수 있다.</p>
+<p>```
+[전통적 MVC 모델]
+스레드 200개 → 동시 처리 200 요청 → 처리량 ~2,000 req/sec</p>
+<p>[리액티브 모델]
+스레드 8개(이벤트 루프) → 동시 처리 수천 요청 → 처리량 ~10,000+ req/sec
+```</p>
 <h3 id="1912-micrometer">19.1.2 Micrometer 메트릭 활용</h3>
-<p>Chapter 18에서 설정한 Micrometer 메트릭을 성능 분석에 활용한다. WebFlux 애플리케이션에서 자동 수집되는 핵심 메트릭은 다음과 같다.</p>
+<p>이전 장에서 설정한 Micrometer를 이제 성능 분석에 적극 활용해야 한다. WebFlux가 자동으로 수집하는 핵심 메트릭들을 보자.</p>
 <table>
 <thead>
 <tr>
@@ -90,77 +91,83 @@
 </tr>
 </tbody>
 </table>
-<p>커스텀 메트릭을 추가하여 비즈니스 로직의 성능도 측정할 수 있다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>이런 기본 메트릭 외에 커스텀 메트릭을 추가하면 비즈니스 로직의 성능도 측정할 수 있다.</p>
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class ProductService {
+public class ProductService {</p>
+<pre><code>private final ProductRepository productRepository;
+private final MeterRegistry meterRegistry;
 
-    private final ProductRepository productRepository;
-    private final MeterRegistry meterRegistry;
+public Mono&lt;Product&gt; findById(String id) {
+    return Mono.defer(() -&gt; {
+        Timer.Sample sample = Timer.start(meterRegistry);
 
-    public Mono&lt;Product&gt; findById(String id) {
-        return Mono.defer(() -&gt; {
-            Timer.Sample sample = Timer.start(meterRegistry);
-
-            return productRepository.findById(id)
-                .doOnSuccess(p -&gt; sample.stop(
-                    Timer.builder("product.findById")
-                        .tag("result", p != null ? "found" : "not_found")
-                        .register(meterRegistry)
-                ))
-                .doOnError(e -&gt; sample.stop(
-                    Timer.builder("product.findById")
-                        .tag("result", "error")
-                        .register(meterRegistry)
-                ));
-        });
-    }
-}</code></pre>
-<h3 id="1913-jmh">19.1.3 JMH 마이크로벤치마크</h3>
-<p>JMH(Java Microbenchmark Harness)는 JVM 수준의 정밀한 벤치마크 도구다. <code>build.gradle</code>에 JMH 플러그인을 추가한다.</p>
-<pre class="highlight"><code class="language-groovy">plugins {
-    id 'me.champeau.jmh' version '0.7.2'
+        return productRepository.findById(id)
+            .doOnSuccess(p -&gt; sample.stop(
+                Timer.builder("product.findById")
+                    .tag("result", p != null ? "found" : "not_found")
+                    .register(meterRegistry)
+            ))
+            .doOnError(e -&gt; sample.stop(
+                Timer.builder("product.findById")
+                    .tag("result", "error")
+                    .register(meterRegistry)
+            ));
+    });
 }
-
-dependencies {
+</code></pre>
+<p>}
+```</p>
+<h3 id="1913-jmh">19.1.3 JMH 마이크로벤치마크</h3>
+<p>JMH(Java Microbenchmark Harness)라는 도구를 알고 있나? JVM 수준의 정밀한 벤치마크를 할 때 필자도 자주 쓰는 도구인데, <code>build.gradle</code>에 플러그인을 추가하면 쉽게 시작할 수 있다.</p>
+<p>```groovy
+plugins {
+    id 'me.champeau.jmh' version '0.7.2'
+}</p>
+<p>dependencies {
     jmh 'org.openjdk.jmh:jmh-core:1.37'
     jmh 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
-}</code></pre>
-<p>Reactor 연산자 체인의 성능을 비교하는 벤치마크 예시를 작성한다.</p>
-<pre class="highlight"><code class="language-java">@State(Scope.Thread)
+}
+```</p>
+<p>Reactor 연산자들의 성능 차이를 실제로 비교해보는 벤치마크를 작성해보자.</p>
+<p>```java
+@State(Scope.Thread)
 @BenchmarkMode({Mode.Throughput, Mode.AverageTime})
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
-public class ReactorBenchmark {
+public class ReactorBenchmark {</p>
+<pre><code>private List&lt;String&gt; items;
 
-    private List&lt;String&gt; items;
+@Setup
+public void setup() {
+    items = IntStream.range(0, 10_000)
+        .mapToObj(i -&gt; "item-" + i)
+        .collect(Collectors.toList());
+}
 
-    @Setup
-    public void setup() {
-        items = IntStream.range(0, 10_000)
-            .mapToObj(i -&gt; "item-" + i)
-            .collect(Collectors.toList());
-    }
+@Benchmark
+public void flatMap_동시성_기본값(Blackhole bh) {
+    Flux.fromIterable(items)
+        .flatMap(item -&gt; Mono.fromCallable(() -&gt; item.toUpperCase()))
+        .collectList()
+        .block();
+}
 
-    @Benchmark
-    public void flatMap_동시성_기본값(Blackhole bh) {
-        Flux.fromIterable(items)
-            .flatMap(item -&gt; Mono.fromCallable(() -&gt; item.toUpperCase()))
-            .collectList()
-            .block();
-    }
-
-    @Benchmark
-    public void map_단순변환(Blackhole bh) {
-        Flux.fromIterable(items)
-            .map(String::toUpperCase)
-            .collectList()
-            .block();
-    }
-}</code></pre>
+@Benchmark
+public void map_단순변환(Blackhole bh) {
+    Flux.fromIterable(items)
+        .map(String::toUpperCase)
+        .collectList()
+        .block();
+}
+</code></pre>
+<p>}
+```</p>
 <blockquote>
 <p><strong>참고</strong>: <code>map</code>은 동기 변환이므로 <code>flatMap</code>보다 훨씬 빠르다. 비동기 I/O가 불필요한 단순 변환에는 항상 <code>map</code>을 사용해야 한다.</p>
 </blockquote>
 <h3 id="1914">19.1.4 프로파일링 도구</h3>
+<p>프로파일링 도구도 여러 가지가 있으니 상황에 맞춰 고르면 된다.</p>
 <table>
 <thead>
 <tr>
@@ -192,17 +199,18 @@ public class ReactorBenchmark {
 </tr>
 </tbody>
 </table>
-<pre class="highlight"><code class="language-bash"># async-profiler 실행 (애플리케이션 PID: 12345)
-./asprof -d 30 -f profile.html -e cpu 12345
-
-# JFR 기록 시작
-java -XX:+FlightRecorder \
+<p>```bash</p>
+<h1 id="async-profiler-pid-12345">async-profiler 실행 (애플리케이션 PID: 12345)</h1>
+<p>./asprof -d 30 -f profile.html -e cpu 12345</p>
+<h1 id="jfr">JFR 기록 시작</h1>
+<p>java -XX:+FlightRecorder \
      -XX:StartFlightRecording=duration=60s,filename=recording.jfr \
-     -jar application.jar</code></pre>
-<p>리액티브 애플리케이션에서 프로파일링 시 주의할 점은, 이벤트 루프 스레드(<code>reactor-http-nio-*</code>)의 CPU 사용률이 80%를 넘으면 병목 가능성이 높다는 것이다. 이 경우 무거운 연산을 별도 스케줄러로 오프로드해야 한다.</p>
+     -jar application.jar
+```</p>
+<p>리액티브 애플리케이션의 프로파일링에서 꼭 봐야 할 부분이 하나 있다. 이벤트 루프 스레드(<code>reactor-http-nio-*</code>)의 CPU 사용률이 80%를 넘으면 병목 가능성이 매우 높다는 신호다. 필자의 경험상 이 지표가 80%를 넘으면 대부분 무거운 연산이 이벤트 루프에서 직접 실행되고 있었다. 이런 경우 별도 스케줄러로 그 작업을 오프로드하면 눈에 띄게 개선된다.</p>
 <hr>
 <h2 id="192-mongodb">19.2 MongoDB 커넥션 풀 튜닝</h2>
-<p>MongoDB 드라이버는 내부적으로 커넥션 풀을 관리한다. 풀 크기, 타임아웃, 유휴 커넥션 관리 설정이 처리량에 직접적인 영향을 미친다.</p>
+<p>MongoDB 드라이버가 내부적으로 커넥션 풀을 관리하는데, 이 풀의 설정이 전체 처리량에 미치는 영향은 정말 크다. 풀 크기, 타임아웃, 유휴 커넥션 관리 방식을 어떻게 설정하는지에 따라 성능이 크게 달라진다.</p>
 <h3 id="1921">19.2.1 기본 커넥션 풀 동작</h3>
 <p>MongoDB Reactive Streams 드라이버의 커넥션 풀 기본값은 다음과 같다.</p>
 <table>
@@ -242,50 +250,52 @@ java -XX:+FlightRecorder \
 </tbody>
 </table>
 <h3 id="1922-mongoclientsettings">19.2.2 MongoClientSettings를 활용한 커넥션 풀 설정</h3>
-<p><code>application.yml</code>의 URI 파라미터 방식보다 <code>MongoClientSettings</code> 빈을 직접 구성하면 세밀한 제어가 가능하다.</p>
-<pre class="highlight"><code class="language-java">@Configuration
-public class MongoConfig extends AbstractReactiveMongoConfiguration {
+<p><code>application.yml</code>에 URI 파라미터로 설정하는 방법도 있지만, <code>MongoClientSettings</code> 빈을 직접 구성하면 훨씬 세밀한 제어가 가능하다. 이게 실무에서는 훨씬 흔한 방식이다.</p>
+<p>```java
+@Configuration
+public class MongoConfig extends AbstractReactiveMongoConfiguration {</p>
+<pre><code>@Value("${spring.data.mongodb.uri}")
+private String mongoUri;
 
-    @Value("${spring.data.mongodb.uri}")
-    private String mongoUri;
+@Override
+protected String getDatabaseName() {
+    return "myapp";
+}
 
-    @Override
-    protected String getDatabaseName() {
-        return "myapp";
-    }
+@Override
+@Bean
+public MongoClient reactiveMongoClient() {
+    ConnectionString connString = new ConnectionString(mongoUri);
 
-    @Override
-    @Bean
-    public MongoClient reactiveMongoClient() {
-        ConnectionString connString = new ConnectionString(mongoUri);
+    MongoClientSettings settings = MongoClientSettings.builder()
+        .applyConnectionString(connString)
+        .applyToConnectionPoolSettings(pool -&gt; pool
+            .minSize(10)                                     // 최소 커넥션
+            .maxSize(50)                                     // 최대 커넥션
+            .maxWaitTime(5, TimeUnit.SECONDS)                // 커넥션 대기 타임아웃
+            .maxConnectionIdleTime(30, TimeUnit.SECONDS)     // 유휴 커넥션 정리
+            .maxConnectionLifeTime(5, TimeUnit.MINUTES)      // 커넥션 최대 수명
+            .maintenanceFrequency(30, TimeUnit.SECONDS)      // 정리 주기
+        )
+        .applyToSocketSettings(socket -&gt; socket
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+        )
+        .applyToServerSettings(server -&gt; server
+            .heartbeatFrequency(10, TimeUnit.SECONDS)
+            .minHeartbeatFrequency(500, TimeUnit.MILLISECONDS)
+        )
+        .build();
 
-        MongoClientSettings settings = MongoClientSettings.builder()
-            .applyConnectionString(connString)
-            .applyToConnectionPoolSettings(pool -&gt; pool
-                .minSize(10)                                     // 최소 커넥션
-                .maxSize(50)                                     // 최대 커넥션
-                .maxWaitTime(5, TimeUnit.SECONDS)                // 커넥션 대기 타임아웃
-                .maxConnectionIdleTime(30, TimeUnit.SECONDS)     // 유휴 커넥션 정리
-                .maxConnectionLifeTime(5, TimeUnit.MINUTES)      // 커넥션 최대 수명
-                .maintenanceFrequency(30, TimeUnit.SECONDS)      // 정리 주기
-            )
-            .applyToSocketSettings(socket -&gt; socket
-                .connectTimeout(3, TimeUnit.SECONDS)
-                .readTimeout(10, TimeUnit.SECONDS)
-            )
-            .applyToServerSettings(server -&gt; server
-                .heartbeatFrequency(10, TimeUnit.SECONDS)
-                .minHeartbeatFrequency(500, TimeUnit.MILLISECONDS)
-            )
-            .build();
-
-        return MongoClients.create(settings);
-    }
-}</code></pre>
+    return MongoClients.create(settings);
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1923">19.2.3 풀 크기 산정 가이드라인</h3>
-<p>커넥션 풀 크기는 다음 공식을 기준으로 산정한다.</p>
-<pre class="highlight"><code>최적 풀 크기 = (동시 요청 수) x (평균 쿼리 시간) / (목표 응답 시간)</code></pre>
-<p>예를 들어, 동시 요청 500건, 평균 쿼리 시간 10ms, 목표 응답 시간 100ms라면 최적 풀 크기는 <code>500 x 10 / 100 = 50</code>이다.</p>
+<p>풀 크기를 정할 때는 다음 공식을 기준으로 생각하면 된다.</p>
+<p><code>최적 풀 크기 = (동시 요청 수) x (평균 쿼리 시간) / (목표 응답 시간)</code></p>
+<p>예시를 들어보자. 동시 요청이 500건이고, 평균 쿼리 시간이 10ms, 목표 응답 시간이 100ms라면? 계산하면 <code>500 x 10 / 100 = 50</code>이 나온다. 이게 적정 풀 크기다.</p>
 <table>
 <thead>
 <tr>
@@ -326,71 +336,80 @@ public class MongoConfig extends AbstractReactiveMongoConfiguration {
 <p><strong>주의</strong>: <code>maxSize</code>를 무조건 크게 잡으면 MongoDB 서버 측 리소스가 고갈될 수 있다. 모든 애플리케이션 인스턴스의 <code>maxSize</code> 합이 MongoDB의 <code>net.maxIncomingConnections</code>(기본 65,536)의 80%를 넘지 않도록 한다.</p>
 </blockquote>
 <h3 id="1924">19.2.4 커넥션 풀 모니터링과 타임아웃</h3>
-<p>커넥션 풀 메트릭을 활성화하고, 타임아웃을 계층별로 설정한다.</p>
-<pre class="highlight"><code class="language-yaml"># application.yml
-management:
+<p>이제 실제로 커넥션 풀이 잘 동작하는지 모니터링해야 한다. 메트릭을 활성화하고, 타임아웃은 계층별로 정리해서 설정해보자.</p>
+<p>```yaml</p>
+<h1 id="applicationyml">application.yml</h1>
+<p>management:
   metrics:
     mongo:
       connectionpool:
         enabled: true
       command:
-        enabled: true</code></pre>
-<pre class="highlight"><code># Prometheus 메트릭 예시
-mongodb_driver_pool_size{server_address="localhost:27017"} 25
+        enabled: true
+```</p>
+<p>```</p>
+<h1 id="prometheus">Prometheus 메트릭 예시</h1>
+<p>mongodb_driver_pool_size{server_address="localhost:27017"} 25
 mongodb_driver_pool_checkedout{server_address="localhost:27017"} 12
-mongodb_driver_pool_waitqueuesize{server_address="localhost:27017"} 0</code></pre>
-<p><code>waitqueuesize</code>가 지속적으로 0보다 큰 경우, <code>maxSize</code>를 늘리거나 쿼리 성능을 개선해야 한다는 신호다. 타임아웃은 다음 계층으로 구성한다.</p>
-<pre class="highlight"><code>소켓 타임아웃 (connectTimeout, readTimeout)
+mongodb_driver_pool_waitqueuesize{server_address="localhost:27017"} 0
+```</p>
+<p><code>waitqueuesize</code>가 계속 0보다 크다는 건 위험한 신호다. <code>maxSize</code>를 늘리거나, 아니면 쿼리 자체를 더 빠르게 만들어야 한다는 뜻이다. 타임아웃은 다음처럼 계층별로 구성하는 게 좋다.</p>
+<p><code>소켓 타임아웃 (connectTimeout, readTimeout)
   └─ 쿼리 타임아웃 (maxTimeMsec)
        └─ Reactor 타임아웃 (timeout 연산자)
-            └─ HTTP 응답 타임아웃 (WebFlux 타임아웃)</code></pre>
-<pre class="highlight"><code class="language-java">public Flux&lt;Product&gt; findByCategory(String category) {
+            └─ HTTP 응답 타임아웃 (WebFlux 타임아웃)</code></p>
+<p>```java
+public Flux<Product> findByCategory(String category) {
     Query query = new Query(Criteria.where("category").is(category))
-        .maxTimeMsec(5000);  // 쿼리 레벨 타임아웃 (5초)
-
-    return mongoTemplate.find(query, Product.class)
-        .timeout(Duration.ofSeconds(10));  // Reactor 레벨 타임아웃
-}</code></pre>
+        .maxTimeMsec(5000);  // 쿼리 레벨 타임아웃 (5초)</p>
+<pre><code>return mongoTemplate.find(query, Product.class)
+    .timeout(Duration.ofSeconds(10));  // Reactor 레벨 타임아웃
+</code></pre>
+<p>}
+```</p>
 <hr>
 <h2 id="193-netty">19.3 Netty 이벤트 루프 최적화</h2>
-<p>Spring WebFlux는 Reactor Netty를 기본 서버로 사용하며, Netty의 이벤트 루프 설정이 전체 처리량에 직접적인 영향을 미친다.</p>
+<p>Spring WebFlux는 내부적으로 Reactor Netty를 기본 서버로 쓰고 있다. Netty의 이벤트 루프를 어떻게 설정하는지가 전체 처리량을 좌우한다고 해도 과언이 아니다.</p>
 <h3 id="1931">19.3.1 이벤트 루프 기본 구조</h3>
-<pre class="highlight"><code>[Boss EventLoopGroup]       &lt;- 새 커넥션 수락 (accept)
-  └─ 스레드 1개 (보통)
-
-[Worker EventLoopGroup]     &lt;- I/O 이벤트 처리 (read/write)
+<p>```
+[Boss EventLoopGroup]       &lt;- 새 커넥션 수락 (accept)
+  └─ 스레드 1개 (보통)</p>
+<p>[Worker EventLoopGroup]     &lt;- I/O 이벤트 처리 (read/write)
   └─ 스레드 N개 (기본: CPU 코어 수)
     ├─ reactor-http-nio-1
     ├─ reactor-http-nio-2
-    └─ reactor-http-nio-N</code></pre>
+    └─ reactor-http-nio-N
+```</p>
 <h3 id="1932-loopresources">19.3.2 LoopResources를 활용한 이벤트 루프 커스터마이징</h3>
-<pre class="highlight"><code class="language-java">@Configuration
-public class NettyConfig {
+<p>```java
+@Configuration
+public class NettyConfig {</p>
+<pre><code>@Bean
+public NettyReactiveWebServerFactory nettyFactory() {
+    NettyReactiveWebServerFactory factory = new NettyReactiveWebServerFactory();
 
-    @Bean
-    public NettyReactiveWebServerFactory nettyFactory() {
-        NettyReactiveWebServerFactory factory = new NettyReactiveWebServerFactory();
+    factory.addServerCustomizers(httpServer -&gt; {
+        LoopResources loopResources = LoopResources.create(
+            "custom-http",      // 스레드 이름 접두사
+            1,                  // selector 스레드 수 (accept)
+            Runtime.getRuntime().availableProcessors() * 2,  // worker 스레드 수
+            true                // 데몬 스레드 여부
+        );
 
-        factory.addServerCustomizers(httpServer -&gt; {
-            LoopResources loopResources = LoopResources.create(
-                "custom-http",      // 스레드 이름 접두사
-                1,                  // selector 스레드 수 (accept)
-                Runtime.getRuntime().availableProcessors() * 2,  // worker 스레드 수
-                true                // 데몬 스레드 여부
-            );
+        return httpServer
+            .runOn(loopResources)
+            .option(ChannelOption.SO_BACKLOG, 2048)          // 연결 대기 큐
+            .childOption(ChannelOption.SO_KEEPALIVE, true)   // TCP Keep-Alive
+            .childOption(ChannelOption.TCP_NODELAY, true);   // Nagle 알고리즘 비활성화
+    });
 
-            return httpServer
-                .runOn(loopResources)
-                .option(ChannelOption.SO_BACKLOG, 2048)          // 연결 대기 큐
-                .childOption(ChannelOption.SO_KEEPALIVE, true)   // TCP Keep-Alive
-                .childOption(ChannelOption.TCP_NODELAY, true);   // Nagle 알고리즘 비활성화
-        });
-
-        return factory;
-    }
-}</code></pre>
+    return factory;
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1933-native-transport-epoll-kqueue">19.3.3 Native Transport (Epoll, KQueue)</h3>
-<p>JVM의 기본 NIO 대신 운영체제의 네이티브 I/O를 사용하면 성능이 개선된다.</p>
+<p>JVM의 표준 NIO를 쓸 수도 있지만, 운영체제 수준의 네이티브 I/O를 사용하면 성능이 훨씬 좋아진다. 필자의 경험상 프로덕션 환경에서는 이 차이가 꽤 크게 느껴진다.</p>
 <table>
 <thead>
 <tr>
@@ -417,139 +436,152 @@ public class NettyConfig {
 </tr>
 </tbody>
 </table>
-<pre class="highlight"><code class="language-groovy">dependencies {
+<p>```groovy
+dependencies {
     // Linux Epoll
-    runtimeOnly 'io.netty:netty-transport-native-epoll::linux-x86_64'
+    runtimeOnly 'io.netty:netty-transport-native-epoll::linux-x86_64'</p>
+<pre><code>// macOS KQueue (Intel / Apple Silicon)
+runtimeOnly 'io.netty:netty-transport-native-kqueue::osx-x86_64'
+runtimeOnly 'io.netty:netty-transport-native-kqueue::osx-aarch_64'
+</code></pre>
+<p>}
+```</p>
+<p>```java
+@Configuration
+public class NativeTransportConfig {</p>
+<pre><code>@Bean
+public NettyReactiveWebServerFactory nettyFactory() {
+    NettyReactiveWebServerFactory factory = new NettyReactiveWebServerFactory();
 
-    // macOS KQueue (Intel / Apple Silicon)
-    runtimeOnly 'io.netty:netty-transport-native-kqueue::osx-x86_64'
-    runtimeOnly 'io.netty:netty-transport-native-kqueue::osx-aarch_64'
-}</code></pre>
-<pre class="highlight"><code class="language-java">@Configuration
-public class NativeTransportConfig {
+    factory.addServerCustomizers(httpServer -&gt; {
+        LoopResources loopResources = LoopResources.create(
+            "native-http", 1,
+            Runtime.getRuntime().availableProcessors(), true
+        );
+        return httpServer.runOn(loopResources, true);  // preferNative = true
+    });
 
-    @Bean
-    public NettyReactiveWebServerFactory nettyFactory() {
-        NettyReactiveWebServerFactory factory = new NettyReactiveWebServerFactory();
-
-        factory.addServerCustomizers(httpServer -&gt; {
-            LoopResources loopResources = LoopResources.create(
-                "native-http", 1,
-                Runtime.getRuntime().availableProcessors(), true
-            );
-            return httpServer.runOn(loopResources, true);  // preferNative = true
-        });
-
-        return factory;
-    }
-}</code></pre>
+    return factory;
+}
+</code></pre>
+<p>}
+```</p>
 <p><code>preferNative</code>를 <code>true</code>로 설정하면 Reactor Netty가 플랫폼에 맞는 네이티브 Transport를 자동으로 선택한다. 네이티브 라이브러리가 없으면 NIO로 자동 폴백한다.</p>
 <h3 id="1934">19.3.4 이벤트 루프 블로킹 방지</h3>
-<p>이벤트 루프 스레드에서 절대로 블로킹 작업을 수행해서는 안 된다. 무거운 연산은 별도의 스케줄러로 오프로드한다.</p>
-<pre class="highlight"><code class="language-java">@Service
-public class ReportService {
+<p>이벤트 루프 스레드에서 블로킹 작업을 하면 안 된다. 이건 리액티브 프로그래밍의 대원칙이다. 무거운 연산은 별도 스케줄러로 넘기자.</p>
+<p>```java
+@Service
+public class ReportService {</p>
+<pre><code>// CPU 집약적 작업 전용 스케줄러
+private final Scheduler cpuScheduler = Schedulers.newParallel(
+    "cpu-worker", Runtime.getRuntime().availableProcessors());
 
-    // CPU 집약적 작업 전용 스케줄러
-    private final Scheduler cpuScheduler = Schedulers.newParallel(
-        "cpu-worker", Runtime.getRuntime().availableProcessors());
+// 레거시 블로킹 코드 전용 스케줄러
+private final Scheduler blockingScheduler = Schedulers.newBoundedElastic(
+    100, 10_000, "blocking-worker", 60);
 
-    // 레거시 블로킹 코드 전용 스케줄러
-    private final Scheduler blockingScheduler = Schedulers.newBoundedElastic(
-        100, 10_000, "blocking-worker", 60);
+public Mono&lt;Report&gt; generateReport(String reportId) {
+    return loadData(reportId)
+        .publishOn(cpuScheduler)         // CPU 작업은 별도 스레드에서
+        .map(this::heavyComputation)
+        .flatMap(this::saveReport);
+}
 
-    public Mono&lt;Report&gt; generateReport(String reportId) {
-        return loadData(reportId)
-            .publishOn(cpuScheduler)         // CPU 작업은 별도 스레드에서
-            .map(this::heavyComputation)
-            .flatMap(this::saveReport);
-    }
-
-    public Mono&lt;LegacyData&gt; callLegacyApi(String id) {
-        return Mono.fromCallable(() -&gt; legacyService.getById(id))
-            .subscribeOn(blockingScheduler);  // 블로킹 전용 스레드에서 실행
-    }
-}</code></pre>
+public Mono&lt;LegacyData&gt; callLegacyApi(String id) {
+    return Mono.fromCallable(() -&gt; legacyService.getById(id))
+        .subscribeOn(blockingScheduler);  // 블로킹 전용 스레드에서 실행
+}
+</code></pre>
+<p>}
+```</p>
 <hr>
 <h2 id="194-caffeine-redis">19.4 캐싱 전략 (Caffeine, Redis)</h2>
-<p>I/O 연산을 줄이는 가장 효과적인 방법은 캐싱이다. 리액티브 애플리케이션에서는 캐시 조회도 논블로킹으로 이루어져야 한다.</p>
+<p>I/O 연산을 줄이는 가장 확실한 방법은 뭘까? 그건 캐싱이다. 다만 리액티브 애플리케이션에서는 캐시 조회 자체도 논블로킹으로 이루어져야 한다는 점을 잊으면 안 된다.</p>
 <h3 id="1941-caffeine">19.4.1 Caffeine 로컬 캐시</h3>
-<p>Caffeine은 JVM 기반의 고성능 로컬 캐시 라이브러리다. 리액티브 환경에서 활용하는 래퍼 클래스를 작성한다.</p>
-<pre class="highlight"><code class="language-groovy">dependencies {
+<p>Caffeine은 JVM 에서 쓸 수 있는 고성능 로컬 캐시 라이브러리다. 리액티브 환경에 맞게 래퍼 클래스를 한 번 만들어놓으면, 여러 곳에서 쉽게 재사용할 수 있다.</p>
+<p><code>groovy
+dependencies {
     implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
-}</code></pre>
-<pre class="highlight"><code class="language-java">@Component
-public class ReactiveCaffeineCache&lt;K, V&gt; {
+}</code></p>
+<p>```java
+@Component
+public class ReactiveCaffeineCache<K, V> {</p>
+<pre><code>private final Cache&lt;K, V&gt; cache;
 
-    private final Cache&lt;K, V&gt; cache;
+public ReactiveCaffeineCache(int maxSize, Duration ttl) {
+    this.cache = Caffeine.newBuilder()
+        .maximumSize(maxSize)
+        .expireAfterWrite(ttl)
+        .recordStats()
+        .build();
+}
 
-    public ReactiveCaffeineCache(int maxSize, Duration ttl) {
-        this.cache = Caffeine.newBuilder()
-            .maximumSize(maxSize)
-            .expireAfterWrite(ttl)
-            .recordStats()
-            .build();
+public Mono&lt;V&gt; get(K key) {
+    return Mono.justOrEmpty(cache.getIfPresent(key));
+}
+
+public Mono&lt;V&gt; get(K key, Function&lt;K, Mono&lt;V&gt;&gt; loader) {
+    V cached = cache.getIfPresent(key);
+    if (cached != null) {
+        return Mono.just(cached);
     }
+    return loader.apply(key)
+        .doOnNext(value -&gt; cache.put(key, value));
+}
 
-    public Mono&lt;V&gt; get(K key) {
-        return Mono.justOrEmpty(cache.getIfPresent(key));
-    }
+public Mono&lt;Void&gt; put(K key, V value) {
+    cache.put(key, value);
+    return Mono.empty();
+}
 
-    public Mono&lt;V&gt; get(K key, Function&lt;K, Mono&lt;V&gt;&gt; loader) {
-        V cached = cache.getIfPresent(key);
-        if (cached != null) {
-            return Mono.just(cached);
-        }
-        return loader.apply(key)
-            .doOnNext(value -&gt; cache.put(key, value));
-    }
+public Mono&lt;Void&gt; evict(K key) {
+    cache.invalidate(key);
+    return Mono.empty();
+}
+</code></pre>
+<p>}
+```</p>
+<p>이제 이 캐시를 서비스에서 실제로 어떻게 써야 하는지 보자.</p>
+<p>```java
+@Service
+public class ProductService {</p>
+<pre><code>private final ProductRepository productRepository;
+private final ReactiveCaffeineCache&lt;String, Product&gt; productCache;
 
-    public Mono&lt;Void&gt; put(K key, V value) {
-        cache.put(key, value);
-        return Mono.empty();
-    }
+public ProductService(ProductRepository productRepository) {
+    this.productRepository = productRepository;
+    this.productCache = new ReactiveCaffeineCache&lt;&gt;(10_000, Duration.ofMinutes(5));
+}
 
-    public Mono&lt;Void&gt; evict(K key) {
-        cache.invalidate(key);
-        return Mono.empty();
-    }
-}</code></pre>
-<p>서비스에서 캐시를 활용하는 패턴은 다음과 같다.</p>
-<pre class="highlight"><code class="language-java">@Service
-public class ProductService {
+public Mono&lt;Product&gt; findById(String id) {
+    return productCache.get(id, key -&gt; productRepository.findById(key));
+}
 
-    private final ProductRepository productRepository;
-    private final ReactiveCaffeineCache&lt;String, Product&gt; productCache;
+public Mono&lt;Product&gt; update(String id, ProductUpdateRequest request) {
+    return productRepository.findById(id)
+        .flatMap(product -&gt; {
+            product.setName(request.getName());
+            product.setPrice(request.getPrice());
+            return productRepository.save(product);
+        })
+        .doOnNext(product -&gt; productCache.put(id, product));
+}
 
-    public ProductService(ProductRepository productRepository) {
-        this.productRepository = productRepository;
-        this.productCache = new ReactiveCaffeineCache&lt;&gt;(10_000, Duration.ofMinutes(5));
-    }
-
-    public Mono&lt;Product&gt; findById(String id) {
-        return productCache.get(id, key -&gt; productRepository.findById(key));
-    }
-
-    public Mono&lt;Product&gt; update(String id, ProductUpdateRequest request) {
-        return productRepository.findById(id)
-            .flatMap(product -&gt; {
-                product.setName(request.getName());
-                product.setPrice(request.getPrice());
-                return productRepository.save(product);
-            })
-            .doOnNext(product -&gt; productCache.put(id, product));
-    }
-
-    public Mono&lt;Void&gt; delete(String id) {
-        return productRepository.deleteById(id)
-            .then(productCache.evict(id));
-    }
-}</code></pre>
+public Mono&lt;Void&gt; delete(String id) {
+    return productRepository.deleteById(id)
+        .then(productCache.evict(id));
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1942-reactive-redis">19.4.2 Reactive Redis 분산 캐시</h3>
-<p>멀티 인스턴스 환경에서는 Reactive Redis를 분산 캐시로 활용한다.</p>
-<pre class="highlight"><code class="language-groovy">dependencies {
+<p>애플리케이션이 여러 인스턴스로 운영되는 환경이면? 이때는 Reactive Redis를 분산 캐시로 써야 한다. 로컬 캐시만으로는 인스턴스 간에 데이터가 동기화되지 않기 때문이다.</p>
+<p><code>groovy
+dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive'
-}</code></pre>
-<pre class="highlight"><code class="language-yaml">spring:
+}</code></p>
+<p><code>yaml
+spring:
   data:
     redis:
       host: localhost
@@ -559,144 +591,155 @@ public class ProductService {
         pool:
           max-active: 50
           max-idle: 10
-          min-idle: 5</code></pre>
-<pre class="highlight"><code class="language-java">@Service
+          min-idle: 5</code></p>
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class RedisCacheService {
+public class RedisCacheService {</p>
+<pre><code>private final ReactiveStringRedisTemplate redisTemplate;
+private final ObjectMapper objectMapper;
 
-    private final ReactiveStringRedisTemplate redisTemplate;
-    private final ObjectMapper objectMapper;
+public &lt;T&gt; Mono&lt;T&gt; getOrLoad(String key, Class&lt;T&gt; type,
+                              Duration ttl, Mono&lt;T&gt; loader) {
+    return redisTemplate.opsForValue()
+        .get(key)
+        .flatMap(json -&gt; deserialize(json, type))
+        .switchIfEmpty(
+            loader.flatMap(value -&gt;
+                serialize(value)
+                    .flatMap(json -&gt;
+                        redisTemplate.opsForValue()
+                            .set(key, json, ttl)
+                            .thenReturn(value)
+                    )
+            )
+        );
+}
 
-    public &lt;T&gt; Mono&lt;T&gt; getOrLoad(String key, Class&lt;T&gt; type,
-                                  Duration ttl, Mono&lt;T&gt; loader) {
-        return redisTemplate.opsForValue()
-            .get(key)
-            .flatMap(json -&gt; deserialize(json, type))
-            .switchIfEmpty(
-                loader.flatMap(value -&gt;
-                    serialize(value)
-                        .flatMap(json -&gt;
-                            redisTemplate.opsForValue()
-                                .set(key, json, ttl)
-                                .thenReturn(value)
-                        )
-                )
-            );
-    }
+public Mono&lt;Boolean&gt; evict(String key) {
+    return redisTemplate.delete(key).map(count -&gt; count &gt; 0);
+}
 
-    public Mono&lt;Boolean&gt; evict(String key) {
-        return redisTemplate.delete(key).map(count -&gt; count &gt; 0);
-    }
+private &lt;T&gt; Mono&lt;T&gt; deserialize(String json, Class&lt;T&gt; type) {
+    return Mono.fromCallable(() -&gt; objectMapper.readValue(json, type))
+        .onErrorResume(e -&gt; Mono.empty());  // 역직렬화 실패 시 캐시 미스 처리
+}
 
-    private &lt;T&gt; Mono&lt;T&gt; deserialize(String json, Class&lt;T&gt; type) {
-        return Mono.fromCallable(() -&gt; objectMapper.readValue(json, type))
-            .onErrorResume(e -&gt; Mono.empty());  // 역직렬화 실패 시 캐시 미스 처리
-    }
-
-    private &lt;T&gt; Mono&lt;String&gt; serialize(T value) {
-        return Mono.fromCallable(() -&gt; objectMapper.writeValueAsString(value));
-    }
-}</code></pre>
+private &lt;T&gt; Mono&lt;String&gt; serialize(T value) {
+    return Mono.fromCallable(() -&gt; objectMapper.writeValueAsString(value));
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1943">19.4.3 멀티 레벨 캐시 전략</h3>
-<p>로컬 캐시(Caffeine)와 분산 캐시(Redis)를 조합하여 <strong>L1/L2 캐시</strong> 구조를 구성하면 성능과 일관성을 모두 확보할 수 있다.</p>
-<pre class="highlight"><code class="language-java">@Service
-public class MultiLevelCacheService&lt;T&gt; {
+<p>로컬 캐시(Caffeine)와 분산 캐시(Redis)를 함께 쓰면 어떻게 될까? <strong>L1/L2 캐시</strong> 구조로 만들면 성능도 좋고 데이터 일관성도 유지할 수 있다.</p>
+<p>```java
+@Service
+public class MultiLevelCacheService<T> {</p>
+<pre><code>private final ReactiveCaffeineCache&lt;String, T&gt; l1Cache;   // 로컬
+private final RedisCacheService redisCacheService;         // 분산
 
-    private final ReactiveCaffeineCache&lt;String, T&gt; l1Cache;   // 로컬
-    private final RedisCacheService redisCacheService;         // 분산
+public MultiLevelCacheService(RedisCacheService redisCacheService) {
+    this.l1Cache = new ReactiveCaffeineCache&lt;&gt;(5_000, Duration.ofMinutes(1));
+    this.redisCacheService = redisCacheService;
+}
 
-    public MultiLevelCacheService(RedisCacheService redisCacheService) {
-        this.l1Cache = new ReactiveCaffeineCache&lt;&gt;(5_000, Duration.ofMinutes(1));
-        this.redisCacheService = redisCacheService;
-    }
+public Mono&lt;T&gt; get(String key, Class&lt;T&gt; type,
+                   Duration redisTtl, Mono&lt;T&gt; loader) {
+    // L1 (Caffeine) -&gt; L2 (Redis) -&gt; 원본 데이터 소스
+    return l1Cache.get(key)
+        .switchIfEmpty(
+            redisCacheService.getOrLoad(key, type, redisTtl, loader)
+                .doOnNext(value -&gt; l1Cache.put(key, value))
+        );
+}
 
-    public Mono&lt;T&gt; get(String key, Class&lt;T&gt; type,
-                       Duration redisTtl, Mono&lt;T&gt; loader) {
-        // L1 (Caffeine) -&gt; L2 (Redis) -&gt; 원본 데이터 소스
-        return l1Cache.get(key)
-            .switchIfEmpty(
-                redisCacheService.getOrLoad(key, type, redisTtl, loader)
-                    .doOnNext(value -&gt; l1Cache.put(key, value))
-            );
-    }
-
-    public Mono&lt;Void&gt; evict(String key) {
-        return l1Cache.evict(key)
-            .then(redisCacheService.evict(key))
-            .then();
-    }
-}</code></pre>
-<pre class="highlight"><code>요청 -&gt; [L1 Caffeine 캐시] --히트--&gt; 즉시 반환 (&lt; 1ms)
+public Mono&lt;Void&gt; evict(String key) {
+    return l1Cache.evict(key)
+        .then(redisCacheService.evict(key))
+        .then();
+}
+</code></pre>
+<p>}
+```</p>
+<p><code>요청 -&gt; [L1 Caffeine 캐시] --히트--&gt; 즉시 반환 (&lt; 1ms)
               | 미스
               v
        [L2 Redis 캐시]    --히트--&gt; L1에 저장 후 반환 (~1-3ms)
               | 미스
               v
-       [MongoDB 조회]     -------&gt; L1+L2에 저장 후 반환 (~5-50ms)</code></pre>
+       [MongoDB 조회]     -------&gt; L1+L2에 저장 후 반환 (~5-50ms)</code></p>
 <hr>
 <h2 id="195-blockhound">19.5 블로킹 코드 탐지 및 제거 (BlockHound)</h2>
-<p>리액티브 애플리케이션에서 가장 위험한 성능 저하 원인은 <strong>이벤트 루프 스레드에서의 블로킹 호출</strong>이다. 단 한 줄의 블로킹 코드가 전체 처리량을 극적으로 떨어뜨릴 수 있다. BlockHound는 이러한 블로킹 호출을 런타임에 자동으로 탐지하는 Java Agent 도구다.</p>
+<p>리액티브 애플리케이션에서 가장 위험한 함정이 하나 있다. 바로 <strong>이벤트 루프 스레드에서 몰래 일어나는 블로킹 호출</strong>이다. 단 한 줄의 블로킹 코드도 전체 처리량을 극적으로 떨어뜨릴 수 있다. BlockHound는 이런 위험한 호출들을 런타임에 자동으로 발견해주는 도구다. Java Agent 방식으로 동작해서 코드 수정 없이도 탐지가 가능하다.</p>
 <h3 id="1951-blockhound">19.5.1 BlockHound 설정</h3>
-<pre class="highlight"><code class="language-groovy">dependencies {
+<p><code>groovy
+dependencies {
     testImplementation 'io.projectreactor.tools:blockhound:1.0.9.RELEASE'
-}</code></pre>
-<pre class="highlight"><code class="language-java">@SpringBootTest
-class ApplicationBlockingTest {
-
-    @BeforeAll
-    static void setup() {
-        BlockHound.install();
-    }
-
-    @Test
-    void 블로킹_호출_없음_검증() {
-        Mono.delay(Duration.ofMillis(1))
-            .doOnNext(it -&gt; {
-                // 이벤트 루프 스레드에서 실행됨
-                // 여기서 블로킹 호출이 있으면 예외 발생
-            })
-            .block();
-    }
-}</code></pre>
-<h3 id="1952">19.5.2 흔한 블로킹 코드 패턴과 수정</h3>
-<p>리액티브 애플리케이션에서 자주 발견되는 블로킹 코드 패턴과 수정 방법을 정리한다.</p>
-<p><strong>패턴 1: 파일 I/O</strong></p>
-<pre class="highlight"><code class="language-java">// 블로킹 (위험)
-public Mono&lt;String&gt; readFile(String path) {
-    return Mono.just(Files.readString(Path.of(path)));  // 블로킹!
+}</code></p>
+<p>```java
+@SpringBootTest
+class ApplicationBlockingTest {</p>
+<pre><code>@BeforeAll
+static void setup() {
+    BlockHound.install();
 }
 
-// 논블로킹 (수정)
-public Mono&lt;String&gt; readFile(String path) {
+@Test
+void 블로킹_호출_없음_검증() {
+    Mono.delay(Duration.ofMillis(1))
+        .doOnNext(it -&gt; {
+            // 이벤트 루프 스레드에서 실행됨
+            // 여기서 블로킹 호출이 있으면 예외 발생
+        })
+        .block();
+}
+</code></pre>
+<p>}
+```</p>
+<h3 id="1952">19.5.2 흔한 블로킹 코드 패턴과 수정</h3>
+<p>실무에서 자주 만나는 블로킹 코드들을 몇 가지 패턴으로 정리해봤다. 이 예시들을 알아두면 코드 리뷰할 때도 도움이 될 것 같다.</p>
+<p><strong>패턴 1: 파일 I/O</strong></p>
+<p>```java
+// 블로킹 (위험)
+public Mono<String> readFile(String path) {
+    return Mono.just(Files.readString(Path.of(path)));  // 블로킹!
+}</p>
+<p>// 논블로킹 (수정)
+public Mono<String> readFile(String path) {
     return Mono.fromCallable(() -&gt; Files.readString(Path.of(path)))
         .subscribeOn(Schedulers.boundedElastic());
-}</code></pre>
+}
+```</p>
 <p><strong>패턴 2: Thread.sleep()</strong></p>
-<pre class="highlight"><code class="language-java">// 블로킹 (위험)
-return Mono.fromCallable(() -&gt; { Thread.sleep(1000); return "delayed"; });
-
-// 논블로킹 (수정)
-return Mono.delay(Duration.ofSeconds(1)).thenReturn("delayed");</code></pre>
+<p>```java
+// 블로킹 (위험)
+return Mono.fromCallable(() -&gt; { Thread.sleep(1000); return "delayed"; });</p>
+<p>// 논블로킹 (수정)
+return Mono.delay(Duration.ofSeconds(1)).thenReturn("delayed");
+```</p>
 <p><strong>패턴 3: 동기 HTTP 호출</strong></p>
-<pre class="highlight"><code class="language-java">// 블로킹 (위험) - RestTemplate 사용
+<p>```java
+// 블로킹 (위험) - RestTemplate 사용
 ExternalData data = restTemplate.getForObject(url, ExternalData.class);
-return Mono.justOrEmpty(data);
-
-// 논블로킹 (수정) - WebClient 사용
-return webClient.get().uri(url).retrieve().bodyToMono(ExternalData.class);</code></pre>
+return Mono.justOrEmpty(data);</p>
+<p>// 논블로킹 (수정) - WebClient 사용
+return webClient.get().uri(url).retrieve().bodyToMono(ExternalData.class);
+```</p>
 <p><strong>패턴 4: JDBC 호출</strong></p>
-<pre class="highlight"><code class="language-java">// 블로킹 (위험)
-return Mono.justOrEmpty(jdbcTemplate.queryForObject(sql, mapper, id));
-
-// 논블로킹 (수정 방법 1: boundedElastic으로 격리)
+<p>```java
+// 블로킹 (위험)
+return Mono.justOrEmpty(jdbcTemplate.queryForObject(sql, mapper, id));</p>
+<p>// 논블로킹 (수정 방법 1: boundedElastic으로 격리)
 return Mono.fromCallable(() -&gt; jdbcTemplate.queryForObject(sql, mapper, id))
-    .subscribeOn(Schedulers.boundedElastic());
-
-// 논블로킹 (수정 방법 2: R2DBC 사용 - Chapter 15 참조)
-return r2dbcUserRepository.findById(id);</code></pre>
+    .subscribeOn(Schedulers.boundedElastic());</p>
+<p>// 논블로킹 (수정 방법 2: R2DBC 사용 - Chapter 15 참조)
+return r2dbcUserRepository.findById(id);
+```</p>
 <h3 id="1953-blockhound">19.5.3 BlockHound 커스텀 설정과 테스트 활용</h3>
-<p>특정 라이브러리의 블로킹 호출을 허용하거나, 커스텀 탐지 규칙을 추가할 수 있다.</p>
-<pre class="highlight"><code class="language-java">@BeforeAll
+<p>BlockHound도 완벽하진 않다. 특정 라이브러리가 의도적으로 블로킹 호출을 해야 한다면? 그땐 그걸 명시적으로 허용해야 한다. 커스텀 설정으로 탐지 규칙을 조정할 수 있다.</p>
+<p><code>java
+@BeforeAll
 static void setup() {
     BlockHound.install(builder -&gt; builder
         // 특정 클래스/메서드의 블로킹 허용 (레거시 라이브러리 등)
@@ -706,103 +749,107 @@ static void setup() {
         .nonBlockingThreadPredicate(current -&gt;
             current.or(t -&gt; t.getName().startsWith("blocking-worker")))
     );
-}</code></pre>
-<p>StepVerifier와 BlockHound를 결합하여 블로킹 호출을 자동으로 검출하는 테스트를 작성한다.</p>
-<pre class="highlight"><code class="language-java">@SpringBootTest
-class ProductServiceBlockingTest {
+}</code></p>
+<p>StepVerifier와 BlockHound를 함께 쓰면 블로킹 호출을 자동으로 잡아내는 테스트를 만들 수 있다.</p>
+<p>```java
+@SpringBootTest
+class ProductServiceBlockingTest {</p>
+<pre><code>@BeforeAll
+static void setup() {
+    BlockHound.install();
+}
 
-    @BeforeAll
-    static void setup() {
-        BlockHound.install();
-    }
+@Autowired
+private ProductService productService;
 
-    @Autowired
-    private ProductService productService;
-
-    @Test
-    void findById_논블로킹_검증() {
-        StepVerifier.create(
-            Mono.defer(() -&gt; productService.findById("test-id"))
-                .subscribeOn(Schedulers.parallel())  // 논블로킹 스레드에서 실행
-        )
-        .expectNextCount(1)
-        .verifyComplete();
-        // 블로킹 호출이 있으면 ReactorBlockHoundIntegration 예외 발생
-    }
-}</code></pre>
+@Test
+void findById_논블로킹_검증() {
+    StepVerifier.create(
+        Mono.defer(() -&gt; productService.findById("test-id"))
+            .subscribeOn(Schedulers.parallel())  // 논블로킹 스레드에서 실행
+    )
+    .expectNextCount(1)
+    .verifyComplete();
+    // 블로킹 호출이 있으면 ReactorBlockHoundIntegration 예외 발생
+}
+</code></pre>
+<p>}
+```</p>
 <blockquote>
-<p><strong>참고</strong>: BlockHound는 JVM Agent 방식으로 동작하므로 프로덕션 환경에서는 사용하지 않는다. 오버헤드가 발생하며, 의도적인 블로킹(초기화 등)에서도 예외가 발생할 수 있다. 테스트와 스테이징 환경에서만 활성화한다.</p>
+<p><strong>참고</strong>: BlockHound는 프로덕션에서는 절대 켜면 안 된다. JVM Agent 방식이라 오버헤드가 크고, 초기화 같은 정당한 블로킹 호출에서도 예외를 던진다. 개발이나 테스트, 스테이징 환경에만 켜두자.</p>
 </blockquote>
 <hr>
 <h2 id="196-gatling-k6">19.6 부하 테스트 (Gatling, k6)</h2>
-<p>성능 최적화의 효과를 검증하려면 실제 부하 조건에서 테스트해야 한다.</p>
+<p>지금까지 최적화 기법들을 봤는데, 이게 실제로 효과가 있는지 어떻게 알까? 실제 부하 조건에서 테스트해야 한다.</p>
 <h3 id="1961-gatling">19.6.1 Gatling 부하 테스트</h3>
-<p>Gatling은 Scala 기반의 고성능 부하 테스트 도구다. Java DSL로도 시나리오를 작성할 수 있다.</p>
-<pre class="highlight"><code class="language-groovy">plugins {
+<p>Gatling은 부하 테스트를 위한 강력한 도구다. Scala로 만들어졌지만, Java DSL을 써서 테스트 시나리오를 작성할 수도 있다.</p>
+<p>```groovy
+plugins {
     id 'io.gatling.gradle' version '3.11.5.2'
-}
-
-dependencies {
+}</p>
+<p>dependencies {
     gatlingImplementation 'io.gatling.highcharts:gatling-charts-highcharts:3.11.5'
-}</code></pre>
-<pre class="highlight"><code class="language-java">// src/gatling/java/simulations/ProductApiSimulation.java
-public class ProductApiSimulation extends Simulation {
+}
+```</p>
+<p>```java
+// src/gatling/java/simulations/ProductApiSimulation.java
+public class ProductApiSimulation extends Simulation {</p>
+<pre><code>HttpProtocolBuilder httpProtocol = http
+    .baseUrl("http://localhost:8080")
+    .acceptHeader("application/json")
+    .contentTypeHeader("application/json");
 
-    HttpProtocolBuilder httpProtocol = http
-        .baseUrl("http://localhost:8080")
-        .acceptHeader("application/json")
-        .contentTypeHeader("application/json");
+ScenarioBuilder listProducts = scenario("제품 목록 조회")
+    .exec(
+        http("GET /api/products")
+            .get("/api/products")
+            .queryParam("page", "0")
+            .queryParam("size", "20")
+            .check(status().is(200))
+    )
+    .pause(Duration.ofMillis(100), Duration.ofMillis(500));
 
-    ScenarioBuilder listProducts = scenario("제품 목록 조회")
-        .exec(
-            http("GET /api/products")
-                .get("/api/products")
-                .queryParam("page", "0")
-                .queryParam("size", "20")
-                .check(status().is(200))
+ScenarioBuilder createProduct = scenario("제품 등록")
+    .exec(
+        http("POST /api/products")
+            .post("/api/products")
+            .body(StringBody("""
+                {"name":"테스트 상품","price":10000,"category":"electronics"}
+                """))
+            .check(status().is(201))
+    )
+    .pause(Duration.ofMillis(200), Duration.ofMillis(1000));
+
+{
+    setUp(
+        listProducts.injectOpen(
+            rampUsersPerSec(10).to(200).during(Duration.ofMinutes(2)),
+            constantUsersPerSec(200).during(Duration.ofMinutes(3)),
+            rampUsersPerSec(200).to(500).during(Duration.ofMinutes(2)),
+            constantUsersPerSec(500).during(Duration.ofMinutes(3))
+        ),
+        createProduct.injectOpen(
+            constantUsersPerSec(20).during(Duration.ofMinutes(10))
         )
-        .pause(Duration.ofMillis(100), Duration.ofMillis(500));
-
-    ScenarioBuilder createProduct = scenario("제품 등록")
-        .exec(
-            http("POST /api/products")
-                .post("/api/products")
-                .body(StringBody("""
-                    {"name":"테스트 상품","price":10000,"category":"electronics"}
-                    """))
-                .check(status().is(201))
-        )
-        .pause(Duration.ofMillis(200), Duration.ofMillis(1000));
-
-    {
-        setUp(
-            listProducts.injectOpen(
-                rampUsersPerSec(10).to(200).during(Duration.ofMinutes(2)),
-                constantUsersPerSec(200).during(Duration.ofMinutes(3)),
-                rampUsersPerSec(200).to(500).during(Duration.ofMinutes(2)),
-                constantUsersPerSec(500).during(Duration.ofMinutes(3))
-            ),
-            createProduct.injectOpen(
-                constantUsersPerSec(20).during(Duration.ofMinutes(10))
-            )
-        ).protocols(httpProtocol)
-         .assertions(
-             global().responseTime().percentile3().lt(500),
-             global().successfulRequests().percent().gt(99.0)
-         );
-    }
-}</code></pre>
+    ).protocols(httpProtocol)
+     .assertions(
+         global().responseTime().percentile3().lt(500),
+         global().successfulRequests().percent().gt(99.0)
+     );
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1962-k6">19.6.2 k6 부하 테스트</h3>
-<p>k6는 Go로 작성된 현대적인 부하 테스트 도구다. JavaScript로 테스트 스크립트를 작성하며, CLI 기반으로 간편하게 실행할 수 있다.</p>
-<pre class="highlight"><code class="language-javascript">// load-test.js
+<p>k6는 좀 더 현대적이고 간단한 부하 테스트 도구다. Go로 만들어졌고, JavaScript로 테스트를 작성하면 된다. CLI로 실행하는 것도 정말 간단하다.</p>
+<p>```javascript
+// load-test.js
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { Rate, Trend } from 'k6/metrics';
-
-const errorRate = new Rate('errors');
-const productListDuration = new Trend('product_list_duration');
-
-export const options = {
+import { Rate, Trend } from 'k6/metrics';</p>
+<p>const errorRate = new Rate('errors');
+const productListDuration = new Trend('product_list_duration');</p>
+<p>export const options = {
     stages: [
         { duration: '1m', target: 50 },
         { duration: '3m', target: 200 },
@@ -814,36 +861,36 @@ export const options = {
         http_req_duration: ['p(95)&lt;500', 'p(99)&lt;1000'],
         errors: ['rate&lt;0.01'],
     },
-};
+};</p>
+<p>const BASE_URL = 'http://localhost:8080';</p>
+<p>export default function () {
+    const listRes = http.get(<code>${BASE_URL}/api/products?page=0&amp;size=20</code>);
+    productListDuration.add(listRes.timings.duration);</p>
+<pre><code>check(listRes, {
+    'status is 200': (r) =&gt; r.status === 200,
+    'response time &lt; 500ms': (r) =&gt; r.timings.duration &lt; 500,
+});
+errorRate.add(listRes.status !== 200);
+sleep(Math.random() * 0.5);
 
-const BASE_URL = 'http://localhost:8080';
-
-export default function () {
-    const listRes = http.get(`${BASE_URL}/api/products?page=0&amp;size=20`);
-    productListDuration.add(listRes.timings.duration);
-
-    check(listRes, {
-        'status is 200': (r) =&gt; r.status === 200,
-        'response time &lt; 500ms': (r) =&gt; r.timings.duration &lt; 500,
-    });
-    errorRate.add(listRes.status !== 200);
-    sleep(Math.random() * 0.5);
-
-    const createRes = http.post(
-        `${BASE_URL}/api/products`,
-        JSON.stringify({ name: `상품 ${Date.now()}`, price: 10000, category: 'test' }),
-        { headers: { 'Content-Type': 'application/json' } }
-    );
-    check(createRes, { 'created': (r) =&gt; r.status === 201 });
-    sleep(Math.random() * 1);
-}</code></pre>
-<pre class="highlight"><code class="language-bash"># 실행
-k6 run load-test.js
-
-# Grafana 연동 (InfluxDB로 메트릭 전송)
-k6 run --out influxdb=http://localhost:8086/k6 load-test.js</code></pre>
+const createRes = http.post(
+    `${BASE_URL}/api/products`,
+    JSON.stringify({ name: `상품 ${Date.now()}`, price: 10000, category: 'test' }),
+    { headers: { 'Content-Type': 'application/json' } }
+);
+check(createRes, { 'created': (r) =&gt; r.status === 201 });
+sleep(Math.random() * 1);
+</code></pre>
+<p>}
+```</p>
+<p>```bash</p>
+<h1 id="_1">실행</h1>
+<p>k6 run load-test.js</p>
+<h1 id="grafana-influxdb">Grafana 연동 (InfluxDB로 메트릭 전송)</h1>
+<p>k6 run --out influxdb=http://localhost:8086/k6 load-test.js
+```</p>
 <h3 id="1963-mvc-vs-webflux">19.6.3 MVC vs WebFlux 성능 비교</h3>
-<p>동일한 비즈니스 로직에 대해 Spring MVC와 Spring WebFlux의 성능을 비교한 일반적인 결과는 다음과 같다. 실제 수치는 하드웨어와 비즈니스 로직에 따라 달라진다.</p>
+<p>그럼 이제 흔한 질문을 답해보자: Spring MVC와 Spring WebFlux는 성능이 얼마나 다를까? 동일한 비즈니스 로직으로 비교한 결과를 정리해봤다. 물론 실제 수치는 하드웨어와 로직의 특성에 따라 달라진다.</p>
 <table>
 <thead>
 <tr>
@@ -935,9 +982,10 @@ k6 run --out influxdb=http://localhost:8086/k6 load-test.js</code></pre>
 </tbody>
 </table>
 <blockquote>
-<p><strong>핵심 포인트</strong>: 동시 사용자가 적을 때는 MVC와 WebFlux의 성능 차이가 크지 않다. WebFlux의 진가는 <strong>높은 동시성</strong> 상황에서 발휘된다. I/O 대기 시간이 긴 애플리케이션(외부 API 호출, 느린 DB 쿼리)일수록 WebFlux의 이점이 두드러진다.</p>
+<p><strong>핵심 포인트</strong>: 동시 사용자가 적을 때는 둘 다 엇비슷하다. WebFlux의 진정한 가치는 <strong>높은 동시성</strong>이 필요한 상황에서 드러난다. 외부 API 호출이 많거나 느린 DB 쿼리가 있는 애플리케이션일수록 WebFlux가 훨씬 유리하다.</p>
 </blockquote>
 <h3 id="1964">19.6.4 부하 테스트 결과 분석 체크리스트</h3>
+<p>부하 테스트 결과를 볼 때 뭘 봐야 할까? 이런 체크리스트를 참고하면 된다.</p>
 <table>
 <thead>
 <tr>
@@ -980,15 +1028,16 @@ k6 run --out influxdb=http://localhost:8086/k6 load-test.js</code></pre>
 </tbody>
 </table>
 <h3 id="1965">19.6.5 성능 최적화 사이클</h3>
-<p>성능 최적화는 일회성이 아니라 반복적인 과정이다.</p>
-<pre class="highlight"><code>1. 측정 (Baseline)       &lt;- Gatling/k6로 현재 성능 측정
+<p>성능 최적화는 한 번 끝나는 게 아니다. 계속 반복되는 과정이다.</p>
+<p><code>1. 측정 (Baseline)       &lt;- Gatling/k6로 현재 성능 측정
 2. 분석 (Bottleneck)     &lt;- 프로파일링, 메트릭, 로그 분석
 3. 최적화 (Fix)          &lt;- 커넥션 풀, 캐시, 블로킹 제거, 쿼리 최적화
 4. 검증 (Verify)         &lt;- 동일 조건에서 재측정, 비교
-5. 반복 (Iterate)        &lt;- 다음 병목 지점으로 이동</code></pre>
-<p>한 번에 여러 최적화를 적용하면 어떤 변경이 효과가 있었는지 판단할 수 없다. <strong>한 번에 하나의 변경만 적용하고 측정하는 것</strong>이 원칙이다.</p>
+5. 반복 (Iterate)        &lt;- 다음 병목 지점으로 이동</code></p>
+<p>한 번에 여러 개를 손보면 뭐가 효과가 있었는지 알 수 없다. <strong>한 번에 하나씩만 바꾸고 측정하자</strong>. 이게 원칙이다.</p>
 <hr>
-<h2 id="_1">요약</h2>
+<h2 id="_2">요약</h2>
+<p>이 장에서 다룬 내용을 정리해보면 다음과 같다.</p>
 <table>
 <thead>
 <tr>
@@ -1023,8 +1072,8 @@ k6 run --out influxdb=http://localhost:8086/k6 load-test.js</code></pre>
 </tr>
 </tbody>
 </table>
-<p>성능 최적화에서 가장 중요한 것은 <strong>측정 -&gt; 분석 -&gt; 최적화 -&gt; 검증</strong>의 사이클을 반복하는 것이다. 감이 아닌 데이터에 기반한 의사결정이 효과적인 최적화의 핵심이다.</p>
-<p>다음 장에서는 애플리케이션의 컨테이너화와 배포를 다루며, Docker 이미지 빌드, Kubernetes 배포, CI/CD 파이프라인 구성을 실습한다.</p>
+<p>성능 최적화에서 가장 중요한 건 뭘까? 결국 <strong>측정 -&gt; 분석 -&gt; 최적화 -&gt; 검증</strong>을 계속 반복하는 것이다. 감에 의존하지 말고, 항상 데이터를 기반으로 판단해야 한다. 그게 성공하는 최적화의 비결이다.</p>
+<p>다음 장에서는 애플리케이션을 Docker 컨테이너로 만들고, Kubernetes에 배포하고, CI/CD 파이프라인을 구성하는 방법을 다룬다.</p>
     </main>
     <footer class="site-footer">
       &copy; 2024 Spring Boot + WebFlux + JPA (MongoDB) Book

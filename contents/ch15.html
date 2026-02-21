@@ -20,11 +20,11 @@
   <div class="wrapper">
     <main class="content">
       <h1 id="chapter-15-r2dbc">Chapter 15. R2DBC와의 통합 (보너스)</h1>
-<p>지금까지 이 책에서는 MongoDB를 중심으로 리액티브 데이터 접근을 다루었다. 하지만 실무에서는 관계형 데이터베이스(RDBMS)와 함께 사용해야 하는 상황이 빈번하다. 예를 들어 사용자 인증과 결제 정보는 PostgreSQL에, 상품 카탈로그와 리뷰는 MongoDB에 저장하는 아키텍처가 대표적이다. 이번 장에서는 리액티브 환경에서 관계형 DB에 접근하기 위한 <strong>R2DBC(Reactive Relational Database Connectivity)</strong>를 소개하고, MongoDB와 R2DBC를 동시에 사용하는 <strong>멀티 데이터소스</strong> 구성 방법을 실전 예제와 함께 다룬다.</p>
+<p>지금까지 MongoDB를 중심으로 리액티브 데이터 접근을 살펴봤지만, 현실 프로젝트를 보면 관계형 데이터베이스(RDBMS)와 함께 사용해야 할 때가 매우 많습니다. 예를 들어 사용자 인증과 결제 정보는 강한 일관성이 필요하니 PostgreSQL에 저장하고, 상품 카탈로그와 리뷰는 높은 쓰기 처리량이 필요하니 MongoDB에 저장하는 식으로 말이죠. 이런 <strong>하이브리드 아키텍처</strong>를 설계할 때 핵심 도구가 <strong>R2DBC(Reactive Relational Database Connectivity)</strong>입니다. 이번 장에서는 R2DBC가 무엇인지, 그리고 MongoDB와 함께 사용할 때 어떤 패턴과 주의사항이 있는지 실전 예제로 함께 살펴보겠습니다.</p>
 <hr>
 <h2 id="151-r2dbc">15.1 R2DBC란?</h2>
 <h3 id="1511-r2dbc">15.1.1 R2DBC 소개</h3>
-<p>R2DBC는 <strong>Reactive Relational Database Connectivity</strong>의 약자로, 관계형 데이터베이스에 대한 비동기/논블로킹 접근을 제공하는 SPI(Service Provider Interface) 명세다. 전통적인 JDBC가 블로킹 I/O 기반으로 설계된 반면, R2DBC는 Reactive Streams 표준을 기반으로 처음부터 논블로킹으로 설계되었다.</p>
+<p>R2DBC는 <strong>Reactive Relational Database Connectivity</strong>의 약자로, 관계형 데이터베이스에 접근하는 비동기/논블로킹 방식의 SPI(Service Provider Interface) 명세입니다. 기존 JDBC는 블로킹 I/O 기반으로 설계되었지만, R2DBC는 처음부터 Reactive Streams 표준을 염두에 두고 논블로킹으로 만들어졌다는 점이 가장 큰 차이입니다.</p>
 <table>
 <thead>
 <tr>
@@ -98,14 +98,15 @@
 </tr>
 </tbody>
 </table>
-<p>JDBC 기반의 <code>JdbcTemplate</code>이나 JPA를 WebFlux 환경에서 사용하면 이벤트 루프 스레드가 블로킹되어 전체 애플리케이션의 처리량이 급격히 저하된다. R2DBC는 이 문제를 근본적으로 해결한다.</p>
-<pre class="highlight"><code>[JDBC + WebFlux]
-이벤트 루프 스레드 → DB 쿼리 실행(블로킹) → 스레드 대기 → 처리량 저하
-
-[R2DBC + WebFlux]
-이벤트 루프 스레드 → DB 쿼리 요청(논블로킹) → 다른 요청 처리 → 결과 도착 시 콜백</code></pre>
+<p>필자의 경험상, JDBC 기반의 <code>JdbcTemplate</code>이나 JPA를 WebFlux와 함께 사용하면 곧바로 성능 문제가 나타납니다. 이벤트 루프 스레드가 데이터베이스 I/O를 기다리면서 블로킹되기 때문인데, 그러면 한 번에 처리할 수 있는 요청의 개수가 급격히 떨어지게 됩니다. R2DBC는 이 문제의 근본적인 해결책입니다.</p>
+<p>```
+[JDBC + WebFlux]
+이벤트 루프 스레드 → DB 쿼리 실행(블로킹) → 스레드 대기 → 처리량 저하</p>
+<p>[R2DBC + WebFlux]
+이벤트 루프 스레드 → DB 쿼리 요청(논블로킹) → 다른 요청 처리 → 결과 도착 시 콜백
+```</p>
 <h3 id="1513">15.1.3 지원 데이터베이스와 의존성 설정</h3>
-<p>R2DBC는 SPI 명세이므로, 각 데이터베이스 벤더 또는 커뮤니티가 드라이버를 제공한다.</p>
+<p>R2DBC는 SPI 명세이기 때문에 각 데이터베이스 벤더나 커뮤니티에서 드라이버를 구현합니다. 주요 데이터베이스의 상황은 다음과 같습니다.</p>
 <table>
 <thead>
 <tr>
@@ -136,27 +137,30 @@
 </tr>
 </tbody>
 </table>
-<p>이 장에서는 가장 널리 사용되는 <strong>PostgreSQL</strong>을 기준으로 설명한다. <code>build.gradle</code>에 R2DBC 관련 의존성을 추가한다.</p>
-<pre class="highlight"><code class="language-groovy">dependencies {
+<p>이 장에서는 가장 널리 사용되는 <strong>PostgreSQL</strong>을 기준으로 진행하겠습니다. 먼저 <code>build.gradle</code>에 R2DBC 관련 의존성을 추가해야 합니다.</p>
+<p>```groovy
+dependencies {
     // 기존 의존성
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
-    implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'
+    implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'</p>
+<pre><code>// R2DBC 의존성 추가
+implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
+implementation 'org.postgresql:r2dbc-postgresql'
 
-    // R2DBC 의존성 추가
-    implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
-    implementation 'org.postgresql:r2dbc-postgresql'
+// Flyway (스키마 마이그레이션) - R2DBC에서는 JDBC 드라이버도 필요
+implementation 'org.flywaydb:flyway-core'
+implementation 'org.flywaydb:flyway-database-postgresql'
+runtimeOnly 'org.postgresql:postgresql'
 
-    // Flyway (스키마 마이그레이션) - R2DBC에서는 JDBC 드라이버도 필요
-    implementation 'org.flywaydb:flyway-core'
-    implementation 'org.flywaydb:flyway-database-postgresql'
-    runtimeOnly 'org.postgresql:postgresql'
-
-    testImplementation 'io.r2dbc:r2dbc-h2'
-}</code></pre>
+testImplementation 'io.r2dbc:r2dbc-h2'
+</code></pre>
+<p>}
+```</p>
 <blockquote>
 <p><strong>참고</strong>: Flyway 같은 스키마 마이그레이션 도구는 아직 R2DBC를 직접 지원하지 않으므로, 마이그레이션 실행 시에만 JDBC 드라이버가 필요하다. Spring Boot는 시작 시 JDBC 드라이버로 마이그레이션을 수행한 후, 런타임에는 R2DBC 드라이버를 사용한다.</p>
 </blockquote>
 <h3 id="1514-spring-data-r2dbc">15.1.4 Spring Data R2DBC의 핵심 구성 요소</h3>
+<p>Spring Data R2DBC의 API는 MongoDB와 상당히 유사합니다. 다음 표를 보면 어떤 요소들이 있는지 이해할 수 있습니다.</p>
 <table>
 <thead>
 <tr>
@@ -187,23 +191,24 @@
 </tr>
 </tbody>
 </table>
-<p>MongoDB의 <code>ReactiveMongoRepository</code>를 사용해본 개발자라면 R2DBC 리포지토리도 거의 동일한 방식으로 사용할 수 있다.</p>
-<pre class="highlight"><code class="language-java">// MongoDB 리포지토리 (이미 익숙한 패턴)
+<p>MongoDB에서 <code>ReactiveMongoRepository</code>를 써본 개발자라면 R2DBC의 리포지토리도 거의 같은 방식으로 사용할 수 있습니다.</p>
+<p>```java
+// MongoDB 리포지토리 (이미 익숙한 패턴)
 public interface ProductRepository
-        extends ReactiveMongoRepository&lt;Product, String&gt; {
-    Flux&lt;Product&gt; findByCategory(String category);
-}
-
-// R2DBC 리포지토리 (거의 동일한 패턴)
+        extends ReactiveMongoRepository<Product, String> {
+    Flux<Product> findByCategory(String category);
+}</p>
+<p>// R2DBC 리포지토리 (거의 동일한 패턴)
 public interface PaymentRepository
-        extends ReactiveCrudRepository&lt;Payment, Long&gt; {
-    Flux&lt;Payment&gt; findByUserId(Long userId);
-}</code></pre>
+        extends ReactiveCrudRepository<Payment, Long> {
+    Flux<Payment> findByUserId(Long userId);
+}
+```</p>
 <hr>
 <h2 id="152-mongodb-r2dbc-db">15.2 MongoDB + R2DBC(관계형 DB) 멀티 데이터소스 구성</h2>
 <h3 id="1521">15.2.1 아키텍처 설계</h3>
-<p>멀티 데이터소스 아키텍처에서 각 데이터베이스의 역할을 명확히 나누는 것이 중요하다.</p>
-<pre class="highlight"><code>┌─────────────────────────────────────────────────┐
+<p>멀티 데이터소스 환경에서 성공의 핵심은 각 데이터베이스의 역할을 처음부터 명확히 정의하는 것입니다. 아래는 전형적인 전자상거래 플랫폼의 아키텍처입니다.</p>
+<p><code>┌─────────────────────────────────────────────────┐
 │                   Spring WebFlux                 │
 │                                                  │
 │  ┌──────────────┐         ┌──────────────────┐  │
@@ -216,7 +221,7 @@ public interface PaymentRepository
           │                          │
     ┌─────▼─────┐             ┌──────▼──────┐
     │ PostgreSQL │             │   MongoDB   │
-    └───────────┘             └─────────────┘</code></pre>
+    └───────────┘             └─────────────┘</code></p>
 <table>
 <thead>
 <tr>
@@ -239,15 +244,16 @@ public interface PaymentRepository
 </tr>
 </tbody>
 </table>
-<h3 id="1522-applicationyml">15.2.2 application.yml 두 데이터소스 설정</h3>
-<pre class="highlight"><code class="language-yaml">spring:
+<h3 id="1522-applicationyml">15.2.2 application.yml에 두 데이터소스 설정</h3>
+<p>설정 파일에서 MongoDB와 PostgreSQL의 접속 정보를 분리하여 정의합니다.</p>
+<p>```yaml
+spring:
   # MongoDB 설정
   data:
     mongodb:
       uri: mongodb://localhost:27017/shopdb
-      auto-index-creation: true
-
-  # R2DBC (PostgreSQL) 설정
+      auto-index-creation: true</p>
+<p># R2DBC (PostgreSQL) 설정
   r2dbc:
     url: r2dbc:postgresql://localhost:5432/shopdb
     username: shopuser
@@ -255,27 +261,27 @@ public interface PaymentRepository
     pool:
       initial-size: 5
       max-size: 20
-      max-idle-time: 30m
-
-  # Flyway (JDBC 기반 마이그레이션)
+      max-idle-time: 30m</p>
+<p># Flyway (JDBC 기반 마이그레이션)
   flyway:
     enabled: true
     url: jdbc:postgresql://localhost:5432/shopdb
     user: shopuser
     password: ${DB_PASSWORD:shoppass}
-    locations: classpath:db/migration</code></pre>
+    locations: classpath:db/migration
+```</p>
 <h3 id="1523-flyway">15.2.3 Flyway 스키마 마이그레이션</h3>
-<p>R2DBC는 관계형 DB를 사용하므로 테이블 스키마를 사전에 정의해야 한다. <code>src/main/resources/db/migration/V1__init.sql</code> 파일을 작성한다.</p>
-<pre class="highlight"><code class="language-sql">CREATE TABLE users (
+<p>관계형 데이터베이스를 사용하려면 테이블 스키마를 미리 정의해야 합니다. Flyway를 이용해 <code>src/main/resources/db/migration/V1__init.sql</code> 파일을 작성하겠습니다.</p>
+<p>```sql
+CREATE TABLE users (
     id          BIGSERIAL PRIMARY KEY,
     username    VARCHAR(50)  NOT NULL UNIQUE,
     email       VARCHAR(100) NOT NULL UNIQUE,
     password    VARCHAR(255) NOT NULL,
     role        VARCHAR(20)  NOT NULL DEFAULT 'USER',
     created_at  TIMESTAMP    NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE orders (
+);</p>
+<p>CREATE TABLE orders (
     id              BIGSERIAL PRIMARY KEY,
     user_id         BIGINT       NOT NULL REFERENCES users(id),
     order_number    VARCHAR(30)  NOT NULL UNIQUE,
@@ -283,9 +289,8 @@ CREATE TABLE orders (
     total_amount    DECIMAL(12,2) NOT NULL,
     shipping_address TEXT,
     created_at      TIMESTAMP    NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE order_items (
+);</p>
+<p>CREATE TABLE order_items (
     id          BIGSERIAL PRIMARY KEY,
     order_id    BIGINT       NOT NULL REFERENCES orders(id),
     product_id  VARCHAR(50)  NOT NULL,  -- MongoDB ObjectId 참조
@@ -293,9 +298,8 @@ CREATE TABLE order_items (
     quantity    INT          NOT NULL,
     unit_price  DECIMAL(10,2) NOT NULL,
     subtotal    DECIMAL(12,2) NOT NULL
-);
-
-CREATE TABLE payments (
+);</p>
+<p>CREATE TABLE payments (
     id              BIGSERIAL PRIMARY KEY,
     order_id        BIGINT       NOT NULL REFERENCES orders(id),
     payment_method  VARCHAR(30)  NOT NULL,
@@ -303,70 +307,74 @@ CREATE TABLE payments (
     status          VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
     transaction_id  VARCHAR(100),
     created_at      TIMESTAMP    NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_orders_user_id ON orders(user_id);
-CREATE INDEX idx_order_items_order_id ON order_items(order_id);</code></pre>
+);</p>
+<p>CREATE INDEX idx_orders_user_id ON orders(user_id);
+CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+```</p>
 <h3 id="1524-mongodbr2dbc">15.2.4 MongoDB/R2DBC 설정 클래스</h3>
-<p>두 데이터소스의 리포지토리 스캔 경로를 분리한다.</p>
-<pre class="highlight"><code class="language-java">@Configuration
+<p>두 데이터소스를 독립적으로 관리하려면 각각의 설정 클래스가 필요합니다. 리포지토리 스캔 경로를 분리하는 것이 핵심입니다.</p>
+<p>```java
+@Configuration
 @EnableR2dbcRepositories(basePackages = "com.example.shop.repository.r2dbc")
-public class R2dbcConfig extends AbstractR2dbcConfiguration {
+public class R2dbcConfig extends AbstractR2dbcConfiguration {</p>
+<pre><code>@Value("${spring.r2dbc.url}")
+private String url;
 
-    @Value("${spring.r2dbc.url}")
-    private String url;
+@Value("${spring.r2dbc.username}")
+private String username;
 
-    @Value("${spring.r2dbc.username}")
-    private String username;
+@Value("${spring.r2dbc.password}")
+private String password;
 
-    @Value("${spring.r2dbc.password}")
-    private String password;
+@Override
+@Bean
+public ConnectionFactory connectionFactory() {
+    return ConnectionFactories.get(ConnectionFactoryOptions.builder()
+        .from(ConnectionFactoryOptions.parse(url))
+        .option(ConnectionFactoryOptions.USER, username)
+        .option(ConnectionFactoryOptions.PASSWORD, password)
+        .build());
+}
 
-    @Override
-    @Bean
-    public ConnectionFactory connectionFactory() {
-        return ConnectionFactories.get(ConnectionFactoryOptions.builder()
-            .from(ConnectionFactoryOptions.parse(url))
-            .option(ConnectionFactoryOptions.USER, username)
-            .option(ConnectionFactoryOptions.PASSWORD, password)
-            .build());
-    }
-
-    @Bean
-    public ReactiveTransactionManager transactionManager(
-            ConnectionFactory connectionFactory) {
-        return new R2dbcTransactionManager(connectionFactory);
-    }
-}</code></pre>
-<pre class="highlight"><code class="language-java">@Configuration
+@Bean
+public ReactiveTransactionManager transactionManager(
+        ConnectionFactory connectionFactory) {
+    return new R2dbcTransactionManager(connectionFactory);
+}
+</code></pre>
+<p>}
+```</p>
+<p>```java
+@Configuration
 @EnableReactiveMongoRepositories(
     basePackages = "com.example.shop.repository.mongo"
 )
-public class MongoConfig extends AbstractReactiveMongoConfiguration {
+public class MongoConfig extends AbstractReactiveMongoConfiguration {</p>
+<pre><code>@Value("${spring.data.mongodb.uri}")
+private String mongoUri;
 
-    @Value("${spring.data.mongodb.uri}")
-    private String mongoUri;
+@Override
+protected String getDatabaseName() {
+    return "shopdb";
+}
 
-    @Override
-    protected String getDatabaseName() {
-        return "shopdb";
-    }
+@Override
+@Bean
+public MongoClient reactiveMongoClient() {
+    return MongoClients.create(mongoUri);
+}
 
-    @Override
-    @Bean
-    public MongoClient reactiveMongoClient() {
-        return MongoClients.create(mongoUri);
-    }
-
-    @Bean
-    public ReactiveMongoTransactionManager mongoTransactionManager(
-            ReactiveMongoDatabaseFactory dbFactory) {
-        return new ReactiveMongoTransactionManager(dbFactory);
-    }
-}</code></pre>
+@Bean
+public ReactiveMongoTransactionManager mongoTransactionManager(
+        ReactiveMongoDatabaseFactory dbFactory) {
+    return new ReactiveMongoTransactionManager(dbFactory);
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1525">15.2.5 패키지 구조</h3>
-<p>멀티 데이터소스를 사용할 때 패키지 구조를 명확히 분리하는 것이 유지보수에 유리하다.</p>
-<pre class="highlight"><code>com.example.shop
+<p>멀티 데이터소스 환경에서 패키지를 분리하면 나중에 코드를 유지보수할 때 훨씬 수월합니다.</p>
+<p><code>com.example.shop
 ├── config
 │   ├── R2dbcConfig.java
 │   └── MongoConfig.java
@@ -386,140 +394,151 @@ public class MongoConfig extends AbstractReactiveMongoConfiguration {
 │       ├── ProductRepository.java
 │       └── ReviewRepository.java
 ├── service
-└── controller</code></pre>
+└── controller</code></p>
 <h3 id="1526">15.2.6 엔티티와 도큐먼트 정의</h3>
-<p>R2DBC 엔티티는 <code>@Table</code>, <code>@Id</code>, <code>@Column</code> 어노테이션을 사용한다.</p>
-<pre class="highlight"><code class="language-java">@Table("orders")
+<p>R2DBC 엔티티는 MongoDB와 다르게 <code>@Table</code>, <code>@Id</code>, <code>@Column</code> 어노테이션을 사용합니다. 다음은 주문 테이블을 매핑한 예제입니다.</p>
+<p>```java
+@Table("orders")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class OrderEntity {
+public class OrderEntity {</p>
+<pre><code>@Id
+private Long id;
 
-    @Id
-    private Long id;
+@Column("user_id")
+private Long userId;
 
-    @Column("user_id")
-    private Long userId;
+@Column("order_number")
+private String orderNumber;
 
-    @Column("order_number")
-    private String orderNumber;
+private String status;
 
-    private String status;
+@Column("total_amount")
+private BigDecimal totalAmount;
 
-    @Column("total_amount")
-    private BigDecimal totalAmount;
+@Column("shipping_address")
+private String shippingAddress;
 
-    @Column("shipping_address")
-    private String shippingAddress;
-
-    @Column("created_at")
-    private LocalDateTime createdAt;
-}</code></pre>
-<p>MongoDB 도큐먼트는 유연한 스키마의 장점을 활용한다.</p>
-<pre class="highlight"><code class="language-java">@Document(collection = "products")
+@Column("created_at")
+private LocalDateTime createdAt;
+</code></pre>
+<p>}
+```</p>
+<p>한편 MongoDB 도큐먼트는 유연한 스키마의 장점을 충분히 활용합니다. 상품 정보처럼 다양한 속성이 필요한 경우가 좋은 예입니다.</p>
+<p>```java
+@Document(collection = "products")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Product {
-
-    @Id
-    private String id;
-    private String name;
-    private String description;
-    private String category;
-    private BigDecimal price;
-    private int stockQuantity;
-    private List&lt;String&gt; tags;
-    private Map&lt;String, String&gt; attributes;  // 유연한 속성
-    private LocalDateTime createdAt;
-}</code></pre>
+public class Product {</p>
+<pre><code>@Id
+private String id;
+private String name;
+private String description;
+private String category;
+private BigDecimal price;
+private int stockQuantity;
+private List&lt;String&gt; tags;
+private Map&lt;String, String&gt; attributes;  // 유연한 속성
+private LocalDateTime createdAt;
+</code></pre>
+<p>}
+```</p>
 <h3 id="1527">15.2.7 각 리포지토리</h3>
-<p>두 데이터소스의 리포지토리를 패키지별로 분리하여 정의한다.</p>
-<pre class="highlight"><code class="language-java">// R2DBC 리포지토리 (com.example.shop.repository.r2dbc)
-public interface OrderRepository extends ReactiveCrudRepository&lt;OrderEntity, Long&gt; {
-    Flux&lt;OrderEntity&gt; findByUserIdOrderByCreatedAtDesc(Long userId);
-    Mono&lt;OrderEntity&gt; findByOrderNumber(String orderNumber);
+<p>두 데이터소스의 리포지토리를 패키지별로 명확히 분리하여 정의합니다.</p>
+<p>```java
+// R2DBC 리포지토리 (com.example.shop.repository.r2dbc)
+public interface OrderRepository extends ReactiveCrudRepository<OrderEntity, Long> {
+    Flux<OrderEntity> findByUserIdOrderByCreatedAtDesc(Long userId);
+    Mono<OrderEntity> findByOrderNumber(String orderNumber);
+}</p>
+<p>public interface OrderItemRepository
+        extends ReactiveCrudRepository<OrderItemEntity, Long> {
+    Flux<OrderItemEntity> findByOrderId(Long orderId);
 }
-
-public interface OrderItemRepository
-        extends ReactiveCrudRepository&lt;OrderItemEntity, Long&gt; {
-    Flux&lt;OrderItemEntity&gt; findByOrderId(Long orderId);
-}</code></pre>
-<pre class="highlight"><code class="language-java">// MongoDB 리포지토리 (com.example.shop.repository.mongo)
+```</p>
+<p>```java
+// MongoDB 리포지토리 (com.example.shop.repository.mongo)
 public interface ProductRepository
-        extends ReactiveMongoRepository&lt;Product, String&gt; {
-    Flux&lt;Product&gt; findByCategory(String category);
-
-    @Query("{ 'price': { '$gte': ?0, '$lte': ?1 } }")
-    Flux&lt;Product&gt; findByPriceRange(BigDecimal minPrice, BigDecimal maxPrice);
+        extends ReactiveMongoRepository<Product, String> {
+    Flux<Product> findByCategory(String category);</p>
+<pre><code>@Query("{ 'price': { '$gte': ?0, '$lte': ?1 } }")
+Flux&lt;Product&gt; findByPriceRange(BigDecimal minPrice, BigDecimal maxPrice);
+</code></pre>
+<p>}</p>
+<p>public interface ReviewRepository
+        extends ReactiveMongoRepository<Review, String> {
+    Flux<Review> findByProductIdOrderByCreatedAtDesc(String productId);
+    Mono<Long> countByProductId(String productId);
 }
-
-public interface ReviewRepository
-        extends ReactiveMongoRepository&lt;Review, String&gt; {
-    Flux&lt;Review&gt; findByProductIdOrderByCreatedAtDesc(String productId);
-    Mono&lt;Long&gt; countByProductId(String productId);
-}</code></pre>
+```</p>
 <hr>
 <h2 id="153">15.3 리액티브 환경에서 여러 데이터소스 조합하기</h2>
 <h3 id="1531">15.3.1 데이터 조합 패턴</h3>
-<p>두 데이터소스의 데이터를 조합할 때 Reactor의 연산자를 활용한다.</p>
+<p>멀티 데이터소스 환경에서 실제 가치를 발휘하려면 두 데이터베이스의 결과를 효과적으로 조합해야 합니다. Reactor의 연산자들이 이 부분에서 핵심 역할을 합니다.</p>
 <p><strong>패턴 1: 순차 조합 (flatMap)</strong> -- 한쪽 결과를 기반으로 다른 데이터소스를 조회한다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class OrderQueryService {
+public class OrderQueryService {</p>
+<pre><code>private final OrderRepository orderRepository;         // R2DBC
+private final OrderItemRepository orderItemRepository; // R2DBC
+private final ProductRepository productRepository;     // MongoDB
 
-    private final OrderRepository orderRepository;         // R2DBC
-    private final OrderItemRepository orderItemRepository; // R2DBC
-    private final ProductRepository productRepository;     // MongoDB
-
-    public Mono&lt;OrderDetailResponse&gt; getOrderDetail(Long orderId) {
-        return orderRepository.findById(orderId)
-            .switchIfEmpty(Mono.error(
-                new NotFoundException("주문을 찾을 수 없습니다: " + orderId)))
-            .flatMap(order -&gt; orderItemRepository.findByOrderId(orderId)
-                .flatMap(item -&gt; productRepository.findById(item.getProductId())
-                    .map(product -&gt; OrderItemDetail.builder()
-                        .productName(product.getName())
-                        .category(product.getCategory())
-                        .quantity(item.getQuantity())
-                        .unitPrice(item.getUnitPrice())
-                        .build()))
-                .collectList()
-                .map(items -&gt; OrderDetailResponse.builder()
-                    .orderId(order.getId())
-                    .orderNumber(order.getOrderNumber())
-                    .status(order.getStatus())
-                    .totalAmount(order.getTotalAmount())
-                    .items(items)
-                    .createdAt(order.getCreatedAt())
-                    .build()));
-    }
-}</code></pre>
-<p><strong>패턴 2: 병렬 조합 (zip)</strong> -- 서로 독립적인 데이터를 병렬로 조회하여 조합한다.</p>
-<pre class="highlight"><code class="language-java">public Mono&lt;ProductPageResponse&gt; getProductPage(String productId) {
-    Mono&lt;Product&gt; productMono = productRepository.findById(productId)
+public Mono&lt;OrderDetailResponse&gt; getOrderDetail(Long orderId) {
+    return orderRepository.findById(orderId)
         .switchIfEmpty(Mono.error(
-            new NotFoundException("상품을 찾을 수 없습니다: " + productId)));
+            new NotFoundException("주문을 찾을 수 없습니다: " + orderId)))
+        .flatMap(order -&gt; orderItemRepository.findByOrderId(orderId)
+            .flatMap(item -&gt; productRepository.findById(item.getProductId())
+                .map(product -&gt; OrderItemDetail.builder()
+                    .productName(product.getName())
+                    .category(product.getCategory())
+                    .quantity(item.getQuantity())
+                    .unitPrice(item.getUnitPrice())
+                    .build()))
+            .collectList()
+            .map(items -&gt; OrderDetailResponse.builder()
+                .orderId(order.getId())
+                .orderNumber(order.getOrderNumber())
+                .status(order.getStatus())
+                .totalAmount(order.getTotalAmount())
+                .items(items)
+                .createdAt(order.getCreatedAt())
+                .build()));
+}
+</code></pre>
+<p>}
+```</p>
+<p><strong>패턴 2: 병렬 조합 (zip)</strong> -- 서로 독립적인 데이터를 병렬로 조회하여 조합한다.</p>
+<p>```java
+public Mono<ProductPageResponse> getProductPage(String productId) {
+    Mono<Product> productMono = productRepository.findById(productId)
+        .switchIfEmpty(Mono.error(
+            new NotFoundException("상품을 찾을 수 없습니다: " + productId)));</p>
+<pre><code>Mono&lt;List&lt;Review&gt;&gt; reviewsMono = reviewRepository
+    .findByProductIdOrderByCreatedAtDesc(productId)
+    .collectList();
 
-    Mono&lt;List&lt;Review&gt;&gt; reviewsMono = reviewRepository
-        .findByProductIdOrderByCreatedAtDesc(productId)
-        .collectList();
+Mono&lt;Long&gt; reviewCountMono = reviewRepository.countByProductId(productId);
 
-    Mono&lt;Long&gt; reviewCountMono = reviewRepository.countByProductId(productId);
-
-    return Mono.zip(productMono, reviewsMono, reviewCountMono)
-        .map(tuple -&gt; ProductPageResponse.builder()
-            .product(tuple.getT1())
-            .reviews(tuple.getT2())
-            .totalReviews(tuple.getT3())
-            .build());
-}</code></pre>
+return Mono.zip(productMono, reviewsMono, reviewCountMono)
+    .map(tuple -&gt; ProductPageResponse.builder()
+        .product(tuple.getT1())
+        .reviews(tuple.getT2())
+        .totalReviews(tuple.getT3())
+        .build());
+</code></pre>
+<p>}
+```</p>
 <h3 id="1532">15.3.2 트랜잭션 주의사항</h3>
-<p>멀티 데이터소스 환경에서 트랜잭션은 가장 까다로운 부분이다.</p>
+<p>멀티 데이터소스 환경에서 트랜잭션은 가장 까다로운 부분입니다. 필자의 경험상 여기서 실수하면 데이터 불일치 문제가 프로덕션까지 고스란히 들어갑니다.</p>
 <p><strong>원칙 1: 각 데이터소스의 트랜잭션은 독립적이다</strong></p>
-<pre class="highlight"><code class="language-java">// 이 코드는 PostgreSQL 트랜잭션만 보장한다.
+<p><code>java
+// 이 코드는 PostgreSQL 트랜잭션만 보장한다.
 // MongoDB 저장이 실패해도 PostgreSQL 변경은 롤백되지 않는다!
 @Transactional  // R2dbcTransactionManager가 기본으로 동작
 public Mono&lt;Order&gt; createOrder(OrderRequest request) {
@@ -527,306 +546,323 @@ public Mono&lt;Order&gt; createOrder(OrderRequest request) {
         .flatMap(order -&gt;
             productRepository.save(updatedProduct)     // MongoDB - 트랜잭션 X
                 .thenReturn(order));
-}</code></pre>
+}</code></p>
 <p><strong>원칙 2: 트랜잭션 매니저를 명시적으로 지정한다</strong></p>
-<pre class="highlight"><code class="language-java">// PostgreSQL 트랜잭션 사용
+<p>```java
+// PostgreSQL 트랜잭션 사용
 @Transactional("transactionManager")
-public Mono&lt;OrderEntity&gt; saveOrder(OrderEntity order) {
+public Mono<OrderEntity> saveOrder(OrderEntity order) {
     return orderRepository.save(order);
-}
-
-// MongoDB 트랜잭션 사용
+}</p>
+<p>// MongoDB 트랜잭션 사용
 @Transactional("mongoTransactionManager")
-public Mono&lt;Product&gt; updateProduct(Product product) {
+public Mono<Product> updateProduct(Product product) {
     return productRepository.save(product);
-}</code></pre>
+}
+```</p>
 <p><strong>원칙 3: 보상 트랜잭션(Saga) 패턴을 활용한다</strong></p>
-<p>두 데이터소스에 걸친 작업에서 일관성을 보장하려면 Saga 패턴을 적용한다. 한쪽이 실패하면 이미 성공한 다른 쪽의 변경을 보상(되돌리기)하는 방식이다.</p>
+<p>분산 환경에서 일관성을 보장하는 가장 실용적인 방법은 Saga 패턴입니다. 한쪽이 실패하면 이미 성공한 다른 쪽의 변경을 의도적으로 되돌리는 방식인데, 이를 보상(compensation)이라고 부릅니다.</p>
 <h3 id="1533-saga">15.3.3 실전 예제: 주문 시스템 (Saga 패턴)</h3>
-<p>재고 차감(MongoDB) -&gt; 주문 생성(PostgreSQL) -&gt; 결제 처리(PostgreSQL) 순서로 진행하며, 각 단계 실패 시 이전 단계를 보상하는 서비스를 구현한다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>이제 실제 온라인 쇼핑 플랫폼에서 사용할 수 있는 주문 서비스를 구현해봅시다. 재고 차감(MongoDB) -&gt; 주문 생성(PostgreSQL) -&gt; 결제 처리(PostgreSQL) 순서로 진행하는데, 각 단계가 실패하면 이전 단계들을 순차적으로 보상합니다.</p>
+<p>```java
+@Service
 @RequiredArgsConstructor
 @Slf4j
-public class OrderSagaService {
+public class OrderSagaService {</p>
+<pre><code>private final OrderRepository orderRepository;
+private final OrderItemRepository orderItemRepository;
+private final ProductRepository productRepository;
+private final PaymentRepository paymentRepository;
 
-    private final OrderRepository orderRepository;
-    private final OrderItemRepository orderItemRepository;
-    private final ProductRepository productRepository;
-    private final PaymentRepository paymentRepository;
-
-    /**
-     * 보상 트랜잭션 패턴:
-     * 1. 재고 차감 (MongoDB) -&gt; 실패 시 즉시 에러
-     * 2. 주문 생성 (PostgreSQL) -&gt; 실패 시 재고 복원
-     * 3. 결제 처리 (PostgreSQL) -&gt; 실패 시 주문 취소 + 재고 복원
-     */
-    public Mono&lt;OrderResult&gt; placeOrder(Long userId, OrderRequest request) {
-        return decreaseStock(request.getItems())
-            .then(createOrderInDb(userId, request))
-            .flatMap(order -&gt; processPayment(order, request)
-                .thenReturn(order)
-                .onErrorResume(paymentError -&gt; {
-                    log.error("결제 실패, 보상 시작", paymentError);
-                    return cancelOrder(order)
-                        .then(restoreStock(request.getItems()))
-                        .then(Mono.error(new PaymentException(
-                            "결제 처리에 실패했습니다.", paymentError)));
-                }))
-            .onErrorResume(orderError -&gt; {
-                if (!(orderError instanceof PaymentException)) {
-                    log.error("주문 생성 실패, 재고 복원", orderError);
-                    return restoreStock(request.getItems())
-                        .then(Mono.error(new OrderException(
-                            "주문 생성에 실패했습니다.", orderError)));
-                }
-                return Mono.error(orderError);
-            })
-            .map(order -&gt; OrderResult.builder()
-                .orderId(order.getId())
-                .orderNumber(order.getOrderNumber())
-                .status("COMPLETED")
-                .build());
-    }
-
-    private Mono&lt;Void&gt; decreaseStock(List&lt;OrderItemRequest&gt; items) {
-        return Flux.fromIterable(items)
-            .flatMap(item -&gt; productRepository.findById(item.getProductId())
-                .switchIfEmpty(Mono.error(new NotFoundException(
-                    "상품을 찾을 수 없습니다: " + item.getProductId())))
-                .flatMap(product -&gt; {
-                    if (product.getStockQuantity() &lt; item.getQuantity()) {
-                        return Mono.error(new InsufficientStockException(
-                            product.getName() + " 재고가 부족합니다."));
-                    }
-                    product.setStockQuantity(
-                        product.getStockQuantity() - item.getQuantity());
-                    return productRepository.save(product);
-                }))
-            .then();
-    }
-
-    private Mono&lt;Void&gt; restoreStock(List&lt;OrderItemRequest&gt; items) {
-        return Flux.fromIterable(items)
-            .flatMap(item -&gt; productRepository.findById(item.getProductId())
-                .flatMap(product -&gt; {
-                    product.setStockQuantity(
-                        product.getStockQuantity() + item.getQuantity());
-                    return productRepository.save(product);
-                }))
-            .then();
-    }
-
-    private Mono&lt;OrderEntity&gt; createOrderInDb(Long userId, OrderRequest request) {
-        OrderEntity order = OrderEntity.builder()
-            .userId(userId)
-            .orderNumber("ORD-" + System.currentTimeMillis())
-            .status("PENDING")
-            .totalAmount(request.calculateTotalAmount())
-            .shippingAddress(request.getShippingAddress())
-            .createdAt(LocalDateTime.now())
-            .build();
-
-        return orderRepository.save(order)
-            .flatMap(savedOrder -&gt; {
-                List&lt;OrderItemEntity&gt; orderItems = request.getItems().stream()
-                    .map(item -&gt; OrderItemEntity.builder()
-                        .orderId(savedOrder.getId())
-                        .productId(item.getProductId())
-                        .productName(item.getProductName())
-                        .quantity(item.getQuantity())
-                        .unitPrice(item.getUnitPrice())
-                        .subtotal(item.getUnitPrice()
-                            .multiply(BigDecimal.valueOf(item.getQuantity())))
-                        .build())
-                    .toList();
-                return orderItemRepository.saveAll(orderItems)
-                    .then(Mono.just(savedOrder));
-            });
-    }
-
-    private Mono&lt;Void&gt; processPayment(OrderEntity order, OrderRequest request) {
-        PaymentEntity payment = PaymentEntity.builder()
+/**
+ * 보상 트랜잭션 패턴:
+ * 1. 재고 차감 (MongoDB) -&gt; 실패 시 즉시 에러
+ * 2. 주문 생성 (PostgreSQL) -&gt; 실패 시 재고 복원
+ * 3. 결제 처리 (PostgreSQL) -&gt; 실패 시 주문 취소 + 재고 복원
+ */
+public Mono&lt;OrderResult&gt; placeOrder(Long userId, OrderRequest request) {
+    return decreaseStock(request.getItems())
+        .then(createOrderInDb(userId, request))
+        .flatMap(order -&gt; processPayment(order, request)
+            .thenReturn(order)
+            .onErrorResume(paymentError -&gt; {
+                log.error("결제 실패, 보상 시작", paymentError);
+                return cancelOrder(order)
+                    .then(restoreStock(request.getItems()))
+                    .then(Mono.error(new PaymentException(
+                        "결제 처리에 실패했습니다.", paymentError)));
+            }))
+        .onErrorResume(orderError -&gt; {
+            if (!(orderError instanceof PaymentException)) {
+                log.error("주문 생성 실패, 재고 복원", orderError);
+                return restoreStock(request.getItems())
+                    .then(Mono.error(new OrderException(
+                        "주문 생성에 실패했습니다.", orderError)));
+            }
+            return Mono.error(orderError);
+        })
+        .map(order -&gt; OrderResult.builder()
             .orderId(order.getId())
-            .paymentMethod(request.getPaymentMethod())
-            .amount(order.getTotalAmount())
+            .orderNumber(order.getOrderNumber())
             .status("COMPLETED")
-            .transactionId("TXN-" + UUID.randomUUID())
-            .createdAt(LocalDateTime.now())
-            .build();
-        return paymentRepository.save(payment).then();
-    }
+            .build());
+}
 
-    private Mono&lt;Void&gt; cancelOrder(OrderEntity order) {
-        order.setStatus("CANCELLED");
-        return orderRepository.save(order).then();
-    }
-}</code></pre>
+private Mono&lt;Void&gt; decreaseStock(List&lt;OrderItemRequest&gt; items) {
+    return Flux.fromIterable(items)
+        .flatMap(item -&gt; productRepository.findById(item.getProductId())
+            .switchIfEmpty(Mono.error(new NotFoundException(
+                "상품을 찾을 수 없습니다: " + item.getProductId())))
+            .flatMap(product -&gt; {
+                if (product.getStockQuantity() &lt; item.getQuantity()) {
+                    return Mono.error(new InsufficientStockException(
+                        product.getName() + " 재고가 부족합니다."));
+                }
+                product.setStockQuantity(
+                    product.getStockQuantity() - item.getQuantity());
+                return productRepository.save(product);
+            }))
+        .then();
+}
+
+private Mono&lt;Void&gt; restoreStock(List&lt;OrderItemRequest&gt; items) {
+    return Flux.fromIterable(items)
+        .flatMap(item -&gt; productRepository.findById(item.getProductId())
+            .flatMap(product -&gt; {
+                product.setStockQuantity(
+                    product.getStockQuantity() + item.getQuantity());
+                return productRepository.save(product);
+            }))
+        .then();
+}
+
+private Mono&lt;OrderEntity&gt; createOrderInDb(Long userId, OrderRequest request) {
+    OrderEntity order = OrderEntity.builder()
+        .userId(userId)
+        .orderNumber("ORD-" + System.currentTimeMillis())
+        .status("PENDING")
+        .totalAmount(request.calculateTotalAmount())
+        .shippingAddress(request.getShippingAddress())
+        .createdAt(LocalDateTime.now())
+        .build();
+
+    return orderRepository.save(order)
+        .flatMap(savedOrder -&gt; {
+            List&lt;OrderItemEntity&gt; orderItems = request.getItems().stream()
+                .map(item -&gt; OrderItemEntity.builder()
+                    .orderId(savedOrder.getId())
+                    .productId(item.getProductId())
+                    .productName(item.getProductName())
+                    .quantity(item.getQuantity())
+                    .unitPrice(item.getUnitPrice())
+                    .subtotal(item.getUnitPrice()
+                        .multiply(BigDecimal.valueOf(item.getQuantity())))
+                    .build())
+                .toList();
+            return orderItemRepository.saveAll(orderItems)
+                .then(Mono.just(savedOrder));
+        });
+}
+
+private Mono&lt;Void&gt; processPayment(OrderEntity order, OrderRequest request) {
+    PaymentEntity payment = PaymentEntity.builder()
+        .orderId(order.getId())
+        .paymentMethod(request.getPaymentMethod())
+        .amount(order.getTotalAmount())
+        .status("COMPLETED")
+        .transactionId("TXN-" + UUID.randomUUID())
+        .createdAt(LocalDateTime.now())
+        .build();
+    return paymentRepository.save(payment).then();
+}
+
+private Mono&lt;Void&gt; cancelOrder(OrderEntity order) {
+    order.setStatus("CANCELLED");
+    return orderRepository.save(order).then();
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1534">15.3.4 컨트롤러 구현</h3>
-<pre class="highlight"><code class="language-java">@RestController
+<p>이제 클라이언트 요청을 받아서 주문 서비스와 조회 서비스를 호출하는 컨트롤러를 만듭니다.</p>
+<p>```java
+@RestController
 @RequestMapping("/api/orders")
 @RequiredArgsConstructor
-public class OrderController {
+public class OrderController {</p>
+<pre><code>private final OrderSagaService orderSagaService;
+private final OrderQueryService orderQueryService;
 
-    private final OrderSagaService orderSagaService;
-    private final OrderQueryService orderQueryService;
+@PostMapping
+@ResponseStatus(HttpStatus.CREATED)
+public Mono&lt;OrderResult&gt; placeOrder(
+        @AuthenticationPrincipal Mono&lt;UserDetails&gt; principal,
+        @Valid @RequestBody OrderRequest request) {
+    return principal.flatMap(user -&gt; {
+        Long userId = Long.parseLong(user.getUsername());
+        return orderSagaService.placeOrder(userId, request);
+    });
+}
 
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Mono&lt;OrderResult&gt; placeOrder(
-            @AuthenticationPrincipal Mono&lt;UserDetails&gt; principal,
-            @Valid @RequestBody OrderRequest request) {
-        return principal.flatMap(user -&gt; {
-            Long userId = Long.parseLong(user.getUsername());
-            return orderSagaService.placeOrder(userId, request);
-        });
-    }
+@GetMapping("/{orderId}")
+public Mono&lt;OrderDetailResponse&gt; getOrderDetail(@PathVariable Long orderId) {
+    return orderQueryService.getOrderDetail(orderId);
+}
 
-    @GetMapping("/{orderId}")
-    public Mono&lt;OrderDetailResponse&gt; getOrderDetail(@PathVariable Long orderId) {
-        return orderQueryService.getOrderDetail(orderId);
-    }
-
-    @GetMapping("/my")
-    public Flux&lt;OrderSummaryResponse&gt; getMyOrders(
-            @AuthenticationPrincipal Mono&lt;UserDetails&gt; principal) {
-        return principal.flatMapMany(user -&gt; {
-            Long userId = Long.parseLong(user.getUsername());
-            return orderQueryService.getUserOrders(userId);
-        });
-    }
-}</code></pre>
+@GetMapping("/my")
+public Flux&lt;OrderSummaryResponse&gt; getMyOrders(
+        @AuthenticationPrincipal Mono&lt;UserDetails&gt; principal) {
+    return principal.flatMapMany(user -&gt; {
+        Long userId = Long.parseLong(user.getUsername());
+        return orderQueryService.getUserOrders(userId);
+    });
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1535-databaseclient">15.3.5 DatabaseClient를 활용한 복잡한 쿼리</h3>
-<p>Spring Data R2DBC의 메서드 이름 기반 쿼리로 부족할 때, <code>DatabaseClient</code>로 SQL을 직접 작성한다.</p>
-<pre class="highlight"><code class="language-java">@Repository
+<p>Spring Data R2DBC의 자동 쿼리 생성만으로는 부족한 경우도 있습니다. 그럴 때는 <code>DatabaseClient</code>를 사용해 SQL을 직접 작성할 수 있습니다. 예를 들어 판매 통계 같은 복잡한 집계 쿼리를 실행할 때 유용합니다.</p>
+<p>```java
+@Repository
 @RequiredArgsConstructor
-public class OrderCustomRepository {
+public class OrderCustomRepository {</p>
+<pre><code>private final DatabaseClient databaseClient;
 
-    private final DatabaseClient databaseClient;
+public Flux&lt;SalesStatistics&gt; getSalesStatistics(
+        LocalDateTime from, LocalDateTime to) {
+    String sql = """
+        SELECT DATE(o.created_at) AS sale_date,
+               COUNT(o.id) AS order_count,
+               SUM(o.total_amount) AS total_sales
+        FROM orders o
+        WHERE o.status = 'COMPLETED'
+          AND o.created_at BETWEEN :from AND :to
+        GROUP BY DATE(o.created_at)
+        ORDER BY sale_date DESC
+        """;
 
-    public Flux&lt;SalesStatistics&gt; getSalesStatistics(
-            LocalDateTime from, LocalDateTime to) {
-        String sql = """
-            SELECT DATE(o.created_at) AS sale_date,
-                   COUNT(o.id) AS order_count,
-                   SUM(o.total_amount) AS total_sales
-            FROM orders o
-            WHERE o.status = 'COMPLETED'
-              AND o.created_at BETWEEN :from AND :to
-            GROUP BY DATE(o.created_at)
-            ORDER BY sale_date DESC
-            """;
-
-        return databaseClient.sql(sql)
-            .bind("from", from)
-            .bind("to", to)
-            .map((row, metadata) -&gt; SalesStatistics.builder()
-                .saleDate(row.get("sale_date", LocalDate.class))
-                .orderCount(row.get("order_count", Long.class))
-                .totalSales(row.get("total_sales", BigDecimal.class))
-                .build())
-            .all();
-    }
-}</code></pre>
+    return databaseClient.sql(sql)
+        .bind("from", from)
+        .bind("to", to)
+        .map((row, metadata) -&gt; SalesStatistics.builder()
+            .saleDate(row.get("sale_date", LocalDate.class))
+            .orderCount(row.get("order_count", Long.class))
+            .totalSales(row.get("total_sales", BigDecimal.class))
+            .build())
+        .all();
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1536">15.3.6 두 데이터소스 통계 조합</h3>
-<p>PostgreSQL의 주문 통계와 MongoDB의 상품 상세 정보를 조합하는 대시보드 서비스다.</p>
-<pre class="highlight"><code class="language-java">@Service
+<p>이제 실무에서 자주 만나는 시나리오를 다루겠습니다. PostgreSQL의 주문 집계 데이터와 MongoDB의 상품 상세 정보, 리뷰 정보를 조합해 대시보드를 구성하는 예제입니다.</p>
+<p>```java
+@Service
 @RequiredArgsConstructor
-public class DashboardService {
+public class DashboardService {</p>
+<pre><code>private final OrderCustomRepository orderCustomRepository;
+private final ProductRepository productRepository;
+private final ReviewRepository reviewRepository;
 
-    private final OrderCustomRepository orderCustomRepository;
-    private final ProductRepository productRepository;
-    private final ReviewRepository reviewRepository;
+public Flux&lt;PopularProductDashboard&gt; getPopularProductDashboard(int limit) {
+    return orderCustomRepository.getPopularProducts(limit)
+        .flatMap(stats -&gt; {
+            Mono&lt;Product&gt; productMono = productRepository
+                .findById(stats.getProductId())
+                .defaultIfEmpty(Product.builder()
+                    .id(stats.getProductId())
+                    .name(stats.getProductName())
+                    .category("UNKNOWN").build());
 
-    public Flux&lt;PopularProductDashboard&gt; getPopularProductDashboard(int limit) {
-        return orderCustomRepository.getPopularProducts(limit)
-            .flatMap(stats -&gt; {
-                Mono&lt;Product&gt; productMono = productRepository
-                    .findById(stats.getProductId())
-                    .defaultIfEmpty(Product.builder()
-                        .id(stats.getProductId())
-                        .name(stats.getProductName())
-                        .category("UNKNOWN").build());
+            Mono&lt;Double&gt; avgRatingMono = reviewRepository
+                .findByProductIdOrderByCreatedAtDesc(stats.getProductId())
+                .map(Review::getRating)
+                .collectList()
+                .map(ratings -&gt; ratings.stream()
+                    .mapToInt(Integer::intValue).average().orElse(0.0));
 
-                Mono&lt;Double&gt; avgRatingMono = reviewRepository
-                    .findByProductIdOrderByCreatedAtDesc(stats.getProductId())
-                    .map(Review::getRating)
-                    .collectList()
-                    .map(ratings -&gt; ratings.stream()
-                        .mapToInt(Integer::intValue).average().orElse(0.0));
-
-                return Mono.zip(productMono, avgRatingMono)
-                    .map(tuple -&gt; PopularProductDashboard.builder()
-                        .productId(stats.getProductId())
-                        .productName(stats.getProductName())
-                        .category(tuple.getT1().getCategory())
-                        .totalQuantitySold(stats.getTotalQuantity())
-                        .averageRating(tuple.getT2())
-                        .build());
-            });
-    }
-}</code></pre>
+            return Mono.zip(productMono, avgRatingMono)
+                .map(tuple -&gt; PopularProductDashboard.builder()
+                    .productId(stats.getProductId())
+                    .productName(stats.getProductName())
+                    .category(tuple.getT1().getCategory())
+                    .totalQuantitySold(stats.getTotalQuantity())
+                    .averageRating(tuple.getT2())
+                    .build());
+        });
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1537">15.3.7 멀티 데이터소스 환경의 베스트 프랙티스</h3>
+<p>멀티 데이터소스를 성공적으로 운영하려면 몇 가지 중요한 원칙들이 있습니다. 필자가 실제 프로젝트에서 배운 내용을 정리해봤습니다.</p>
 <p><strong>1. 데이터 비정규화로 정합성 관리</strong></p>
-<pre class="highlight"><code class="language-java">// 올바른 패턴: 주문 시점의 상품 정보를 비정규화하여 저장
+<p><code>java
+// 올바른 패턴: 주문 시점의 상품 정보를 비정규화하여 저장
 @Table("order_items")
 public class OrderItemEntity {
     private String productId;     // MongoDB ObjectId 참조
     private String productName;   // 비정규화 (주문 시점 상품명)
     private BigDecimal unitPrice; // 비정규화 (주문 시점 가격)
-}</code></pre>
+}</code></p>
 <p><strong>2. 에러 처리 통합</strong></p>
-<pre class="highlight"><code class="language-java">@RestControllerAdvice
-public class GlobalExceptionHandler {
+<p>```java
+@RestControllerAdvice
+public class GlobalExceptionHandler {</p>
+<pre><code>@ExceptionHandler(DataIntegrityViolationException.class)
+@ResponseStatus(HttpStatus.CONFLICT)
+public Mono&lt;ErrorResponse&gt; handleDataIntegrity(
+        DataIntegrityViolationException ex) {
+    return Mono.just(ErrorResponse.of("DATA_CONFLICT",
+        "데이터 무결성 위반이 발생했습니다."));
+}
 
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    @ResponseStatus(HttpStatus.CONFLICT)
-    public Mono&lt;ErrorResponse&gt; handleDataIntegrity(
-            DataIntegrityViolationException ex) {
-        return Mono.just(ErrorResponse.of("DATA_CONFLICT",
-            "데이터 무결성 위반이 발생했습니다."));
-    }
-
-    @ExceptionHandler(DuplicateKeyException.class)
-    @ResponseStatus(HttpStatus.CONFLICT)
-    public Mono&lt;ErrorResponse&gt; handleDuplicateKey(DuplicateKeyException ex) {
-        return Mono.just(ErrorResponse.of("DUPLICATE_KEY",
-            "중복된 데이터가 존재합니다."));
-    }
-}</code></pre>
+@ExceptionHandler(DuplicateKeyException.class)
+@ResponseStatus(HttpStatus.CONFLICT)
+public Mono&lt;ErrorResponse&gt; handleDuplicateKey(DuplicateKeyException ex) {
+    return Mono.just(ErrorResponse.of("DUPLICATE_KEY",
+        "중복된 데이터가 존재합니다."));
+}
+</code></pre>
+<p>}
+```</p>
 <p><strong>3. 헬스 체크 통합</strong></p>
-<pre class="highlight"><code class="language-java">@Component
+<p>```java
+@Component
 @RequiredArgsConstructor
 public class MultiDataSourceHealthIndicator
-        implements ReactiveHealthIndicator {
+        implements ReactiveHealthIndicator {</p>
+<pre><code>private final ConnectionFactory connectionFactory;
+private final ReactiveMongoTemplate mongoTemplate;
 
-    private final ConnectionFactory connectionFactory;
-    private final ReactiveMongoTemplate mongoTemplate;
+@Override
+public Mono&lt;Health&gt; health() {
+    Mono&lt;String&gt; r2dbcHealth = Mono.from(connectionFactory.create())
+        .flatMap(conn -&gt; Mono.from(conn.createStatement("SELECT 1")
+            .execute())
+            .flatMap(result -&gt; Mono.from(result.map((row, meta) -&gt; "UP")))
+            .doFinally(signal -&gt; conn.close()))
+        .onErrorReturn("DOWN");
 
-    @Override
-    public Mono&lt;Health&gt; health() {
-        Mono&lt;String&gt; r2dbcHealth = Mono.from(connectionFactory.create())
-            .flatMap(conn -&gt; Mono.from(conn.createStatement("SELECT 1")
-                .execute())
-                .flatMap(result -&gt; Mono.from(result.map((row, meta) -&gt; "UP")))
-                .doFinally(signal -&gt; conn.close()))
-            .onErrorReturn("DOWN");
+    Mono&lt;String&gt; mongoHealth = mongoTemplate.executeCommand("{ ping: 1 }")
+        .map(doc -&gt; "UP")
+        .onErrorReturn("DOWN");
 
-        Mono&lt;String&gt; mongoHealth = mongoTemplate.executeCommand("{ ping: 1 }")
-            .map(doc -&gt; "UP")
-            .onErrorReturn("DOWN");
-
-        return Mono.zip(r2dbcHealth, mongoHealth)
-            .map(tuple -&gt; {
-                boolean allUp = "UP".equals(tuple.getT1())
-                             &amp;&amp; "UP".equals(tuple.getT2());
-                return (allUp ? Health.up() : Health.down())
-                    .withDetail("postgresql", tuple.getT1())
-                    .withDetail("mongodb", tuple.getT2())
-                    .build();
-            });
-    }
-}</code></pre>
+    return Mono.zip(r2dbcHealth, mongoHealth)
+        .map(tuple -&gt; {
+            boolean allUp = "UP".equals(tuple.getT1())
+                         &amp;&amp; "UP".equals(tuple.getT2());
+            return (allUp ? Health.up() : Health.down())
+                .withDetail("postgresql", tuple.getT1())
+                .withDetail("mongodb", tuple.getT2())
+                .build();
+        });
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1538">15.3.8 주의사항 정리</h3>
+<p>마지막으로 멀티 데이터소스 환경에서 흔히 빠지는 함정들과 대응 방법을 정리했습니다. 이 부분을 꼼꼼히 읽어두면 나중에 많은 디버깅 시간을 절약할 수 있습니다.</p>
 <table>
 <thead>
 <tr>
@@ -863,7 +899,7 @@ public class MultiDataSourceHealthIndicator
 </table>
 <hr>
 <h2 id="_1">요약</h2>
-<p>이번 장에서는 리액티브 환경에서 관계형 데이터베이스에 접근하기 위한 R2DBC를 소개하고, MongoDB와 함께 사용하는 멀티 데이터소스 아키텍처를 다루었다.</p>
+<p>이번 장에서는 리액티브 환경에서 관계형 데이터베이스를 다루는 R2DBC를 살펴봤고, MongoDB와 함께 사용하는 멀티 데이터소스 아키텍처를 실전 예제로 학습했습니다.</p>
 <table>
 <thead>
 <tr>
@@ -898,8 +934,8 @@ public class MultiDataSourceHealthIndicator
 </tr>
 </tbody>
 </table>
-<p>R2DBC는 WebFlux 기반 애플리케이션에서 관계형 데이터베이스를 사용할 때 유일한 리액티브 선택지다. MongoDB와 함께 사용하면 각 데이터베이스의 장점을 최대한 활용할 수 있지만, 분산 트랜잭션과 데이터 정합성에 대한 신중한 설계가 필요하다.</p>
-<p>다음 장에서는 리액티브 테스트 전략을 다루며, StepVerifier와 WebTestClient를 활용한 테스트 작성법을 살펴본다.</p>
+<p>요약하면, R2DBC는 WebFlux 기반 애플리케이션에서 관계형 데이터베이스를 사용할 때 현재 유일한 리액티브 선택지입니다. MongoDB와 함께 사용하면 각 데이터베이스의 강점을 충분히 활용할 수 있지만, 분산 환경의 트랜잭션과 데이터 정합성 문제에 대한 신중한 설계가 필수적입니다. 이 장에서 다룬 Saga 패턴과 보상 트랜잭션 개념을 잘 이해하고 있다면, 복잡한 멀티 데이터소스 시스템도 자신감 있게 설계할 수 있을 겁니다.</p>
+<p>다음 장에서는 리액티브 애플리케이션을 체계적으로 테스트하는 전략을 다룹니다. StepVerifier와 WebTestClient를 활용해 리액티브 코드를 효과적으로 검증하는 방법을 살펴보겠습니다.</p>
     </main>
     <footer class="site-footer">
       &copy; 2024 Spring Boot + WebFlux + JPA (MongoDB) Book

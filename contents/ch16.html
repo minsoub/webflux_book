@@ -20,89 +20,92 @@
   <div class="wrapper">
     <main class="content">
       <h1 id="chapter-16">Chapter 16. 리액티브 테스트 전략</h1>
-<p>리액티브 프로그래밍은 비동기/논블로킹 특성상 전통적인 동기 방식의 테스트와는 접근법이 다르다. <code>Mono</code>와 <code>Flux</code>는 구독(subscribe)이 일어나기 전까지 아무것도 실행되지 않으며, 데이터가 비동기적으로 흘러가므로 단순히 반환값을 <code>assertEquals()</code>로 검증하는 방식은 적합하지 않다. 이번 장에서는 리액티브 테스트의 핵심 도구인 <strong>StepVerifier</strong>와 <strong>WebTestClient</strong>를 중심으로, Embedded MongoDB, Testcontainers, MockWebServer를 활용한 다양한 테스트 전략을 체계적으로 다룬다.</p>
+<p>리액티브 프로그래밍을 다룰 때 테스트 방식이 완전히 달라진다는 걸 깨닫게 된다. <code>Mono</code>와 <code>Flux</code>는 누군가 구독(subscribe)하기 전까지는 말 그대로 아무것도 실행되지 않고, 데이터가 비동기적으로 흘러가므로 전통적인 동기식 테스트처럼 단순히 반환값을 <code>assertEquals()</code>로 검증하는 방식은 통하지 않기 때문이다. 이 장에서는 실제로 리액티브 코드를 검증할 수 있는 핵심 도구들을 배우게 될 것이다. <strong>StepVerifier</strong>부터 <strong>WebTestClient</strong>까지, 그리고 Embedded MongoDB, Testcontainers, MockWebServer 등을 활용하는 실무적인 테스트 전략들을 살펴보자.</p>
 <hr>
 <h2 id="161-stepverifier">16.1 StepVerifier를 활용한 단위 테스트</h2>
 <h3 id="1611-stepverifier">16.1.1 StepVerifier란?</h3>
-<p><code>StepVerifier</code>는 Reactor에서 제공하는 테스트 유틸리티로, <code>Publisher</code>(Mono, Flux)가 방출하는 데이터 시퀀스를 단계별로 검증한다. <code>reactor-test</code> 모듈에 포함되어 있다.</p>
-<pre class="highlight"><code class="language-groovy">dependencies {
+<p><code>StepVerifier</code>는 Reactor 라이브러리에서 제공하는 테스트 헬퍼로, <code>Publisher</code>(Mono나 Flux)가 방출하는 데이터 시퀀스를 단계별로 검증하는 데 사용한다. <code>reactor-test</code> 모듈을 추가하면 바로 쓸 수 있다.</p>
+<p><code>groovy
+dependencies {
     testImplementation 'io.projectreactor:reactor-test'
-}</code></pre>
-<p>기본 사용 패턴은 다음과 같다.</p>
-<pre class="highlight"><code class="language-java">StepVerifier.create(publisher)   // 1. Publisher를 감싼다
+}</code></p>
+<p>기본 사용 패턴은 이렇다.</p>
+<p><code>java
+StepVerifier.create(publisher)   // 1. Publisher를 감싼다
     .expectNext(value)            // 2. 기대하는 값을 선언한다
-    .verifyComplete();            // 3. 완료 신호를 검증하고 구독을 시작한다</code></pre>
-<p><code>verifyComplete()</code>를 호출해야 실제 구독이 시작된다. 이 호출이 없으면 테스트는 아무것도 검증하지 않고 통과한다.</p>
+    .verifyComplete();            // 3. 완료 신호를 검증하고 구독을 시작한다</code></p>
+<p>중요한 포인트는 <code>verifyComplete()</code>를 호출해야 실제 구독이 시작된다는 점이다. 없으면 테스트는 아무것도 하지 않고 그냥 통과해버린다.</p>
 <h3 id="1612-expectnext-expectcomplete-expecterror">16.1.2 expectNext, expectComplete, expectError</h3>
-<p>가장 기본적인 검증 메서드들이다.</p>
-<pre class="highlight"><code class="language-java">@Test
+<p>리액티브 시퀀스를 검증할 때 가장 자주 쓰는 메서드들을 살펴보자.</p>
+<p>```java
+@Test
 void mono_단일값_검증() {
-    Mono&lt;String&gt; mono = Mono.just("Hello WebFlux");
-
-    StepVerifier.create(mono)
-        .expectNext("Hello WebFlux")
-        .verifyComplete();
-}
-
-@Test
+    Mono<String> mono = Mono.just("Hello WebFlux");</p>
+<pre><code>StepVerifier.create(mono)
+    .expectNext("Hello WebFlux")
+    .verifyComplete();
+</code></pre>
+<p>}</p>
+<p>@Test
 void flux_다중값_검증() {
-    Flux&lt;Integer&gt; flux = Flux.just(1, 2, 3, 4, 5);
-
-    StepVerifier.create(flux)
-        .expectNext(1)
-        .expectNext(2)
-        .expectNext(3, 4, 5)  // 여러 값을 한 번에 검증
-        .verifyComplete();
-}
-
-@Test
+    Flux<Integer> flux = Flux.just(1, 2, 3, 4, 5);</p>
+<pre><code>StepVerifier.create(flux)
+    .expectNext(1)
+    .expectNext(2)
+    .expectNext(3, 4, 5)  // 여러 값을 한 번에 검증
+    .verifyComplete();
+</code></pre>
+<p>}</p>
+<p>@Test
 void flux_개수_검증() {
-    Flux&lt;String&gt; flux = Flux.just("a", "b", "c");
-
-    StepVerifier.create(flux)
-        .expectNextCount(3)   // 값의 내용은 무시하고 개수만 확인
-        .verifyComplete();
-}
-
-@Test
+    Flux<String> flux = Flux.just("a", "b", "c");</p>
+<pre><code>StepVerifier.create(flux)
+    .expectNextCount(3)   // 값의 내용은 무시하고 개수만 확인
+    .verifyComplete();
+</code></pre>
+<p>}</p>
+<p>@Test
 void mono_에러_검증() {
-    Mono&lt;String&gt; errorMono = Mono.error(
-        new IllegalArgumentException("잘못된 입력입니다"));
-
-    StepVerifier.create(errorMono)
-        .expectError(IllegalArgumentException.class)
-        .verify();  // 에러로 종료되므로 verifyComplete() 대신 verify()
-}
-
-@Test
+    Mono<String> errorMono = Mono.error(
+        new IllegalArgumentException("잘못된 입력입니다"));</p>
+<pre><code>StepVerifier.create(errorMono)
+    .expectError(IllegalArgumentException.class)
+    .verify();  // 에러로 종료되므로 verifyComplete() 대신 verify()
+</code></pre>
+<p>}</p>
+<p>@Test
 void mono_에러_메시지와_조건_검증() {
-    Mono&lt;String&gt; errorMono = Mono.error(
-        new NotFoundException("ID-001", "상품을 찾을 수 없습니다"));
-
-    StepVerifier.create(errorMono)
-        .expectErrorMatches(throwable -&gt;
-            throwable instanceof NotFoundException
-            &amp;&amp; throwable.getMessage().contains("ID-001"))
-        .verify();
-}</code></pre>
+    Mono<String> errorMono = Mono.error(
+        new NotFoundException("ID-001", "상품을 찾을 수 없습니다"));</p>
+<pre><code>StepVerifier.create(errorMono)
+    .expectErrorMatches(throwable -&gt;
+        throwable instanceof NotFoundException
+        &amp;&amp; throwable.getMessage().contains("ID-001"))
+    .verify();
+</code></pre>
+<p>}
+```</p>
 <h3 id="1613-assertnext">16.1.3 assertNext</h3>
-<p><code>assertNext()</code>는 방출된 값에 대해 복잡한 단언(assertion)을 수행할 때 사용한다. <code>Consumer&lt;T&gt;</code>를 받으므로 AssertJ와 조합하기 좋다.</p>
-<pre class="highlight"><code class="language-java">@Test
+<p>방출된 값에 대해 좀 더 복잡한 검증이 필요할 때는 <code>assertNext()</code>를 쓴다. <code>Consumer&lt;T&gt;</code>를 입력받기 때문에 AssertJ와 함께 써도 깔끔하다.</p>
+<p>```java
+@Test
 void assertNext로_복잡한_검증() {
-    Mono&lt;Product&gt; productMono = productService.findById("prod-001");
-
-    StepVerifier.create(productMono)
-        .assertNext(product -&gt; {
-            assertThat(product.getId()).isEqualTo("prod-001");
-            assertThat(product.getName()).isNotBlank();
-            assertThat(product.getPrice()).isPositive();
-            assertThat(product.getCategory()).isIn("ELECTRONICS", "BOOKS");
-        })
-        .verifyComplete();
-}</code></pre>
+    Mono<Product> productMono = productService.findById("prod-001");</p>
+<pre><code>StepVerifier.create(productMono)
+    .assertNext(product -&gt; {
+        assertThat(product.getId()).isEqualTo("prod-001");
+        assertThat(product.getName()).isNotBlank();
+        assertThat(product.getPrice()).isPositive();
+        assertThat(product.getCategory()).isIn("ELECTRONICS", "BOOKS");
+    })
+    .verifyComplete();
+</code></pre>
+<p>}
+```</p>
 <h3 id="1614-withvirtualtime">16.1.4 withVirtualTime</h3>
-<p><code>Flux.interval()</code>이나 <code>Mono.delay()</code>처럼 시간에 의존하는 연산을 테스트할 때, 실제 시간 경과를 기다리면 테스트가 느려진다. <code>withVirtualTime()</code>은 가상 시간을 사용하여 시간 흐름을 즉시 시뮬레이션한다.</p>
-<pre class="highlight"><code class="language-java">@Test
+<p><code>Flux.interval()</code>이나 <code>Mono.delay()</code>처럼 시간에 의존하는 연산들을 테스트하려면 좀 다른 접근이 필요하다. 실제 시간을 기다리면 테스트 속도가 엄청 느려지니까, <code>withVirtualTime()</code>을 사용해서 시간을 스뮬레이션하는 게 훨씬 낫다.</p>
+<p>```java
+@Test
 void 가상_시간으로_지연_검증() {
     StepVerifier.withVirtualTime(
             () -&gt; Mono.just("결과").delayElement(Duration.ofHours(1)))
@@ -111,9 +114,8 @@ void 가상_시간으로_지연_검증() {
         .thenAwait(Duration.ofMinutes(1))        // 1분 경과 시뮬레이션
         .expectNext("결과")
         .verifyComplete();
-}
-
-@Test
+}</p>
+<p>@Test
 void 가상_시간으로_interval_검증() {
     StepVerifier.withVirtualTime(
             () -&gt; Flux.interval(Duration.ofSeconds(1)).take(3))
@@ -121,68 +123,71 @@ void 가상_시간으로_interval_검증() {
         .thenAwait(Duration.ofSeconds(3))
         .expectNext(0L, 1L, 2L)
         .verifyComplete();
-}</code></pre>
+}
+```</p>
 <blockquote>
 <p><strong>주의</strong>: <code>withVirtualTime()</code>에 전달하는 <code>Supplier</code>는 반드시 람다 내부에서 <code>Publisher</code>를 생성해야 한다. 외부에서 생성한 <code>Publisher</code>를 전달하면 가상 시간 스케줄러가 올바르게 주입되지 않는다.</p>
 </blockquote>
 <h3 id="1615">16.1.5 서비스 계층 단위 테스트 예제</h3>
-<p>Mockito로 리포지토리를 모킹하고 StepVerifier로 서비스 계층을 테스트한다.</p>
-<pre class="highlight"><code class="language-java">@ExtendWith(MockitoExtension.class)
-class ProductServiceTest {
+<p>이제 실제로 서비스 계층을 테스트해보자. Mockito로 리포지토리를 모킹하고 StepVerifier로 검증하는 방식이다.</p>
+<p>```java
+@ExtendWith(MockitoExtension.class)
+class ProductServiceTest {</p>
+<pre><code>@Mock
+private ProductRepository productRepository;
 
-    @Mock
-    private ProductRepository productRepository;
+@InjectMocks
+private ProductService productService;
 
-    @InjectMocks
-    private ProductService productService;
+@Test
+void findById_존재하는_상품() {
+    Product product = Product.builder()
+        .id("prod-001").name("스프링 부트 가이드")
+        .price(new BigDecimal("35000")).category("BOOKS").build();
 
-    @Test
-    void findById_존재하는_상품() {
-        Product product = Product.builder()
-            .id("prod-001").name("스프링 부트 가이드")
-            .price(new BigDecimal("35000")).category("BOOKS").build();
+    when(productRepository.findById("prod-001"))
+        .thenReturn(Mono.just(product));
 
-        when(productRepository.findById("prod-001"))
-            .thenReturn(Mono.just(product));
+    StepVerifier.create(productService.findById("prod-001"))
+        .assertNext(p -&gt; {
+            assertThat(p.getName()).isEqualTo("스프링 부트 가이드");
+            assertThat(p.getPrice()).isEqualByComparingTo("35000");
+        })
+        .verifyComplete();
+}
 
-        StepVerifier.create(productService.findById("prod-001"))
-            .assertNext(p -&gt; {
-                assertThat(p.getName()).isEqualTo("스프링 부트 가이드");
-                assertThat(p.getPrice()).isEqualByComparingTo("35000");
-            })
-            .verifyComplete();
-    }
+@Test
+void findById_존재하지_않는_상품() {
+    when(productRepository.findById("unknown"))
+        .thenReturn(Mono.empty());
 
-    @Test
-    void findById_존재하지_않는_상품() {
-        when(productRepository.findById("unknown"))
-            .thenReturn(Mono.empty());
+    StepVerifier.create(productService.findById("unknown"))
+        .expectError(NotFoundException.class)
+        .verify();
+}
 
-        StepVerifier.create(productService.findById("unknown"))
-            .expectError(NotFoundException.class)
-            .verify();
-    }
+@Test
+void create_정상_생성() {
+    ProductRequest request = new ProductRequest(
+        "새 상품", "설명", "ELECTRONICS", new BigDecimal("50000"));
 
-    @Test
-    void create_정상_생성() {
-        ProductRequest request = new ProductRequest(
-            "새 상품", "설명", "ELECTRONICS", new BigDecimal("50000"));
+    when(productRepository.save(any(Product.class)))
+        .thenAnswer(invocation -&gt; {
+            Product p = invocation.getArgument(0);
+            p.setId("generated-id");
+            return Mono.just(p);
+        });
 
-        when(productRepository.save(any(Product.class)))
-            .thenAnswer(invocation -&gt; {
-                Product p = invocation.getArgument(0);
-                p.setId("generated-id");
-                return Mono.just(p);
-            });
-
-        StepVerifier.create(productService.create(request))
-            .assertNext(p -&gt; {
-                assertThat(p.getId()).isEqualTo("generated-id");
-                assertThat(p.getName()).isEqualTo("새 상품");
-            })
-            .verifyComplete();
-    }
-}</code></pre>
+    StepVerifier.create(productService.create(request))
+        .assertNext(p -&gt; {
+            assertThat(p.getId()).isEqualTo("generated-id");
+            assertThat(p.getName()).isEqualTo("새 상품");
+        })
+        .verifyComplete();
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1616-stepverifier">16.1.6 StepVerifier 주요 메서드 정리</h3>
 <table>
 <thead>
@@ -241,194 +246,205 @@ class ProductServiceTest {
 <hr>
 <h2 id="162-webtestclient">16.2 WebTestClient를 활용한 통합 테스트</h2>
 <h3 id="1621-webtestclient">16.2.1 WebTestClient란?</h3>
-<p><code>WebTestClient</code>는 Spring WebFlux 애플리케이션의 HTTP 엔드포인트를 테스트하기 위한 논블로킹 테스트 클라이언트다. 서버를 실행하지 않고 컨트롤러에 직접 바인딩하거나, 실제 HTTP 요청을 보내는 방식 모두 지원한다.</p>
+<p><code>WebTestClient</code>는 WebFlux 애플리케이션의 HTTP 엔드포인트를 테스트할 때 쓰는 논블로킹 테스트 클라이언트이다. 서버를 실행하지 않고도 컨트롤러에 직접 요청을 보낼 수 있고, 원한다면 실제 HTTP 요청을 보내는 방식도 지원한다.</p>
 <h3 id="1622">16.2.2 바인딩 방식</h3>
-<p><strong>bindToController</strong> -- 특정 컨트롤러만 격리하여 테스트한다. Spring 컨텍스트를 로드하지 않으므로 빠르다.</p>
-<pre class="highlight"><code class="language-java">@BeforeEach
+<p>WebTestClient를 설정하는 방법은 몇 가지가 있다. 각각의 상황에 맞춰 선택하면 된다.</p>
+<p><strong>bindToController</strong> -- 특정 컨트롤러만 떼어내서 테스트하는 방식이다. Spring 컨텍스트를 로드하지 않으므로 속도가 빠르다.</p>
+<p>```java
+@BeforeEach
 void setUp() {
     ProductService mockService = mock(ProductService.class);
-    ProductController controller = new ProductController(mockService);
-
-    webTestClient = WebTestClient
-        .bindToController(controller)
-        .controllerAdvice(new GlobalExceptionHandler())
-        .build();
-}</code></pre>
-<p><strong>bindToApplicationContext</strong> -- 전체 애플리케이션 컨텍스트를 로드하여 테스트한다.</p>
-<pre class="highlight"><code class="language-java">@SpringBootTest
+    ProductController controller = new ProductController(mockService);</p>
+<pre><code>webTestClient = WebTestClient
+    .bindToController(controller)
+    .controllerAdvice(new GlobalExceptionHandler())
+    .build();
+</code></pre>
+<p>}
+```</p>
+<p><strong>bindToApplicationContext</strong> -- 반대로 전체 애플리케이션 컨텍스트를 로드해서 테스트하려면 이 방식을 쓴다.</p>
+<p>```java
+@SpringBootTest
 @AutoConfigureWebTestClient
-class ProductIntegrationTest {
-
-    @Autowired
-    private WebTestClient webTestClient;
-}</code></pre>
-<p><strong>bindToRouterFunction</strong> -- 함수형 엔드포인트를 테스트할 때 사용한다.</p>
-<pre class="highlight"><code class="language-java">webTestClient = WebTestClient
+class ProductIntegrationTest {</p>
+<pre><code>@Autowired
+private WebTestClient webTestClient;
+</code></pre>
+<p>}
+```</p>
+<p><strong>bindToRouterFunction</strong> -- 함수형으로 라우팅을 정의했다면 이걸 사용하면 된다.</p>
+<p><code>java
+webTestClient = WebTestClient
     .bindToRouterFunction(ProductRouter.route(handler))
-    .build();</code></pre>
+    .build();</code></p>
 <h3 id="1623-getpostputdelete">16.2.3 GET/POST/PUT/DELETE 테스트</h3>
-<pre class="highlight"><code class="language-java">@WebFluxTest(ProductController.class)
-class ProductControllerTest {
+<p>```java
+@WebFluxTest(ProductController.class)
+class ProductControllerTest {</p>
+<pre><code>@Autowired
+private WebTestClient webTestClient;
 
-    @Autowired
-    private WebTestClient webTestClient;
+@MockBean
+private ProductService productService;
 
-    @MockBean
-    private ProductService productService;
+@Test
+void 상품_단건_조회_성공() {
+    Product product = Product.builder()
+        .id("prod-001").name("스프링 부트 가이드")
+        .price(new BigDecimal("35000")).category("BOOKS").build();
 
-    @Test
-    void 상품_단건_조회_성공() {
-        Product product = Product.builder()
-            .id("prod-001").name("스프링 부트 가이드")
-            .price(new BigDecimal("35000")).category("BOOKS").build();
-
-        when(productService.findById("prod-001"))
-            .thenReturn(Mono.just(product));
-
-        webTestClient.get()
-            .uri("/api/products/{id}", "prod-001")
-            .accept(MediaType.APPLICATION_JSON)
-            .exchange()
-            .expectStatus().isOk()
-            .expectHeader().contentType(MediaType.APPLICATION_JSON)
-            .expectBody()
-            .jsonPath("$.id").isEqualTo("prod-001")
-            .jsonPath("$.name").isEqualTo("스프링 부트 가이드")
-            .jsonPath("$.price").isEqualTo(35000);
-    }
-
-    @Test
-    void 상품_목록_조회() {
-        when(productService.findAll())
-            .thenReturn(Flux.just(
-                Product.builder().id("1").name("상품1").build(),
-                Product.builder().id("2").name("상품2").build()));
-
-        webTestClient.get()
-            .uri("/api/products")
-            .exchange()
-            .expectStatus().isOk()
-            .expectBodyList(Product.class)
-            .hasSize(2)
-            .value(products -&gt; {
-                assertThat(products.get(0).getName()).isEqualTo("상품1");
-                assertThat(products.get(1).getName()).isEqualTo("상품2");
-            });
-    }
-
-    @Test
-    void 상품_생성_성공() {
-        ProductRequest request = new ProductRequest(
-            "새 상품", "설명", "ELECTRONICS", new BigDecimal("50000"));
-        Product created = Product.builder()
-            .id("new-id").name("새 상품")
-            .price(new BigDecimal("50000")).build();
-
-        when(productService.create(any(ProductRequest.class)))
-            .thenReturn(Mono.just(created));
-
-        webTestClient.post()
-            .uri("/api/products")
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(request)
-            .exchange()
-            .expectStatus().isCreated()
-            .expectBody()
-            .jsonPath("$.id").isEqualTo("new-id")
-            .jsonPath("$.name").isEqualTo("새 상품");
-    }
-
-    @Test
-    void 상품_수정_성공() {
-        ProductRequest updateRequest = new ProductRequest(
-            "수정된 상품", "설명", "ELECTRONICS", new BigDecimal("60000"));
-        Product updated = Product.builder()
-            .id("prod-001").name("수정된 상품")
-            .price(new BigDecimal("60000")).build();
-
-        when(productService.update(eq("prod-001"), any()))
-            .thenReturn(Mono.just(updated));
-
-        webTestClient.put()
-            .uri("/api/products/{id}", "prod-001")
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(updateRequest)
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody()
-            .jsonPath("$.name").isEqualTo("수정된 상품");
-    }
-
-    @Test
-    void 상품_삭제_성공() {
-        when(productService.delete("prod-001")).thenReturn(Mono.empty());
-
-        webTestClient.delete()
-            .uri("/api/products/{id}", "prod-001")
-            .exchange()
-            .expectStatus().isNoContent()
-            .expectBody().isEmpty();
-    }
-
-    @Test
-    void 존재하지_않는_상품_404() {
-        when(productService.findById("unknown"))
-            .thenReturn(Mono.error(new NotFoundException("상품을 찾을 수 없습니다")));
-
-        webTestClient.get()
-            .uri("/api/products/{id}", "unknown")
-            .exchange()
-            .expectStatus().isNotFound()
-            .expectBody()
-            .jsonPath("$.message").isEqualTo("상품을 찾을 수 없습니다");
-    }
-}</code></pre>
-<h3 id="1624-json">16.2.4 JSON 검증 심화</h3>
-<pre class="highlight"><code class="language-java">@Test
-void JSON_상세_검증() {
     when(productService.findById("prod-001"))
-        .thenReturn(Mono.just(sampleProduct()));
+        .thenReturn(Mono.just(product));
 
     webTestClient.get()
         .uri("/api/products/{id}", "prod-001")
+        .accept(MediaType.APPLICATION_JSON)
         .exchange()
         .expectStatus().isOk()
+        .expectHeader().contentType(MediaType.APPLICATION_JSON)
         .expectBody()
-        .jsonPath("$.id").exists()
-        .jsonPath("$.name").isNotEmpty()
-        .jsonPath("$.price").isNumber()
-        .jsonPath("$.tags").isArray()
-        .jsonPath("$.tags.length()").isEqualTo(3)
-        .jsonPath("$.tags[0]").isEqualTo("spring")
-        // JSON 문자열 전체 비교 (false = 느슨한 비교, 추가 필드 허용)
-        .json("""
-            {"id": "prod-001", "name": "스프링 부트 가이드", "category": "BOOKS"}
-            """, false);
+        .jsonPath("$.id").isEqualTo("prod-001")
+        .jsonPath("$.name").isEqualTo("스프링 부트 가이드")
+        .jsonPath("$.price").isEqualTo(35000);
 }
 
 @Test
-void 응답을_객체로_역직렬화하여_검증() {
-    when(productService.findById("prod-001"))
-        .thenReturn(Mono.just(sampleProduct()));
+void 상품_목록_조회() {
+    when(productService.findAll())
+        .thenReturn(Flux.just(
+            Product.builder().id("1").name("상품1").build(),
+            Product.builder().id("2").name("상품2").build()));
 
     webTestClient.get()
+        .uri("/api/products")
+        .exchange()
+        .expectStatus().isOk()
+        .expectBodyList(Product.class)
+        .hasSize(2)
+        .value(products -&gt; {
+            assertThat(products.get(0).getName()).isEqualTo("상품1");
+            assertThat(products.get(1).getName()).isEqualTo("상품2");
+        });
+}
+
+@Test
+void 상품_생성_성공() {
+    ProductRequest request = new ProductRequest(
+        "새 상품", "설명", "ELECTRONICS", new BigDecimal("50000"));
+    Product created = Product.builder()
+        .id("new-id").name("새 상품")
+        .price(new BigDecimal("50000")).build();
+
+    when(productService.create(any(ProductRequest.class)))
+        .thenReturn(Mono.just(created));
+
+    webTestClient.post()
+        .uri("/api/products")
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(request)
+        .exchange()
+        .expectStatus().isCreated()
+        .expectBody()
+        .jsonPath("$.id").isEqualTo("new-id")
+        .jsonPath("$.name").isEqualTo("새 상품");
+}
+
+@Test
+void 상품_수정_성공() {
+    ProductRequest updateRequest = new ProductRequest(
+        "수정된 상품", "설명", "ELECTRONICS", new BigDecimal("60000"));
+    Product updated = Product.builder()
+        .id("prod-001").name("수정된 상품")
+        .price(new BigDecimal("60000")).build();
+
+    when(productService.update(eq("prod-001"), any()))
+        .thenReturn(Mono.just(updated));
+
+    webTestClient.put()
+        .uri("/api/products/{id}", "prod-001")
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(updateRequest)
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .jsonPath("$.name").isEqualTo("수정된 상품");
+}
+
+@Test
+void 상품_삭제_성공() {
+    when(productService.delete("prod-001")).thenReturn(Mono.empty());
+
+    webTestClient.delete()
         .uri("/api/products/{id}", "prod-001")
         .exchange()
-        .expectBody(Product.class)
-        .value(product -&gt; {
-            assertThat(product.getId()).isEqualTo("prod-001");
-            assertThat(product.getPrice()).isGreaterThan(BigDecimal.ZERO);
-        });
-}</code></pre>
+        .expectStatus().isNoContent()
+        .expectBody().isEmpty();
+}
+
+@Test
+void 존재하지_않는_상품_404() {
+    when(productService.findById("unknown"))
+        .thenReturn(Mono.error(new NotFoundException("상품을 찾을 수 없습니다")));
+
+    webTestClient.get()
+        .uri("/api/products/{id}", "unknown")
+        .exchange()
+        .expectStatus().isNotFound()
+        .expectBody()
+        .jsonPath("$.message").isEqualTo("상품을 찾을 수 없습니다");
+}
+</code></pre>
+<p>}
+```</p>
+<h3 id="1624-json">16.2.4 JSON 검증 심화</h3>
+<p>응답을 더 정교하게 검증하는 방법들을 알아보자.</p>
+<p>```java
+@Test
+void JSON_상세_검증() {
+    when(productService.findById("prod-001"))
+        .thenReturn(Mono.just(sampleProduct()));</p>
+<pre><code>webTestClient.get()
+    .uri("/api/products/{id}", "prod-001")
+    .exchange()
+    .expectStatus().isOk()
+    .expectBody()
+    .jsonPath("$.id").exists()
+    .jsonPath("$.name").isNotEmpty()
+    .jsonPath("$.price").isNumber()
+    .jsonPath("$.tags").isArray()
+    .jsonPath("$.tags.length()").isEqualTo(3)
+    .jsonPath("$.tags[0]").isEqualTo("spring")
+    // JSON 문자열 전체 비교 (false = 느슨한 비교, 추가 필드 허용)
+    .json("""
+        {"id": "prod-001", "name": "스프링 부트 가이드", "category": "BOOKS"}
+        """, false);
+</code></pre>
+<p>}</p>
+<p>@Test
+void 응답을_객체로_역직렬화하여_검증() {
+    when(productService.findById("prod-001"))
+        .thenReturn(Mono.just(sampleProduct()));</p>
+<pre><code>webTestClient.get()
+    .uri("/api/products/{id}", "prod-001")
+    .exchange()
+    .expectBody(Product.class)
+    .value(product -&gt; {
+        assertThat(product.getId()).isEqualTo("prod-001");
+        assertThat(product.getPrice()).isGreaterThan(BigDecimal.ZERO);
+    });
+</code></pre>
+<p>}
+```</p>
 <hr>
 <h2 id="163-embedded-mongodb">16.3 Embedded MongoDB를 활용한 리포지토리 테스트</h2>
 <h3 id="1631-embedded-mongodb">16.3.1 Embedded MongoDB 설정</h3>
-<p>실제 MongoDB 서버 없이 JVM 내에서 MongoDB를 실행하여 리포지토리를 테스트한다.</p>
-<pre class="highlight"><code class="language-groovy">dependencies {
+<p>리포지토리 계층을 테스트할 때 실제 MongoDB를 쓸 필요는 없다. JVM 내에서 가벼운 MongoDB를 띄워서 쓰는 게 훨씬 편하다. 필자의 경험상 로컬 개발 환경에서는 이 방식이 가장 실용적이다.</p>
+<p><code>groovy
+dependencies {
     testImplementation 'de.flapdoodle.embed:de.flapdoodle.embed.mongo.spring3x:4.11.0'
-}</code></pre>
+}</code></p>
 <h3 id="1632-datamongotest">16.3.2 @DataMongoTest</h3>
-<p><code>@DataMongoTest</code>는 MongoDB 관련 컴포넌트만 로드하는 테스트 슬라이스 어노테이션이다.</p>
+<p><code>@DataMongoTest</code>를 쓰면 MongoDB 관련 컴포넌트만 로드되는데, 이게 테스트를 훨씬 빠르게 해준다.</p>
 <table>
 <thead>
 <tr>
@@ -451,199 +467,208 @@ void 응답을_객체로_역직렬화하여_검증() {
 </tr>
 </tbody>
 </table>
-<pre class="highlight"><code class="language-java">@DataMongoTest
-class ProductRepositoryTest {
+<p>```java
+@DataMongoTest
+class ProductRepositoryTest {</p>
+<pre><code>@Autowired
+private ProductRepository productRepository;
 
-    @Autowired
-    private ProductRepository productRepository;
+@Autowired
+private ReactiveMongoTemplate mongoTemplate;
 
-    @Autowired
-    private ReactiveMongoTemplate mongoTemplate;
+@BeforeEach
+void setUp() {
+    mongoTemplate.dropCollection(Product.class).block();
+}
 
-    @BeforeEach
-    void setUp() {
-        mongoTemplate.dropCollection(Product.class).block();
-    }
+@Test
+void save_and_findById() {
+    Product product = Product.builder()
+        .name("테스트 상품").category("ELECTRONICS")
+        .price(new BigDecimal("25000"))
+        .tags(List.of("test", "electronics")).build();
 
-    @Test
-    void save_and_findById() {
-        Product product = Product.builder()
-            .name("테스트 상품").category("ELECTRONICS")
-            .price(new BigDecimal("25000"))
-            .tags(List.of("test", "electronics")).build();
+    StepVerifier.create(
+        productRepository.save(product)
+            .flatMap(saved -&gt; productRepository.findById(saved.getId())))
+        .assertNext(found -&gt; {
+            assertThat(found.getName()).isEqualTo("테스트 상품");
+            assertThat(found.getPrice()).isEqualByComparingTo("25000");
+            assertThat(found.getTags()).containsExactly("test", "electronics");
+        })
+        .verifyComplete();
+}
 
-        StepVerifier.create(
-            productRepository.save(product)
-                .flatMap(saved -&gt; productRepository.findById(saved.getId())))
-            .assertNext(found -&gt; {
-                assertThat(found.getName()).isEqualTo("테스트 상품");
-                assertThat(found.getPrice()).isEqualByComparingTo("25000");
-                assertThat(found.getTags()).containsExactly("test", "electronics");
-            })
-            .verifyComplete();
-    }
+@Test
+void findByCategory() {
+    Flux&lt;Product&gt; setup = productRepository.saveAll(List.of(
+        Product.builder().name("노트북").category("ELECTRONICS")
+            .price(new BigDecimal("1500000")).build(),
+        Product.builder().name("키보드").category("ELECTRONICS")
+            .price(new BigDecimal("150000")).build(),
+        Product.builder().name("스프링 인 액션").category("BOOKS")
+            .price(new BigDecimal("40000")).build()
+    ));
 
-    @Test
-    void findByCategory() {
-        Flux&lt;Product&gt; setup = productRepository.saveAll(List.of(
-            Product.builder().name("노트북").category("ELECTRONICS")
-                .price(new BigDecimal("1500000")).build(),
-            Product.builder().name("키보드").category("ELECTRONICS")
-                .price(new BigDecimal("150000")).build(),
-            Product.builder().name("스프링 인 액션").category("BOOKS")
-                .price(new BigDecimal("40000")).build()
-        ));
+    StepVerifier.create(
+        setup.thenMany(productRepository.findByCategory("ELECTRONICS")))
+        .expectNextCount(2)
+        .verifyComplete();
+}
 
-        StepVerifier.create(
-            setup.thenMany(productRepository.findByCategory("ELECTRONICS")))
-            .expectNextCount(2)
-            .verifyComplete();
-    }
+@Test
+void findByPriceRange() {
+    Flux&lt;Product&gt; setup = productRepository.saveAll(List.of(
+        Product.builder().name("저가").category("ETC")
+            .price(new BigDecimal("5000")).build(),
+        Product.builder().name("중가").category("ETC")
+            .price(new BigDecimal("50000")).build(),
+        Product.builder().name("고가").category("ETC")
+            .price(new BigDecimal("500000")).build()
+    ));
 
-    @Test
-    void findByPriceRange() {
-        Flux&lt;Product&gt; setup = productRepository.saveAll(List.of(
-            Product.builder().name("저가").category("ETC")
-                .price(new BigDecimal("5000")).build(),
-            Product.builder().name("중가").category("ETC")
-                .price(new BigDecimal("50000")).build(),
-            Product.builder().name("고가").category("ETC")
-                .price(new BigDecimal("500000")).build()
-        ));
-
-        StepVerifier.create(
-            setup.thenMany(productRepository.findByPriceRange(
-                new BigDecimal("10000"), new BigDecimal("100000"))))
-            .assertNext(p -&gt; assertThat(p.getName()).isEqualTo("중가"))
-            .verifyComplete();
-    }
-}</code></pre>
+    StepVerifier.create(
+        setup.thenMany(productRepository.findByPriceRange(
+            new BigDecimal("10000"), new BigDecimal("100000"))))
+        .assertNext(p -&gt; assertThat(p.getName()).isEqualTo("중가"))
+        .verifyComplete();
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1633">16.3.3 테스트 데이터 준비 전략</h3>
-<p><strong>팩토리 메서드 패턴</strong>으로 테스트 데이터를 일관성 있게 준비한다.</p>
-<pre class="highlight"><code class="language-java">public class TestDataFactory {
+<p>여러 테스트에서 동일한 형태의 테스트 데이터를 반복해서 만들어야 할 때가 많다. 이럴 땐 <strong>팩토리 메서드 패턴</strong>을 쓰면 깔끔하다.</p>
+<p>```java
+public class TestDataFactory {</p>
+<pre><code>public static Product createProduct(String id, String name, String category) {
+    return Product.builder()
+        .id(id).name(name).category(category)
+        .price(new BigDecimal("10000"))
+        .tags(List.of("test"))
+        .createdAt(LocalDateTime.now())
+        .build();
+}
 
-    public static Product createProduct(String id, String name, String category) {
-        return Product.builder()
-            .id(id).name(name).category(category)
-            .price(new BigDecimal("10000"))
-            .tags(List.of("test"))
-            .createdAt(LocalDateTime.now())
-            .build();
-    }
-
-    public static Review createReview(String productId, int rating) {
-        return Review.builder()
-            .productId(productId).userId("test-user")
-            .rating(rating).content("테스트 리뷰")
-            .createdAt(LocalDateTime.now())
-            .build();
-    }
-}</code></pre>
+public static Review createReview(String productId, int rating) {
+    return Review.builder()
+        .productId(productId).userId("test-user")
+        .rating(rating).content("테스트 리뷰")
+        .createdAt(LocalDateTime.now())
+        .build();
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1634-reactivemongotemplate">16.3.4 ReactiveMongoTemplate 테스트</h3>
-<p>리포지토리 인터페이스로 표현하기 어려운 복잡한 쿼리를 테스트한다.</p>
-<pre class="highlight"><code class="language-java">@DataMongoTest
-class ProductCustomRepositoryTest {
+<p>리포지토리 인터페이스만으로는 표현할 수 없는 좀 더 복잡한 쿼리들이 있다. 이런 경우들을 다뤄보자.</p>
+<p>```java
+@DataMongoTest
+class ProductCustomRepositoryTest {</p>
+<pre><code>@Autowired
+private ReactiveMongoTemplate mongoTemplate;
 
-    @Autowired
-    private ReactiveMongoTemplate mongoTemplate;
+@BeforeEach
+void setUp() {
+    mongoTemplate.dropCollection(Product.class).block();
+    mongoTemplate.insertAll(List.of(
+        Product.builder().name("상품A").category("ELECTRONICS")
+            .price(new BigDecimal("100000")).build(),
+        Product.builder().name("상품B").category("ELECTRONICS")
+            .price(new BigDecimal("200000")).build(),
+        Product.builder().name("상품C").category("BOOKS")
+            .price(new BigDecimal("30000")).build()
+    )).blockLast();
+}
 
-    @BeforeEach
-    void setUp() {
-        mongoTemplate.dropCollection(Product.class).block();
-        mongoTemplate.insertAll(List.of(
-            Product.builder().name("상품A").category("ELECTRONICS")
-                .price(new BigDecimal("100000")).build(),
-            Product.builder().name("상품B").category("ELECTRONICS")
-                .price(new BigDecimal("200000")).build(),
-            Product.builder().name("상품C").category("BOOKS")
-                .price(new BigDecimal("30000")).build()
-        )).blockLast();
-    }
+@Test
+void Criteria_쿼리_테스트() {
+    Query query = Query.query(
+        Criteria.where("category").is("ELECTRONICS")
+            .and("price").gte(new BigDecimal("150000"))
+    ).with(Sort.by(Sort.Direction.DESC, "price"));
 
-    @Test
-    void Criteria_쿼리_테스트() {
-        Query query = Query.query(
-            Criteria.where("category").is("ELECTRONICS")
-                .and("price").gte(new BigDecimal("150000"))
-        ).with(Sort.by(Sort.Direction.DESC, "price"));
+    StepVerifier.create(mongoTemplate.find(query, Product.class))
+        .assertNext(p -&gt; {
+            assertThat(p.getName()).isEqualTo("상품B");
+            assertThat(p.getPrice()).isEqualByComparingTo("200000");
+        })
+        .verifyComplete();
+}
 
-        StepVerifier.create(mongoTemplate.find(query, Product.class))
-            .assertNext(p -&gt; {
-                assertThat(p.getName()).isEqualTo("상품B");
-                assertThat(p.getPrice()).isEqualByComparingTo("200000");
-            })
-            .verifyComplete();
-    }
+@Test
+void Aggregation_테스트() {
+    Aggregation aggregation = Aggregation.newAggregation(
+        Aggregation.group("category").count().as("count"),
+        Aggregation.sort(Sort.Direction.ASC, "_id")
+    );
 
-    @Test
-    void Aggregation_테스트() {
-        Aggregation aggregation = Aggregation.newAggregation(
-            Aggregation.group("category").count().as("count"),
-            Aggregation.sort(Sort.Direction.ASC, "_id")
-        );
-
-        StepVerifier.create(
-            mongoTemplate.aggregate(aggregation, "products", Document.class))
-            .assertNext(doc -&gt; {
-                assertThat(doc.getString("_id")).isEqualTo("BOOKS");
-                assertThat(doc.getInteger("count")).isEqualTo(1);
-            })
-            .assertNext(doc -&gt; {
-                assertThat(doc.getString("_id")).isEqualTo("ELECTRONICS");
-                assertThat(doc.getInteger("count")).isEqualTo(2);
-            })
-            .verifyComplete();
-    }
-}</code></pre>
+    StepVerifier.create(
+        mongoTemplate.aggregate(aggregation, "products", Document.class))
+        .assertNext(doc -&gt; {
+            assertThat(doc.getString("_id")).isEqualTo("BOOKS");
+            assertThat(doc.getInteger("count")).isEqualTo(1);
+        })
+        .assertNext(doc -&gt; {
+            assertThat(doc.getString("_id")).isEqualTo("ELECTRONICS");
+            assertThat(doc.getInteger("count")).isEqualTo(2);
+        })
+        .verifyComplete();
+}
+</code></pre>
+<p>}
+```</p>
 <hr>
 <h2 id="164-testcontainers-mongodb">16.4 Testcontainers로 MongoDB 테스트 환경 구성</h2>
 <h3 id="1641-testcontainers">16.4.1 Testcontainers란?</h3>
-<p>Embedded MongoDB는 편리하지만 실제 MongoDB와 동작이 미묘하게 다를 수 있다. <strong>Testcontainers</strong>는 Docker 컨테이너를 활용하여 실제 MongoDB 인스턴스를 테스트 환경에서 실행한다.</p>
-<pre class="highlight"><code class="language-groovy">dependencies {
+<p>Embedded MongoDB는 분명 편하지만, 실제 MongoDB와 동작이 완전히 일치하지 않을 수 있다는 게 문제다. 더 정확한 테스트를 원한다면 <strong>Testcontainers</strong>를 써보자. Docker를 활용해서 실제 MongoDB 인스턴스를 테스트할 때마다 띄워주니까 프로덕션과 정확하게 같은 환경에서 테스트할 수 있다.</p>
+<p><code>groovy
+dependencies {
     testImplementation 'org.testcontainers:testcontainers:1.19.3'
     testImplementation 'org.testcontainers:mongodb:1.19.3'
     testImplementation 'org.testcontainers:junit-jupiter:1.19.3'
-}</code></pre>
+}</code></p>
 <h3 id="1642-testcontainers-container-dynamicpropertysource">16.4.2 @Testcontainers, @Container, DynamicPropertySource</h3>
-<pre class="highlight"><code class="language-java">@DataMongoTest
+<p>```java
+@DataMongoTest
 @Testcontainers
-class ProductRepositoryTestcontainersTest {
+class ProductRepositoryTestcontainersTest {</p>
+<pre><code>@Container
+static MongoDBContainer mongoDBContainer =
+    new MongoDBContainer("mongo:7.0")
+        .withExposedPorts(27017);
 
-    @Container
-    static MongoDBContainer mongoDBContainer =
-        new MongoDBContainer("mongo:7.0")
-            .withExposedPorts(27017);
+@DynamicPropertySource
+static void setProperties(DynamicPropertyRegistry registry) {
+    registry.add("spring.data.mongodb.uri",
+        mongoDBContainer::getReplicaSetUrl);
+}
 
-    @DynamicPropertySource
-    static void setProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.data.mongodb.uri",
-            mongoDBContainer::getReplicaSetUrl);
-    }
+@Autowired
+private ProductRepository productRepository;
 
-    @Autowired
-    private ProductRepository productRepository;
+@BeforeEach
+void setUp() {
+    productRepository.deleteAll().block();
+}
 
-    @BeforeEach
-    void setUp() {
-        productRepository.deleteAll().block();
-    }
+@Test
+void save_and_findById() {
+    Product product = Product.builder()
+        .name("Testcontainers 상품").category("ELECTRONICS")
+        .price(new BigDecimal("99000")).build();
 
-    @Test
-    void save_and_findById() {
-        Product product = Product.builder()
-            .name("Testcontainers 상품").category("ELECTRONICS")
-            .price(new BigDecimal("99000")).build();
-
-        StepVerifier.create(
-            productRepository.save(product)
-                .flatMap(saved -&gt; productRepository.findById(saved.getId())))
-            .assertNext(found -&gt; {
-                assertThat(found.getName()).isEqualTo("Testcontainers 상품");
-                assertThat(found.getPrice()).isEqualByComparingTo("99000");
-            })
-            .verifyComplete();
-    }
-}</code></pre>
+    StepVerifier.create(
+        productRepository.save(product)
+            .flatMap(saved -&gt; productRepository.findById(saved.getId())))
+        .assertNext(found -&gt; {
+            assertThat(found.getName()).isEqualTo("Testcontainers 상품");
+            assertThat(found.getPrice()).isEqualByComparingTo("99000");
+        })
+        .verifyComplete();
+}
+</code></pre>
+<p>}
+```</p>
 <table>
 <thead>
 <tr>
@@ -667,93 +692,99 @@ class ProductRepositoryTestcontainersTest {
 </tbody>
 </table>
 <h3 id="1643">16.4.3 컨테이너 재사용으로 테스트 속도 개선</h3>
-<p>테스트 클래스마다 컨테이너를 새로 띄우면 시간이 오래 걸린다. 추상 클래스로 컨테이너를 공유한다.</p>
-<pre class="highlight"><code class="language-java">public abstract class AbstractMongoTestcontainer {
+<p>하지만 여기서 주의할 점이 있다. 매번 새로운 컨테이너를 띄우면 테스트가 상당히 느려진다. 필자의 경험상 여러 테스트가 같은 MongoDB 컨테이너를 공유하도록 하면 훨씬 빠르다.</p>
+<p>```java
+public abstract class AbstractMongoTestcontainer {</p>
+<pre><code>static final MongoDBContainer MONGO_CONTAINER;
 
-    static final MongoDBContainer MONGO_CONTAINER;
+static {
+    MONGO_CONTAINER = new MongoDBContainer("mongo:7.0")
+        .withReuse(true);
+    MONGO_CONTAINER.start();
+}
 
-    static {
-        MONGO_CONTAINER = new MongoDBContainer("mongo:7.0")
-            .withReuse(true);
-        MONGO_CONTAINER.start();
-    }
+@DynamicPropertySource
+static void setProperties(DynamicPropertyRegistry registry) {
+    registry.add("spring.data.mongodb.uri",
+        MONGO_CONTAINER::getReplicaSetUrl);
+}
+</code></pre>
+<p>}
+```</p>
+<p>```java
+@DataMongoTest
+class ProductRepositoryTest extends AbstractMongoTestcontainer {</p>
+<pre><code>@Autowired
+private ProductRepository productRepository;
 
-    @DynamicPropertySource
-    static void setProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.data.mongodb.uri",
-            MONGO_CONTAINER::getReplicaSetUrl);
-    }
-}</code></pre>
-<pre class="highlight"><code class="language-java">@DataMongoTest
-class ProductRepositoryTest extends AbstractMongoTestcontainer {
-
-    @Autowired
-    private ProductRepository productRepository;
-
-    @Test
-    void 기본_CRUD_테스트() {
-        // MONGO_CONTAINER가 이미 실행 중이므로 빠르게 시작
-        StepVerifier.create(productRepository.save(
-                Product.builder().name("공유 컨테이너 테스트")
-                    .category("BOOKS").price(new BigDecimal("15000")).build()))
-            .assertNext(p -&gt; assertThat(p.getId()).isNotNull())
-            .verifyComplete();
-    }
-}</code></pre>
+@Test
+void 기본_CRUD_테스트() {
+    // MONGO_CONTAINER가 이미 실행 중이므로 빠르게 시작
+    StepVerifier.create(productRepository.save(
+            Product.builder().name("공유 컨테이너 테스트")
+                .category("BOOKS").price(new BigDecimal("15000")).build()))
+        .assertNext(p -&gt; assertThat(p.getId()).isNotNull())
+        .verifyComplete();
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1644-replica-set">16.4.4 트랜잭션 테스트 (Replica Set)</h3>
-<p>Testcontainers의 <code>MongoDBContainer</code>는 기본적으로 단일 노드 Replica Set으로 시작하므로 트랜잭션 테스트가 가능하다.</p>
-<pre class="highlight"><code class="language-java">@DataMongoTest
+<p>MongoDB의 트랜잭션 기능을 테스트하려면 Replica Set이 필요한데, Testcontainers가 기본적으로 이를 지원한다.</p>
+<p>```java
+@DataMongoTest
 @Testcontainers
-class TransactionTest {
+class TransactionTest {</p>
+<pre><code>@Container
+static MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:7.0");
 
-    @Container
-    static MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:7.0");
+@DynamicPropertySource
+static void setProperties(DynamicPropertyRegistry registry) {
+    registry.add("spring.data.mongodb.uri",
+        mongoDBContainer::getReplicaSetUrl);
+}
 
-    @DynamicPropertySource
-    static void setProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.data.mongodb.uri",
-            mongoDBContainer::getReplicaSetUrl);
-    }
+@Autowired
+private ReactiveMongoTemplate mongoTemplate;
 
-    @Autowired
-    private ReactiveMongoTemplate mongoTemplate;
+@Autowired
+private ProductRepository productRepository;
 
-    @Autowired
-    private ProductRepository productRepository;
+@Test
+void 트랜잭션_롤백_테스트() {
+    productRepository.save(Product.builder()
+        .name("트랜잭션 테스트").category("TEST")
+        .price(new BigDecimal("10000")).build()).block();
 
-    @Test
-    void 트랜잭션_롤백_테스트() {
-        productRepository.save(Product.builder()
-            .name("트랜잭션 테스트").category("TEST")
-            .price(new BigDecimal("10000")).build()).block();
+    ReactiveMongoTransactionManager txManager =
+        new ReactiveMongoTransactionManager(
+            mongoTemplate.getMongoDatabaseFactory());
+    TransactionalOperator txOperator =
+        TransactionalOperator.create(txManager);
 
-        ReactiveMongoTransactionManager txManager =
-            new ReactiveMongoTransactionManager(
-                mongoTemplate.getMongoDatabaseFactory());
-        TransactionalOperator txOperator =
-            TransactionalOperator.create(txManager);
+    // 트랜잭션 내에서 업데이트 후 의도적으로 에러 발생
+    Mono&lt;Product&gt; txMono = productRepository.findAll().next()
+        .flatMap(p -&gt; {
+            p.setPrice(new BigDecimal("99999"));
+            return productRepository.save(p);
+        })
+        .then(Mono.error(new RuntimeException("의도된 에러")))
+        .cast(Product.class)
+        .as(txOperator::transactional);
 
-        // 트랜잭션 내에서 업데이트 후 의도적으로 에러 발생
-        Mono&lt;Product&gt; txMono = productRepository.findAll().next()
-            .flatMap(p -&gt; {
-                p.setPrice(new BigDecimal("99999"));
-                return productRepository.save(p);
-            })
-            .then(Mono.error(new RuntimeException("의도된 에러")))
-            .cast(Product.class)
-            .as(txOperator::transactional);
+    StepVerifier.create(txMono)
+        .expectError(RuntimeException.class)
+        .verify();
 
-        StepVerifier.create(txMono)
-            .expectError(RuntimeException.class)
-            .verify();
-
-        // 가격이 원래 값으로 유지되는지 확인 (롤백 검증)
-        StepVerifier.create(productRepository.findAll().next())
-            .assertNext(p -&gt;
-                assertThat(p.getPrice()).isEqualByComparingTo("10000"))
-            .verifyComplete();
-    }
-}</code></pre>
+    // 가격이 원래 값으로 유지되는지 확인 (롤백 검증)
+    StepVerifier.create(productRepository.findAll().next())
+        .assertNext(p -&gt;
+            assertThat(p.getPrice()).isEqualByComparingTo("10000"))
+        .verifyComplete();
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1645-embedded-mongodb-vs-testcontainers">16.4.5 Embedded MongoDB vs Testcontainers</h3>
 <table>
 <thead>
@@ -799,170 +830,177 @@ class TransactionTest {
 <hr>
 <h2 id="165-mockwebserver-api">16.5 MockWebServer를 활용한 외부 API 모킹</h2>
 <h3 id="1651-mockwebserver">16.5.1 MockWebServer란?</h3>
-<p><code>MockWebServer</code>는 OkHttp 라이브러리에서 제공하는 가벼운 HTTP 서버로, <code>WebClient</code>를 통해 호출하는 외부 API를 로컬에서 모킹한다.</p>
-<pre class="highlight"><code class="language-groovy">dependencies {
+<p>우리 애플리케이션이 외부 API를 호출해야 한다면 어떻게 테스트할까? <code>MockWebServer</code>는 OkHttp 라이브러리에서 제공하는 경량 HTTP 서버로, <code>WebClient</code>로 호출하는 외부 API를 로컬에서 모킹할 수 있게 해준다.</p>
+<p><code>groovy
+dependencies {
     testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
-}</code></pre>
+}</code></p>
 <h3 id="1652-mockresponse">16.5.2 MockResponse와 기본 사용법</h3>
-<pre class="highlight"><code class="language-java">class ExternalApiClientTest {
+<p>```java
+class ExternalApiClientTest {</p>
+<pre><code>private MockWebServer mockWebServer;
+private ExternalApiClient apiClient;
 
-    private MockWebServer mockWebServer;
-    private ExternalApiClient apiClient;
+@BeforeEach
+void setUp() throws IOException {
+    mockWebServer = new MockWebServer();
+    mockWebServer.start();
 
-    @BeforeEach
-    void setUp() throws IOException {
-        mockWebServer = new MockWebServer();
-        mockWebServer.start();
+    WebClient webClient = WebClient.builder()
+        .baseUrl(mockWebServer.url("/").toString())
+        .build();
+    apiClient = new ExternalApiClient(webClient);
+}
 
-        WebClient webClient = WebClient.builder()
-            .baseUrl(mockWebServer.url("/").toString())
-            .build();
-        apiClient = new ExternalApiClient(webClient);
-    }
+@AfterEach
+void tearDown() throws IOException {
+    mockWebServer.shutdown();
+}
 
-    @AfterEach
-    void tearDown() throws IOException {
-        mockWebServer.shutdown();
-    }
+@Test
+void 정상_응답_테스트() {
+    mockWebServer.enqueue(new MockResponse()
+        .setResponseCode(200)
+        .setHeader("Content-Type", "application/json")
+        .setBody("""
+            {"id": "ext-001", "name": "외부 데이터", "value": 42}
+            """));
 
-    @Test
-    void 정상_응답_테스트() {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(200)
-            .setHeader("Content-Type", "application/json")
-            .setBody("""
-                {"id": "ext-001", "name": "외부 데이터", "value": 42}
-                """));
+    StepVerifier.create(apiClient.getData("ext-001"))
+        .assertNext(data -&gt; {
+            assertThat(data.getId()).isEqualTo("ext-001");
+            assertThat(data.getName()).isEqualTo("외부 데이터");
+        })
+        .verifyComplete();
+}
 
-        StepVerifier.create(apiClient.getData("ext-001"))
-            .assertNext(data -&gt; {
-                assertThat(data.getId()).isEqualTo("ext-001");
-                assertThat(data.getName()).isEqualTo("외부 데이터");
-            })
-            .verifyComplete();
-    }
+@Test
+void 지연_응답으로_타임아웃_테스트() {
+    mockWebServer.enqueue(new MockResponse()
+        .setResponseCode(200)
+        .setBody("{\"status\": \"ok\"}")
+        .setHeader("Content-Type", "application/json")
+        .setBodyDelay(2, TimeUnit.SECONDS));
 
-    @Test
-    void 지연_응답으로_타임아웃_테스트() {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(200)
-            .setBody("{\"status\": \"ok\"}")
-            .setHeader("Content-Type", "application/json")
-            .setBodyDelay(2, TimeUnit.SECONDS));
+    StepVerifier.create(apiClient.getDataWithTimeout("001"))
+        .expectError(TimeoutException.class)
+        .verify();
+}
 
-        StepVerifier.create(apiClient.getDataWithTimeout("001"))
-            .expectError(TimeoutException.class)
-            .verify();
-    }
+@Test
+void 재시도_후_성공() {
+    mockWebServer.enqueue(new MockResponse().setResponseCode(503));
+    mockWebServer.enqueue(new MockResponse()
+        .setResponseCode(200)
+        .setHeader("Content-Type", "application/json")
+        .setBody("{\"id\": \"001\", \"name\": \"성공\"}"));
 
-    @Test
-    void 재시도_후_성공() {
-        mockWebServer.enqueue(new MockResponse().setResponseCode(503));
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(200)
-            .setHeader("Content-Type", "application/json")
-            .setBody("{\"id\": \"001\", \"name\": \"성공\"}"));
+    StepVerifier.create(apiClient.getDataWithRetry("001"))
+        .assertNext(data -&gt; assertThat(data.getName()).isEqualTo("성공"))
+        .verifyComplete();
 
-        StepVerifier.create(apiClient.getDataWithRetry("001"))
-            .assertNext(data -&gt; assertThat(data.getName()).isEqualTo("성공"))
-            .verifyComplete();
-
-        assertThat(mockWebServer.getRequestCount()).isEqualTo(2);
-    }
-}</code></pre>
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(2);
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1653-recordedrequest">16.5.3 RecordedRequest로 요청 검증</h3>
-<p><code>MockWebServer</code>는 수신한 요청을 기록하므로, 클라이언트가 올바른 요청을 보냈는지 검증할 수 있다.</p>
-<pre class="highlight"><code class="language-java">@Test
+<p>응답 검증도 중요하지만, 우리 클라이언트가 올바른 요청을 보냈는지 확인하는 것도 마찬가지다. <code>MockWebServer</code>는 수신한 요청을 기록해두므로 이를 검증할 수 있다.</p>
+<p>```java
+@Test
 void 요청_내용_검증() throws InterruptedException {
     mockWebServer.enqueue(new MockResponse()
         .setResponseCode(201)
         .setHeader("Content-Type", "application/json")
-        .setBody("{\"id\": \"new-001\"}"));
+        .setBody("{\"id\": \"new-001\"}"));</p>
+<pre><code>CreateRequest request = new CreateRequest("새 데이터", 100);
+StepVerifier.create(apiClient.createData(request))
+    .assertNext(result -&gt; assertThat(result.getId()).isEqualTo("new-001"))
+    .verifyComplete();
 
-    CreateRequest request = new CreateRequest("새 데이터", 100);
-    StepVerifier.create(apiClient.createData(request))
-        .assertNext(result -&gt; assertThat(result.getId()).isEqualTo("new-001"))
+RecordedRequest recorded = mockWebServer.takeRequest();
+assertThat(recorded.getMethod()).isEqualTo("POST");
+assertThat(recorded.getPath()).isEqualTo("/api/data");
+assertThat(recorded.getHeader("Content-Type"))
+    .contains("application/json");
+
+String body = recorded.getBody().readUtf8();
+assertThat(body).contains("\"name\":\"새 데이터\"");
+assertThat(body).contains("\"value\":100");
+</code></pre>
+<p>}
+```</p>
+<h3 id="1654-api">16.5.4 실전 예제: 외부 결제 API 모킹</h3>
+<p>```java
+class PaymentGatewayClientTest {</p>
+<pre><code>private MockWebServer mockWebServer;
+private PaymentGatewayClient paymentClient;
+
+@BeforeEach
+void setUp() throws IOException {
+    mockWebServer = new MockWebServer();
+    mockWebServer.start();
+    WebClient webClient = WebClient.builder()
+        .baseUrl(mockWebServer.url("/").toString()).build();
+    paymentClient = new PaymentGatewayClient(webClient);
+}
+
+@AfterEach
+void tearDown() throws IOException { mockWebServer.shutdown(); }
+
+@Test
+void 결제_승인_성공() throws InterruptedException {
+    mockWebServer.enqueue(new MockResponse()
+        .setResponseCode(200)
+        .setHeader("Content-Type", "application/json")
+        .setBody("""
+            {"transactionId": "TXN-12345", "status": "APPROVED",
+             "approvedAmount": 50000}
+            """));
+
+    PaymentRequest request = PaymentRequest.builder()
+        .orderId("ORD-001").amount(new BigDecimal("50000")).build();
+
+    StepVerifier.create(paymentClient.processPayment(request))
+        .assertNext(response -&gt; {
+            assertThat(response.getTransactionId()).isEqualTo("TXN-12345");
+            assertThat(response.getStatus()).isEqualTo("APPROVED");
+        })
         .verifyComplete();
 
     RecordedRequest recorded = mockWebServer.takeRequest();
     assertThat(recorded.getMethod()).isEqualTo("POST");
-    assertThat(recorded.getPath()).isEqualTo("/api/data");
-    assertThat(recorded.getHeader("Content-Type"))
-        .contains("application/json");
+    assertThat(recorded.getPath()).isEqualTo("/api/payments/approve");
+}
 
-    String body = recorded.getBody().readUtf8();
-    assertThat(body).contains("\"name\":\"새 데이터\"");
-    assertThat(body).contains("\"value\":100");
-}</code></pre>
-<h3 id="1654-api">16.5.4 실전 예제: 외부 결제 API 모킹</h3>
-<pre class="highlight"><code class="language-java">class PaymentGatewayClientTest {
+@Test
+void 결제_게이트웨이_장애_시_재시도() {
+    mockWebServer.enqueue(new MockResponse().setResponseCode(500));
+    mockWebServer.enqueue(new MockResponse().setResponseCode(500));
+    mockWebServer.enqueue(new MockResponse()
+        .setResponseCode(200)
+        .setHeader("Content-Type", "application/json")
+        .setBody("""
+            {"transactionId": "TXN-12347", "status": "APPROVED",
+             "approvedAmount": 30000}
+            """));
 
-    private MockWebServer mockWebServer;
-    private PaymentGatewayClient paymentClient;
+    PaymentRequest request = PaymentRequest.builder()
+        .orderId("ORD-003").amount(new BigDecimal("30000")).build();
 
-    @BeforeEach
-    void setUp() throws IOException {
-        mockWebServer = new MockWebServer();
-        mockWebServer.start();
-        WebClient webClient = WebClient.builder()
-            .baseUrl(mockWebServer.url("/").toString()).build();
-        paymentClient = new PaymentGatewayClient(webClient);
-    }
+    StepVerifier.create(paymentClient.processPaymentWithRetry(request))
+        .assertNext(r -&gt; assertThat(r.getStatus()).isEqualTo("APPROVED"))
+        .verifyComplete();
 
-    @AfterEach
-    void tearDown() throws IOException { mockWebServer.shutdown(); }
-
-    @Test
-    void 결제_승인_성공() throws InterruptedException {
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(200)
-            .setHeader("Content-Type", "application/json")
-            .setBody("""
-                {"transactionId": "TXN-12345", "status": "APPROVED",
-                 "approvedAmount": 50000}
-                """));
-
-        PaymentRequest request = PaymentRequest.builder()
-            .orderId("ORD-001").amount(new BigDecimal("50000")).build();
-
-        StepVerifier.create(paymentClient.processPayment(request))
-            .assertNext(response -&gt; {
-                assertThat(response.getTransactionId()).isEqualTo("TXN-12345");
-                assertThat(response.getStatus()).isEqualTo("APPROVED");
-            })
-            .verifyComplete();
-
-        RecordedRequest recorded = mockWebServer.takeRequest();
-        assertThat(recorded.getMethod()).isEqualTo("POST");
-        assertThat(recorded.getPath()).isEqualTo("/api/payments/approve");
-    }
-
-    @Test
-    void 결제_게이트웨이_장애_시_재시도() {
-        mockWebServer.enqueue(new MockResponse().setResponseCode(500));
-        mockWebServer.enqueue(new MockResponse().setResponseCode(500));
-        mockWebServer.enqueue(new MockResponse()
-            .setResponseCode(200)
-            .setHeader("Content-Type", "application/json")
-            .setBody("""
-                {"transactionId": "TXN-12347", "status": "APPROVED",
-                 "approvedAmount": 30000}
-                """));
-
-        PaymentRequest request = PaymentRequest.builder()
-            .orderId("ORD-003").amount(new BigDecimal("30000")).build();
-
-        StepVerifier.create(paymentClient.processPaymentWithRetry(request))
-            .assertNext(r -&gt; assertThat(r.getStatus()).isEqualTo("APPROVED"))
-            .verifyComplete();
-
-        assertThat(mockWebServer.getRequestCount()).isEqualTo(3);
-    }
-}</code></pre>
+    assertThat(mockWebServer.getRequestCount()).isEqualTo(3);
+}
+</code></pre>
+<p>}
+```</p>
 <hr>
 <h2 id="166">16.6 테스트 슬라이스</h2>
 <h3 id="1661">16.6.1 테스트 슬라이스란?</h3>
-<p>Spring Boot의 <strong>테스트 슬라이스(Test Slice)</strong>는 애플리케이션의 특정 계층만 로드하여 테스트하는 기법이다. 전체 컨텍스트를 로드하는 <code>@SpringBootTest</code>보다 빠르고, 테스트 대상 계층에 집중할 수 있다.</p>
+<p>지금까지 배운 도구들을 정리해보면, 테스트 방식이 꽤 다양하다는 걸 알 수 있다. Spring Boot의 <strong>테스트 슬라이스(Test Slice)</strong>는 이 여러 테스트 방식을 체계적으로 정리한 개념이다. 특정 계층만 로드해서 테스트하는 것인데, 이렇게 하면 전체 컨텍스트를 로드하는 것보다 훨씬 빠르다.</p>
 <table>
 <thead>
 <tr>
@@ -990,162 +1028,169 @@ void 요청_내용_검증() throws InterruptedException {
 </tbody>
 </table>
 <h3 id="1662-webfluxtest">16.6.2 @WebFluxTest</h3>
-<p><code>@WebFluxTest</code>는 웹 계층만 로드한다. 서비스와 리포지토리는 로드하지 않으므로 <code>@MockBean</code>으로 모킹해야 한다.</p>
-<pre class="highlight"><code class="language-java">@WebFluxTest(controllers = ProductController.class)
-class ProductControllerSliceTest {
+<p>가장 많이 쓰는 테스트 슬라이스는 <code>@WebFluxTest</code>다. 웹 계층만 로드하고 서비스나 리포지토리는 로드하지 않으므로, <code>@MockBean</code>으로 의존성을 모킹해줘야 한다.</p>
+<p>```java
+@WebFluxTest(controllers = ProductController.class)
+class ProductControllerSliceTest {</p>
+<pre><code>@Autowired
+private WebTestClient webTestClient;
 
-    @Autowired
-    private WebTestClient webTestClient;
+@MockBean
+private ProductService productService;
 
-    @MockBean
-    private ProductService productService;
+@Test
+void 상품_조회_컨트롤러_테스트() {
+    when(productService.findById("prod-001"))
+        .thenReturn(Mono.just(Product.builder()
+            .id("prod-001").name("테스트 상품")
+            .price(new BigDecimal("25000")).build()));
 
-    @Test
-    void 상품_조회_컨트롤러_테스트() {
-        when(productService.findById("prod-001"))
-            .thenReturn(Mono.just(Product.builder()
-                .id("prod-001").name("테스트 상품")
-                .price(new BigDecimal("25000")).build()));
+    webTestClient.get()
+        .uri("/api/products/{id}", "prod-001")
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .jsonPath("$.name").isEqualTo("테스트 상품");
 
-        webTestClient.get()
-            .uri("/api/products/{id}", "prod-001")
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody()
-            .jsonPath("$.name").isEqualTo("테스트 상품");
-
-        verify(productService).findById("prod-001");
-    }
-}</code></pre>
+    verify(productService).findById("prod-001");
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1663-springboottest">16.6.3 @SpringBootTest 전체 통합 테스트</h3>
-<pre class="highlight"><code class="language-java">@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+<p>단위 테스트나 슬라이스 테스트로는 한계가 있다. 시스템 전체가 제대로 동작하는지 확인하려면 전체 통합 테스트가 필요하다.</p>
+<p>```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
-class FullIntegrationTest {
+class FullIntegrationTest {</p>
+<pre><code>@Container
+static MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:7.0");
 
-    @Container
-    static MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:7.0");
+@DynamicPropertySource
+static void setProperties(DynamicPropertyRegistry registry) {
+    registry.add("spring.data.mongodb.uri",
+        mongoDBContainer::getReplicaSetUrl);
+}
 
-    @DynamicPropertySource
-    static void setProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.data.mongodb.uri",
-            mongoDBContainer::getReplicaSetUrl);
-    }
+@Autowired
+private WebTestClient webTestClient;
 
-    @Autowired
-    private WebTestClient webTestClient;
+@Autowired
+private ProductRepository productRepository;
 
-    @Autowired
-    private ProductRepository productRepository;
+@BeforeEach
+void setUp() { productRepository.deleteAll().block(); }
 
-    @BeforeEach
-    void setUp() { productRepository.deleteAll().block(); }
+@Test
+void 상품_CRUD_전체_흐름() {
+    // CREATE
+    Product created = webTestClient.post()
+        .uri("/api/products")
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(new ProductRequest(
+            "CRUD 테스트", "설명", "BOOKS", new BigDecimal("30000")))
+        .exchange()
+        .expectStatus().isCreated()
+        .expectBody(Product.class)
+        .returnResult().getResponseBody();
 
-    @Test
-    void 상품_CRUD_전체_흐름() {
-        // CREATE
-        Product created = webTestClient.post()
-            .uri("/api/products")
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(new ProductRequest(
-                "CRUD 테스트", "설명", "BOOKS", new BigDecimal("30000")))
-            .exchange()
-            .expectStatus().isCreated()
-            .expectBody(Product.class)
-            .returnResult().getResponseBody();
+    assertThat(created).isNotNull();
 
-        assertThat(created).isNotNull();
+    // READ
+    webTestClient.get()
+        .uri("/api/products/{id}", created.getId())
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .jsonPath("$.name").isEqualTo("CRUD 테스트");
 
-        // READ
-        webTestClient.get()
-            .uri("/api/products/{id}", created.getId())
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody()
-            .jsonPath("$.name").isEqualTo("CRUD 테스트");
+    // UPDATE
+    webTestClient.put()
+        .uri("/api/products/{id}", created.getId())
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(new ProductRequest(
+            "수정됨", "설명", "BOOKS", new BigDecimal("35000")))
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .jsonPath("$.name").isEqualTo("수정됨");
 
-        // UPDATE
-        webTestClient.put()
-            .uri("/api/products/{id}", created.getId())
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(new ProductRequest(
-                "수정됨", "설명", "BOOKS", new BigDecimal("35000")))
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody()
-            .jsonPath("$.name").isEqualTo("수정됨");
+    // DELETE
+    webTestClient.delete()
+        .uri("/api/products/{id}", created.getId())
+        .exchange()
+        .expectStatus().isNoContent();
 
-        // DELETE
-        webTestClient.delete()
-            .uri("/api/products/{id}", created.getId())
-            .exchange()
-            .expectStatus().isNoContent();
-
-        webTestClient.get()
-            .uri("/api/products/{id}", created.getId())
-            .exchange()
-            .expectStatus().isNotFound();
-    }
-}</code></pre>
+    webTestClient.get()
+        .uri("/api/products/{id}", created.getId())
+        .exchange()
+        .expectStatus().isNotFound();
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1664-mockito-mockbean">16.6.4 Mockito와 @MockBean 활용 팁</h3>
-<p>리액티브 환경에서 Mockito를 사용할 때 주의할 점을 정리한다.</p>
-<pre class="highlight"><code class="language-java">@WebFluxTest(OrderController.class)
-class OrderControllerTest {
+<p>리액티브 환경에서 Mockito를 쓸 때는 동기 환경과는 조금 다르다. 몇 가지 주의할 점들을 정리해봤다.</p>
+<p>```java
+@WebFluxTest(OrderController.class)
+class OrderControllerTest {</p>
+<pre><code>@Autowired
+private WebTestClient webTestClient;
 
-    @Autowired
-    private WebTestClient webTestClient;
+@MockBean
+private OrderService orderService;
 
-    @MockBean
-    private OrderService orderService;
+@Test
+void Mono_반환_모킹() {
+    when(orderService.findById("order-001"))
+        .thenReturn(Mono.just(OrderResponse.builder()
+            .id("order-001").status("COMPLETED").build()));
 
-    @Test
-    void Mono_반환_모킹() {
-        when(orderService.findById("order-001"))
-            .thenReturn(Mono.just(OrderResponse.builder()
-                .id("order-001").status("COMPLETED").build()));
+    webTestClient.get()
+        .uri("/api/orders/{id}", "order-001")
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .jsonPath("$.status").isEqualTo("COMPLETED");
+}
 
-        webTestClient.get()
-            .uri("/api/orders/{id}", "order-001")
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody()
-            .jsonPath("$.status").isEqualTo("COMPLETED");
-    }
+@Test
+void Mono_Void_반환_모킹() {
+    when(orderService.cancel("order-001")).thenReturn(Mono.empty());
 
-    @Test
-    void Mono_Void_반환_모킹() {
-        when(orderService.cancel("order-001")).thenReturn(Mono.empty());
+    webTestClient.delete()
+        .uri("/api/orders/{id}", "order-001")
+        .exchange()
+        .expectStatus().isNoContent();
 
-        webTestClient.delete()
-            .uri("/api/orders/{id}", "order-001")
-            .exchange()
-            .expectStatus().isNoContent();
+    verify(orderService).cancel("order-001");
+}
 
-        verify(orderService).cancel("order-001");
-    }
+@Test
+void ArgumentCaptor_활용() {
+    when(orderService.create(any(OrderRequest.class)))
+        .thenReturn(Mono.just(OrderResponse.builder()
+            .id("new-order").status("PENDING").build()));
 
-    @Test
-    void ArgumentCaptor_활용() {
-        when(orderService.create(any(OrderRequest.class)))
-            .thenReturn(Mono.just(OrderResponse.builder()
-                .id("new-order").status("PENDING").build()));
+    webTestClient.post()
+        .uri("/api/orders")
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(OrderRequest.builder()
+            .productId("prod-001").quantity(2)
+            .shippingAddress("서울시 강남구").build())
+        .exchange()
+        .expectStatus().isCreated();
 
-        webTestClient.post()
-            .uri("/api/orders")
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(OrderRequest.builder()
-                .productId("prod-001").quantity(2)
-                .shippingAddress("서울시 강남구").build())
-            .exchange()
-            .expectStatus().isCreated();
-
-        ArgumentCaptor&lt;OrderRequest&gt; captor =
-            ArgumentCaptor.forClass(OrderRequest.class);
-        verify(orderService).create(captor.capture());
-        assertThat(captor.getValue().getProductId()).isEqualTo("prod-001");
-    }
-}</code></pre>
+    ArgumentCaptor&lt;OrderRequest&gt; captor =
+        ArgumentCaptor.forClass(OrderRequest.class);
+    verify(orderService).create(captor.capture());
+    assertThat(captor.getValue().getProductId()).isEqualTo("prod-001");
+}
+</code></pre>
+<p>}
+```</p>
 <h3 id="1665">16.6.5 테스트 전략 종합 정리</h3>
-<pre class="highlight"><code>┌─────────────────────────────────────────────────────────┐
+<p><code>┌─────────────────────────────────────────────────────────┐
 │             @SpringBootTest (전체 통합 테스트)            │
 │    - 전체 흐름 검증, E2E 시나리오                        │
 │    - Testcontainers로 실제 MongoDB 사용                 │
@@ -1162,7 +1207,7 @@ class OrderControllerTest {
 ├─────────────────────────────────────────────────────────┤
 │           MockWebServer (외부 API 모킹)                  │
 │   - WebClient를 통한 외부 API 호출 검증                   │
-└─────────────────────────────────────────────────────────┘</code></pre>
+└─────────────────────────────────────────────────────────┘</code></p>
 <table>
 <thead>
 <tr>
@@ -1205,42 +1250,44 @@ class OrderControllerTest {
 </tr>
 </tbody>
 </table>
-<p>권장하는 테스트 비율(테스트 피라미드)은 다음과 같다.</p>
+<p>테스트 작성할 때는 <strong>테스트 피라미드(Test Pyramid)</strong>라는 원칙을 따르는 게 좋다. 피라미드 형태로 테스트를 구성하면 테스트 속도와 신뢰성의 균형을 잘 맞출 수 있다.</p>
 <ul>
-<li><strong>단위 테스트(StepVerifier + Mockito)</strong>: 70% -- 빠르게 많이 작성</li>
-<li><strong>슬라이스 테스트(@WebFluxTest, @DataMongoTest)</strong>: 20% -- 계층별 검증</li>
-<li><strong>통합 테스트(@SpringBootTest)</strong>: 10% -- 핵심 시나리오만</li>
+<li><strong>단위 테스트(StepVerifier + Mockito)</strong>: 70% -- 빠르니까 많이 작성해도 된다</li>
+<li><strong>슬라이스 테스트(@WebFluxTest, @DataMongoTest)</strong>: 20% -- 각 계층을 검증한다</li>
+<li><strong>통합 테스트(@SpringBootTest)</strong>: 10% -- 정말 중요한 엔드투엔드 시나리오만</li>
 </ul>
 <h3 id="1666">16.6.6 테스트 작성 시 주의사항</h3>
+<p>리액티브 테스트를 쓰다 보면 자주 하는 실수들이 있다. 필자의 경험상 이런 실수들을 피하면 훨씬 튼튼한 테스트를 만들 수 있다.</p>
 <p><strong>1. block()은 테스트 준비 단계에서만 사용한다</strong></p>
-<pre class="highlight"><code class="language-java">// 올바른 사용: @BeforeEach에서만 block()
+<p>```java
+// 올바른 사용: @BeforeEach에서만 block()
 @BeforeEach
 void setUp() {
     productRepository.deleteAll().block();
-}
-
-// 잘못된 사용: 검증 로직에서 block()
+}</p>
+<p>// 잘못된 사용: 검증 로직에서 block()
 @Test
 void 잘못된_테스트() {
     Product result = productService.findById("001").block();  // 안티패턴
     assertThat(result.getName()).isEqualTo("상품");
-}
-
-// 올바른 사용: StepVerifier로 검증
+}</p>
+<p>// 올바른 사용: StepVerifier로 검증
 @Test
 void 올바른_테스트() {
     StepVerifier.create(productService.findById("001"))
         .assertNext(p -&gt; assertThat(p.getName()).isEqualTo("상품"))
         .verifyComplete();
-}</code></pre>
+}
+```</p>
 <p><strong>2. verify() 호출을 잊지 않는다</strong></p>
-<pre class="highlight"><code class="language-java">// 이 테스트는 항상 통과한다 -- 구독이 시작되지 않음!
+<p><code>java
+// 이 테스트는 항상 통과한다 -- 구독이 시작되지 않음!
 @Test
 void 잘못된_테스트() {
     StepVerifier.create(productService.findById("unknown"))
         .expectError(NotFoundException.class);
     // verify() 호출 누락!
-}</code></pre>
+}</code></p>
 <p><strong>3. @MockBean과 @Mock의 차이를 이해한다</strong></p>
 <table>
 <thead>
@@ -1265,7 +1312,7 @@ void 잘못된_테스트() {
 </table>
 <hr>
 <h2 id="_1">요약</h2>
-<p>이번 장에서는 리액티브 애플리케이션의 테스트 전략을 계층별로 다루었다.</p>
+<p>여기까지 리액티브 애플리케이션을 테스트하는 여러 방법들을 살펴봤다. 각 도구와 기법들을 정리하면 다음과 같다.</p>
 <table>
 <thead>
 <tr>
@@ -1300,7 +1347,7 @@ void 잘못된_테스트() {
 </tr>
 </tbody>
 </table>
-<p>리액티브 테스트에서 가장 중요한 원칙은 <strong><code>block()</code>으로 동기 변환하지 않고 <code>StepVerifier</code>로 비동기 시퀀스를 검증하는 것</strong>이다. 각 계층에 적합한 테스트 도구를 선택하여 빠르면서도 신뢰성 높은 테스트 스위트를 구축하자.</p>
+<p>리액티브 테스트에서 핵심은 <strong><code>block()</code>으로 무리하게 동기로 변환하지 않는 것</strong>이다. 대신 <code>StepVerifier</code>로 비동기 시퀀스를 정직하게 검증해야 한다. 각 계층에 맞는 테스트 도구를 올바르게 선택하면, 빠르면서도 신뢰성 높은 테스트 스위트를 만들 수 있다.</p>
 <p>다음 장에서는 SpringDoc OpenAPI를 활용한 리액티브 API 문서화와 버전 관리 전략을 다룬다.</p>
     </main>
     <footer class="site-footer">
